@@ -44,7 +44,7 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // Protect authenticated routes
+  // Protected authenticated routes
   const isProtectedPath =
     path.startsWith("/dashboard") ||
     path.startsWith("/coordinator") ||
@@ -59,10 +59,17 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect logged-in users away from auth pages
+  // If logged-in user visits /login or /register, redirect cleanly
   if (user && (path === "/login" || path === "/register")) {
+    const redirectParam = request.nextUrl.searchParams.get("redirect");
+    const target =
+      redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
+        ? redirectParam
+        : "/dashboard";
+
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = target;
+    url.searchParams.delete("redirect");
     return NextResponse.redirect(url);
   }
 

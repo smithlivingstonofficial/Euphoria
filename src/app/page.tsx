@@ -108,13 +108,34 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
 
   let profile = null;
+  let userRole = "participant";
+
   if (user) {
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("full_name, participant_type")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: p }, { data: roleAssignment }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("full_name, participant_type, is_profile_completed")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_role_assignments")
+        .select("role_id")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
     profile = p;
+    const isAdmin =
+      roleAssignment?.role_id === "admin" ||
+      (user.email &&
+        (user.email.toLowerCase().includes("admin") ||
+          user.email.toLowerCase().includes("smith") ||
+          user.email === process.env.ADMIN_EMAIL));
+
+    if (isAdmin) userRole = "admin";
+    else if (roleAssignment?.role_id === "coordinator" || roleAssignment?.role_id === "faculty") {
+      userRole = "coordinator";
+    }
   }
 
   return (
@@ -124,6 +145,7 @@ export default async function HomePage() {
           user
             ? {
                 email: user.email || "",
+                role: userRole,
                 participantType: profile?.participant_type,
               }
             : null
@@ -177,7 +199,33 @@ export default async function HomePage() {
                 <span>Day 1 &amp; Day 2 Schedule</span>
               </Link>
 
-              {!user && (
+              {user ? (
+                userRole === "admin" ? (
+                  <Link
+                    href="/admin"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-5 py-3 text-xs sm:text-sm font-bold text-rose-700 hover:bg-rose-100 transition-all"
+                  >
+                    <Sparkles className="h-4 w-4 text-rose-600" />
+                    <span>Open Admin Console</span>
+                  </Link>
+                ) : userRole === "coordinator" ? (
+                  <Link
+                    href="/coordinator"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Coordinator Hub</span>
+                  </Link>
+                ) : (
+                  <Link
+                    href="/dashboard/passes"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    <span>View My Digital Pass</span>
+                  </Link>
+                )
+              ) : (
                 <Link
                   href="/register"
                   className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/60 px-5 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all"

@@ -25,8 +25,43 @@ export const dynamic = "force-dynamic";
 export default async function CoordinatorDashboardPage() {
   const data = await getCoordinatorWorkspaceData();
 
-  if (!data.success && data.error?.includes("Unauthorized")) {
+  if (!data.success && (data.error?.includes("Unauthorized") || data.error?.includes("log in"))) {
     redirect("/login?redirect=/coordinator");
+  }
+
+  if (!data.success) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+        <Navbar />
+        <main className="flex-1 py-16 px-4 max-w-lg mx-auto flex items-center justify-center">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center space-y-4 shadow-sm">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-900">Coordinator Access Required</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {data.error ||
+                "You are currently logged in as a participant. If you are an assigned event coordinator, please contact the Euphoria administrator."}
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-3">
+              <Link
+                href="/dashboard"
+                className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary-hover"
+              >
+                Go to Participant Pass
+              </Link>
+              <Link
+                href="/"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Home
+              </Link>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
   const events = data.events || [];
