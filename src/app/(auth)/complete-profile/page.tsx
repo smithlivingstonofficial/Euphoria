@@ -47,8 +47,8 @@ export default async function CompleteProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/80 py-10 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-      <div className="w-full max-w-2xl">
+    <div className="min-h-screen bg-slate-50/80 py-6 sm:py-8 md:py-10 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+      <div className="w-full max-w-4xl">
         <CompleteProfileForm user={userData} initialProfile={profile} />
       </div>
     </div>

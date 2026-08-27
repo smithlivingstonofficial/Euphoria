@@ -12,7 +12,6 @@ import {
   MapPin,
   Map,
   ChevronDown,
-  Sparkles,
   Lock,
 } from "lucide-react";
 import { saveParticipantProfile } from "@/actions/auth";
@@ -41,11 +40,11 @@ interface CompleteProfileFormProps {
 }
 
 export const KARE_SCHOOLS = [
-  { id: "SCSE", name: "SCSE", desc: "Computing & AI" },
-  { id: "SEEE", name: "SEEE", desc: "Electrical & ECE" },
-  { id: "SMEC", name: "SMEC", desc: "Mech & Civil" },
-  { id: "SAS", name: "SAS", desc: "Sciences" },
-  { id: "SoM", name: "SoM", desc: "Management" },
+  { id: "SCSE", name: "SCSE (School of Computing)" },
+  { id: "SEEE", name: "SEEE (School of Electrical & Electronics)" },
+  { id: "SMEC", name: "SMEC (School of Mechanical & Civil)" },
+  { id: "SAS", name: "SAS (School of Advanced Sciences)" },
+  { id: "SoM", name: "SoM (School of Management)" },
 ];
 
 export const DEGREE_CATEGORIES = [
@@ -218,9 +217,7 @@ export function CompleteProfileForm({
 
   // Common Profile State
   const [fullName, setFullName] = useState(user.fullName || initialProfile?.full_name || "");
-  const [gender, setGender] = useState<"male" | "female" | "other">(
-    (initialProfile?.gender as "male" | "female" | "other") || "male"
-  );
+  const [gender, setGender] = useState<string>(initialProfile?.gender || "male");
   const [mobileNumber, setMobileNumber] = useState(initialProfile?.mobile_number || "");
 
   // Internal KARE Student Fields
@@ -390,311 +387,180 @@ export function CompleteProfileForm({
 
   return (
     <div className="w-full">
-      {/* Main Executive Card */}
+      {/* Executive Single-Page Card */}
       <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-        {/* Card Header */}
-        <div className="border-b border-slate-100 bg-white px-6 py-5 sm:px-8 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
+        {/* Header Bar */}
+        <div className="border-b border-slate-100 bg-white px-5 py-4 sm:px-7 sm:py-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   Euphoria &apos;26 Delegate Registration
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
                 Complete Participant Profile
               </h1>
               <p className="text-xs text-slate-500">
-                Verify your personal and academic credentials to issue your official entry pass.
+                Verify your personal and institutional details to issue your digital festival pass.
               </p>
             </div>
 
-            {/* Google Verified Identity Pill */}
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-1.5 shrink-0 self-start sm:self-auto">
+            {/* Google Verified Identity Chip */}
+            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 shrink-0 self-start sm:self-auto shadow-2xs">
               {user.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={user.avatarUrl}
                   alt="Avatar"
-                  className="h-5 w-5 rounded-full border border-slate-200 shrink-0"
+                  className="h-4 w-4 rounded-full border border-slate-200 shrink-0"
                 />
               ) : (
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 font-bold text-slate-700 text-[10px]">
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-200 font-bold text-slate-700 text-[9px]">
                   {user.fullName ? user.fullName.charAt(0).toUpperCase() : "U"}
                 </div>
               )}
-              <span className="text-xs font-semibold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]">
+              <span className="text-xs font-semibold text-slate-700 truncate max-w-[160px] sm:max-w-[220px]">
                 {user.email}
               </span>
-              <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
             </div>
           </div>
         </div>
 
         {/* Error Alert */}
         {errorMessage && (
-          <div className="mx-6 mt-5 sm:mx-8 rounded-xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-700 flex items-start gap-2.5">
+          <div className="mx-5 mt-4 sm:mx-7 rounded-xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-700 flex items-start gap-2.5">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
             <span className="leading-snug">{errorMessage}</span>
           </div>
         )}
 
-        {/* Form Content */}
+        {/* Form Body - 2 Column Grid on Desktop */}
         <form
           action="/api/profile"
           method="POST"
           onSubmit={handleSubmit}
-          className="p-6 sm:p-8 space-y-7"
+          className="p-5 sm:p-7 space-y-5"
         >
           <input type="hidden" name="userId" value={user.id} />
           <input type="hidden" name="userEmail" value={user.email} />
           <input type="hidden" name="participantType" value={user.participantType} />
 
-          {/* SECTION 1: Personal Details */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                1. Personal Details
-              </h2>
-              <span className="text-[11px] text-slate-400 font-medium">All fields required</span>
-            </div>
-
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                Full Name <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  name="fullName"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Smith Livingston"
-                  className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
-                    fullName.length > 0 && !isNameValid
-                      ? "border-rose-300 focus:border-rose-500"
-                      : "border-slate-200 focus:border-slate-900"
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* Gender & WhatsApp Mobile - 2 Column Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Gender Segmented Control */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                  Gender <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
-                  {(["male", "female", "other"] as const).map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setGender(g)}
-                      className={`py-2 text-xs font-semibold capitalize rounded-lg transition-all cursor-pointer ${
-                        gender === g
-                          ? "bg-white text-slate-900 shadow-xs border border-slate-200"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-                <input type="hidden" name="gender" value={gender} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
+            {/* COLUMN 1: Personal & Contact Information */}
+            <div className="space-y-3.5">
+              <div className="border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                  1. Personal Information
+                </h2>
+                <span className="text-[10px] text-slate-400 font-medium">Required</span>
               </div>
 
-              {/* Mobile Number */}
+              {/* Full Name */}
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                  WhatsApp Contact Number <span className="text-rose-500">*</span>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Full Name <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3.5 top-2.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 border-r border-slate-200 pr-2.5">
-                    <span>+91</span>
-                  </div>
+                  <User className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <input
-                    type="tel"
-                    name="mobileNumber"
-                    inputMode="numeric"
-                    maxLength={10}
+                    type="text"
+                    name="fullName"
                     required
-                    value={mobileNumber}
-                    onKeyDown={handleMobileKeyDown}
-                    onPaste={handleMobilePaste}
-                    onChange={handleMobileChange}
-                    placeholder="9876543210"
-                    className={`w-full rounded-xl border bg-white pl-18 pr-3.5 py-2 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
-                      mobileNumber.length > 0 && !isMobileValid
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Smith Livingston"
+                    className={`w-full rounded-lg border bg-white pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                      fullName.length > 0 && !isNameValid
                         ? "border-rose-300 focus:border-rose-500"
-                        : mobileNumber.length === 10 && isMobileValid
-                        ? "border-emerald-400 focus:border-emerald-500"
                         : "border-slate-200 focus:border-slate-900"
                     }`}
                   />
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* SECTION 2: Academic Record */}
-          <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                2. Academic Institution &amp; Program
-              </h2>
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider ${
-                  user.participantType === "internal"
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-slate-100 text-slate-700 border-slate-200"
-                }`}
-              >
-                {user.participantType === "internal" ? "KARE Student" : "External Delegate"}
-              </span>
-            </div>
-
-            {/* INTERNAL KARE FLOW */}
-            {user.participantType === "internal" ? (
-              <div className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Register Number */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      Student Register Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="registerNumber"
+              {/* Gender & WhatsApp Side-by-Side */}
+              <div className="grid grid-cols-5 gap-2.5">
+                {/* Gender Dropdown (2 cols) */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Gender <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      name="gender"
+                      value={gender}
                       required
-                      value={registerNumber}
-                      onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
-                      placeholder="9922004001"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-mono font-bold text-slate-900 uppercase focus:border-slate-900 focus:outline-none"
-                    />
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-7"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   </div>
+                </div>
 
-                  {/* Year of Study Segmented Chips */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      Year of Study <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-5 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
-                      {[
-                        { id: "1", label: "1st" },
-                        { id: "2", label: "2nd" },
-                        { id: "3", label: "3rd" },
-                        { id: "4", label: "4th" },
-                        { id: "5", label: "Final" },
-                      ].map((y) => (
-                        <button
-                          key={y.id}
-                          type="button"
-                          onClick={() => setYearOfStudy(y.id)}
-                          className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                            yearOfStudy === y.id
-                              ? "bg-white text-slate-900 shadow-xs border border-slate-200 font-bold"
-                              : "text-slate-600 hover:text-slate-900"
-                          }`}
-                        >
-                          {y.label}
-                        </button>
-                      ))}
+                {/* Mobile Number (3 cols) */}
+                <div className="col-span-3">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    WhatsApp Number <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-2.5 top-2 flex items-center text-xs font-semibold text-slate-600 border-r border-slate-200 pr-1.5">
+                      <span>+91</span>
                     </div>
-                    <input type="hidden" name="yearOfStudy" value={yearOfStudy} />
-                  </div>
-                </div>
-
-                {/* School Selector Grid */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Organizing School <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {KARE_SCHOOLS.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setSchool(s.id)}
-                        className={`rounded-xl p-2.5 text-center border transition-all cursor-pointer ${
-                          school === s.id
-                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="text-xs font-bold">{s.name}</div>
-                        <div className="text-[10px] opacity-75 truncate">{s.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                  <input type="hidden" name="school" value={school} />
-                </div>
-
-                {/* Degree / Program */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Degree / Academic Program <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      name="course"
-                      value={course}
-                      onChange={(e) => setCourse(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
-                    >
-                      {DEGREE_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category}>
-                          {cat.options.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-
-                {/* Department */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Department / Discipline <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      name="department"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
-                    >
-                      {DEPARTMENT_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category}>
-                          {cat.options.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      name="mobileNumber"
+                      inputMode="numeric"
+                      maxLength={10}
+                      required
+                      value={mobileNumber}
+                      onKeyDown={handleMobileKeyDown}
+                      onPaste={handleMobilePaste}
+                      onChange={handleMobileChange}
+                      placeholder="9876543210"
+                      className={`w-full rounded-lg border bg-white pl-13 pr-2.5 py-2 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                        mobileNumber.length > 0 && !isMobileValid
+                          ? "border-rose-300 focus:border-rose-500"
+                          : mobileNumber.length === 10 && isMobileValid
+                          ? "border-emerald-400 focus:border-emerald-500"
+                          : "border-slate-200 focus:border-slate-900"
+                      }`}
+                    />
                   </div>
                 </div>
               </div>
-            ) : (
-              /* EXTERNAL PARTICIPANT FLOW */
-              <div className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5">
+
+              {/* Internal Specific: Student Register Number */}
+              {user.participantType === "internal" && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Student Register / Roll Number <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="registerNumber"
+                    required
+                    value={registerNumber}
+                    onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
+                    placeholder="9922004001"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm font-mono font-bold text-slate-900 uppercase focus:border-slate-900 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* External Specific: College Name */}
+              {user.participantType === "external" && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
                     College / University Name <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <Building className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                    <Building className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                     <input
                       type="text"
                       name="collegeName"
@@ -702,7 +568,7 @@ export function CompleteProfileForm({
                       value={collegeName}
                       onChange={(e) => setCollegeName(e.target.value)}
                       placeholder="e.g. Sri Kaliswari College"
-                      className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                      className={`w-full rounded-lg border bg-white pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
                         collegeName.length > 0 && !isCollegeValid
                           ? "border-rose-300 focus:border-rose-500"
                           : "border-slate-200 focus:border-slate-900"
@@ -710,166 +576,282 @@ export function CompleteProfileForm({
                     />
                   </div>
                 </div>
+              )}
+            </div>
 
-                {/* City & Pincode */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      Institution City / Town <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                      <input
-                        type="text"
-                        name="city"
-                        required
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="Sivakasi"
-                        className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
-                          city.length > 0 && !isCityValid
-                            ? "border-rose-300 focus:border-rose-500"
-                            : "border-slate-200 focus:border-slate-900"
-                        }`}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      Postal Pincode <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <Map className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                      <input
-                        type="tel"
-                        name="pincode"
-                        inputMode="numeric"
-                        maxLength={6}
-                        required
-                        value={pincode}
-                        onKeyDown={handlePincodeKeyDown}
-                        onPaste={handlePincodePaste}
-                        onChange={handlePincodeChange}
-                        placeholder="626189"
-                        className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
-                          pincode.length > 0 && !isPincodeValid
-                            ? "border-rose-300 focus:border-rose-500"
-                            : pincode.length === 6 && isPincodeValid
-                            ? "border-emerald-400 focus:border-emerald-500"
-                            : "border-slate-200 focus:border-slate-900"
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Year of Study Chips */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Year of Study <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-5 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
-                    {[
-                      { id: "1", label: "1st Year" },
-                      { id: "2", label: "2nd Year" },
-                      { id: "3", label: "3rd Year" },
-                      { id: "4", label: "4th Year" },
-                      { id: "5", label: "PG / Final" },
-                    ].map((y) => (
-                      <button
-                        key={y.id}
-                        type="button"
-                        onClick={() => setYearOfStudy(y.id)}
-                        className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                          yearOfStudy === y.id
-                            ? "bg-white text-slate-900 shadow-xs border border-slate-200 font-bold"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        {y.label}
-                      </button>
-                    ))}
-                  </div>
-                  <input type="hidden" name="yearOfStudy" value={yearOfStudy} />
-                </div>
-
-                {/* Degree */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Degree / Course <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      name="course"
-                      value={course}
-                      onChange={(e) => setCourse(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
-                    >
-                      {DEGREE_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category}>
-                          {cat.options.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-
-                {/* Department */}
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    Department / Discipline <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      name="department"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
-                    >
-                      {DEPARTMENT_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category}>
-                          {cat.options.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
+            {/* COLUMN 2: Academic Record & Program */}
+            <div className="space-y-3.5">
+              <div className="border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                  2. Academic Record
+                </h2>
+                <span
+                  className={`rounded px-2 py-0.5 text-[10px] font-bold border uppercase tracking-wider ${
+                    user.participantType === "internal"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      : "bg-slate-100 text-slate-700 border-slate-200"
+                  }`}
+                >
+                  {user.participantType === "internal" ? "KARE Student" : "External Delegate"}
+                </span>
               </div>
-            )}
+
+              {/* INTERNAL KARE FLOW */}
+              {user.participantType === "internal" ? (
+                <>
+                  {/* Organizing School Dropdown */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Organizing School <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="school"
+                        value={school}
+                        onChange={(e) => setSchool(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
+                      >
+                        {KARE_SCHOOLS.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  </div>
+
+                  {/* Degree & Year Dropdowns (2 cols) */}
+                  <div className="grid grid-cols-5 gap-2.5">
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Degree / Program <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          name="course"
+                          value={course}
+                          onChange={(e) => setCourse(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-7 truncate"
+                        >
+                          {DEGREE_CATEGORIES.map((cat) => (
+                            <optgroup key={cat.category} label={cat.category}>
+                              {cat.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Year of Study <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          name="yearOfStudy"
+                          value={yearOfStudy}
+                          onChange={(e) => setYearOfStudy(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-7"
+                        >
+                          <option value="1">1st Year</option>
+                          <option value="2">2nd Year</option>
+                          <option value="3">3rd Year</option>
+                          <option value="4">4th Year</option>
+                          <option value="5">PG / Final</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Department */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Department / Discipline <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="department"
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate"
+                      >
+                        {DEPARTMENT_CATEGORIES.map((cat) => (
+                          <optgroup key={cat.category} label={cat.category}>
+                            {cat.options.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* EXTERNAL PARTICIPANT FLOW */
+                <>
+                  {/* City & Pincode (2 cols) */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        City / Town <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <MapPin className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          name="city"
+                          required
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          placeholder="Sivakasi"
+                          className={`w-full rounded-lg border bg-white pl-8 pr-2.5 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                            city.length > 0 && !isCityValid
+                              ? "border-rose-300 focus:border-rose-500"
+                              : "border-slate-200 focus:border-slate-900"
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Postal Pincode <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Map className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="tel"
+                          name="pincode"
+                          inputMode="numeric"
+                          maxLength={6}
+                          required
+                          value={pincode}
+                          onKeyDown={handlePincodeKeyDown}
+                          onPaste={handlePincodePaste}
+                          onChange={handlePincodeChange}
+                          placeholder="626189"
+                          className={`w-full rounded-lg border bg-white pl-8 pr-2.5 py-2 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                            pincode.length > 0 && !isPincodeValid
+                              ? "border-rose-300 focus:border-rose-500"
+                              : pincode.length === 6 && isPincodeValid
+                              ? "border-emerald-400 focus:border-emerald-500"
+                              : "border-slate-200 focus:border-slate-900"
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Degree & Year Dropdowns (2 cols) */}
+                  <div className="grid grid-cols-5 gap-2.5">
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Degree / Course <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          name="course"
+                          value={course}
+                          onChange={(e) => setCourse(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-7 truncate"
+                        >
+                          {DEGREE_CATEGORIES.map((cat) => (
+                            <optgroup key={cat.category} label={cat.category}>
+                              {cat.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Year <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          name="yearOfStudy"
+                          value={yearOfStudy}
+                          onChange={(e) => setYearOfStudy(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-7"
+                        >
+                          <option value="1">1st Year</option>
+                          <option value="2">2nd Year</option>
+                          <option value="3">3rd Year</option>
+                          <option value="4">4th Year</option>
+                          <option value="5">PG / Final</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Department */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Department / Branch <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="department"
+                        value={department}
+                        onChange={(e) => setDepartment(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate"
+                      >
+                        {DEPARTMENT_CATEGORIES.map((cat) => (
+                          <optgroup key={cat.category} label={cat.category}>
+                            {cat.options.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Submit Action */}
-          <div className="pt-3 space-y-3">
+          {/* Submit Action Bar */}
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 order-2 sm:order-1">
+              <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span>Official Academic Verification • KARE Euphoria 2026</span>
+            </div>
+
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 px-5 text-sm font-bold text-white shadow-sm hover:bg-slate-800 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-slate-800 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer min-h-[42px] order-1 sm:order-2 shrink-0"
             >
               {isLoading ? (
-                <span>Verifying &amp; Generating Pass...</span>
+                <span>Verifying &amp; Saving...</span>
               ) : (
                 <>
-                  <span>Save Profile &amp; Open Event Portal</span>
+                  <span>Save Profile &amp; Open Portal</span>
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>
-
-            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-              <Lock className="h-3 w-3 text-slate-400" />
-              <span>Official Delegate Verification • Kalasalingam University Euphoria 2026</span>
-            </div>
           </div>
         </form>
       </div>
