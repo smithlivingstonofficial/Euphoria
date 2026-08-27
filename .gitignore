@@ -38,4 +38,10 @@ next-env.d.ts
 # agents / ide scratch
 .agent
 
-/
+# database & sql queries
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+/supabase/migrations/
+/supabase/
