@@ -47,8 +47,13 @@ export default async function CompleteProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-      <CompleteProfileForm user={userData} initialProfile={profile} />
+    <div className="relative min-h-screen bg-slate-950 px-3 py-6 sm:py-10 sm:px-6 lg:px-8 flex items-center justify-center overflow-x-hidden">
+      {/* Background Glow */}
+      <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-blue-600/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl" />
+      <div className="relative w-full max-w-lg">
+        <CompleteProfileForm user={userData} initialProfile={profile} />
+      </div>
     </div>
   );
 }

@@ -111,40 +111,46 @@ export function CartDrawer({
   if (!isCartOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-hidden flex flex-col justify-end sm:justify-center">
       {/* Backdrop */}
       <div
         onClick={closeCart}
-        className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
-          {/* Drawer Header */}
-          <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-xs">
-                <ShoppingBag className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-slate-900">
-                  Event Pass Selection ({selectedEvents.length}/{maxEventsLimit})
-                </h2>
-                <p className="text-[11px] font-semibold text-slate-500">
-                  {user?.participantType === "external"
-                    ? "External Delegate Pass"
-                    : "KARE Internal Delegate Pass"}
-                </p>
-              </div>
-            </div>
+      {/* Sheet Container: Bottom Sheet on Mobile (<640px), Slide-Over Drawer on Desktop (>=640px) */}
+      <div className="relative z-10 w-full sm:fixed sm:inset-y-0 sm:right-0 sm:max-w-md flex flex-col bg-white shadow-2xl rounded-t-3xl sm:rounded-none max-h-[92vh] sm:max-h-full overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-200">
+        {/* Mobile Drag Indicator Handle */}
+        <div className="sm:hidden pt-2.5 pb-1 flex items-center justify-center">
+          <div className="h-1.5 w-12 rounded-full bg-slate-300" />
+        </div>
 
-            <button
-              onClick={closeCart}
-              className="rounded-full p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        {/* Drawer Header */}
+        <div className="px-5 py-3.5 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-xs">
+              <ShoppingBag className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">
+                Pass Selection ({selectedEvents.length}/{maxEventsLimit})
+              </h2>
+              <p className="text-[11px] font-semibold text-slate-500 truncate">
+                {user?.participantType === "external"
+                  ? "External Delegate Pass"
+                  : "KARE Internal Delegate Pass"}
+              </p>
+            </div>
           </div>
+
+          <button
+            onClick={closeCart}
+            className="rounded-full p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition-colors cursor-pointer shrink-0"
+            title="Close pass drawer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
           {/* Drawer Body */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
@@ -400,6 +406,5 @@ export function CartDrawer({
           )}
         </div>
       </div>
-    </div>
   );
 }

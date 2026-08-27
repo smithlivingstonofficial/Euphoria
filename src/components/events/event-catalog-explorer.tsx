@@ -831,6 +831,44 @@ export function EventCatalogExplorer({
         </div>
       )}
 
+      {/* Mobile Floating Pass Sticky Dock */}
+      {selectedEvents.length > 0 && (
+        <div className="fixed bottom-4 inset-x-4 z-40 sm:hidden">
+          <div className="rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl shadow-black/70 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200">
+            <div className="min-w-0 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shrink-0 shadow-md">
+                <ShoppingBag className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 text-xs">
+                <div className="font-extrabold text-white flex items-center gap-1.5 truncate">
+                  <span>{selectedEvents.length}/2 Selected</span>
+                  {hasProEventSelected ? (
+                    <span className="rounded bg-amber-500 text-slate-950 font-black text-[9px] px-1 py-0.2">
+                      ⭐ PRO PASS
+                    </span>
+                  ) : (
+                    <span className="rounded bg-indigo-600 text-white font-bold text-[9px] px-1 py-0.2">
+                      NORMAL PASS
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] font-semibold text-slate-300">
+                  {hasProEventSelected ? "₹300 Pass" : "₹200 Pass"}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={openCart}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2.5 text-xs font-black text-white shadow-lg shadow-primary/30 active:scale-95 transition-transform cursor-pointer shrink-0"
+            >
+              <span>Review</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Quick Registration & Event Details Modal */}
       {activeModalEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 overflow-y-auto">
