@@ -17,6 +17,9 @@ export interface PricingSettings {
   external_base_fee: number;
   external_max_events_included: number;
   external_extra_event_fee: number;
+  pro_event_surcharge?: number;
+  max_pro_events_allowed?: number;
+  require_pro_first?: boolean;
   is_registration_active: boolean;
 }
 
@@ -42,6 +45,7 @@ interface CartContextType {
     includedCount: number;
     extraEventsCount: number;
     extraFee: number;
+    proSurcharge: number;
     totalAmount: number;
     isInternal: boolean;
   };
@@ -51,9 +55,12 @@ const DEFAULT_PRICING: PricingSettings = {
   internal_base_fee: 300,
   internal_max_events_included: 2,
   internal_extra_event_fee: 100,
-  external_base_fee: 500,
+  external_base_fee: 400,
   external_max_events_included: 2,
   external_extra_event_fee: 150,
+  pro_event_surcharge: 0,
+  max_pro_events_allowed: 1,
+  require_pro_first: true,
   is_registration_active: true,
 };
 
@@ -218,13 +225,16 @@ export function CartProvider({
       const totalCount = selectedEvents.length;
       const extraEventsCount = Math.max(0, totalCount - includedLimit);
       const extraFee = extraEventsCount * extraFeePerEvent;
-      const totalAmount = totalCount === 0 ? 0 : baseFee + extraFee;
+      const hasPro = selectedEvents.some((e) => Boolean(e.is_pro_event));
+      const proSurcharge = hasPro ? Number(pricingSettings.pro_event_surcharge || 0) : 0;
+      const totalAmount = totalCount === 0 ? 0 : baseFee + extraFee + proSurcharge;
 
       return {
         baseFee,
         includedCount: Math.min(totalCount, includedLimit),
         extraEventsCount,
         extraFee,
+        proSurcharge,
         totalAmount,
         isInternal,
       };

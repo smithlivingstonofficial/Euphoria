@@ -306,22 +306,28 @@ export async function getPublicPricingSettings() {
     } catch {
       return {
         internal_base_fee: 300,
-        internal_max_events_included: 3,
+        internal_max_events_included: 2,
         internal_extra_event_fee: 100,
-        external_base_fee: 500,
+        external_base_fee: 400,
         external_max_events_included: 2,
         external_extra_event_fee: 150,
+        pro_event_surcharge: 0,
+        max_pro_events_allowed: 1,
+        require_pro_first: true,
         is_registration_active: true,
       };
     }
   } catch {
     return {
       internal_base_fee: 300,
-      internal_max_events_included: 3,
+      internal_max_events_included: 2,
       internal_extra_event_fee: 100,
-      external_base_fee: 500,
+      external_base_fee: 400,
       external_max_events_included: 2,
       external_extra_event_fee: 150,
+      pro_event_surcharge: 0,
+      max_pro_events_allowed: 1,
+      require_pro_first: true,
       is_registration_active: true,
     };
   }
