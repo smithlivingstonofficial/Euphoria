@@ -14,6 +14,7 @@ import {
   AlertCircle,
   ExternalLink,
   Plus,
+  Star,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { deleteEventAdmin, updateEventAdmin } from "@/actions/admin";
@@ -30,6 +31,7 @@ interface EventItem {
   end_time?: string;
   registration_fee?: number;
   participant_limit?: number;
+  is_pro_event?: boolean;
   status: string;
   category?: {
     id: string;
@@ -47,6 +49,7 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
   const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [tierFilter, setTierFilter] = useState<"all" | "pro" | "normal">("all");
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const filteredEvents = useMemo(() => {
@@ -61,9 +64,16 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
       const matchesStatus =
         statusFilter === "all" ? true : evt.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      const matchesTier =
+        tierFilter === "all"
+          ? true
+          : tierFilter === "pro"
+          ? Boolean(evt.is_pro_event)
+          : !evt.is_pro_event;
+
+      return matchesSearch && matchesStatus && matchesTier;
     });
-  }, [events, searchQuery, statusFilter]);
+  }, [events, searchQuery, statusFilter, tierFilter]);
 
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -107,6 +117,18 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Tier Filter */}
+          <select
+            value={tierFilter}
+            onChange={(e) => setTierFilter(e.target.value as "all" | "pro" | "normal")}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:border-primary focus:outline-none shadow-xs"
+          >
+            <option value="all">All Tiers</option>
+            <option value="pro">⭐ Pro Events Only</option>
+            <option value="normal">Normal Events Only</option>
+          </select>
+
+          {/* Status Filter */}
           <Filter className="h-4 w-4 text-slate-400" />
           <select
             value={statusFilter}
@@ -131,8 +153,8 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="px-5 py-3">Event Title & Track</th>
-                  <th className="px-5 py-3">Schedule & Venue</th>
+                  <th className="px-5 py-3">Event Title &amp; Track</th>
+                  <th className="px-5 py-3">Schedule &amp; Venue</th>
                   <th className="px-5 py-3">Seat Capacity</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -143,12 +165,21 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
                   const regCount = (evt.registrations || []).length;
                   const limit = evt.participant_limit || 100;
                   const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
+                  const isPro = Boolean(evt.is_pro_event);
 
                   return (
                     <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors">
                       {/* Title & Track */}
                       <td className="px-5 py-3">
-                        <div className="font-bold text-slate-900">{evt.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-900">{evt.name}</span>
+                          {isPro && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider">
+                              <Star className="h-2.5 w-2.5 fill-current" />
+                              <span>PRO</span>
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-primary border border-indigo-100">
                             {evt.category?.name || "Track"}

@@ -1,7 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { PublicEvent } from "@/components/events/event-catalog-explorer";
+
+export const MAX_EVENTS_PER_PASS = 2;
+
+export interface SelectionValidation {
+  allowed: boolean;
+  reason?: string;
+}
 
 export interface PricingSettings {
   internal_base_fee: number;
@@ -19,11 +26,15 @@ interface CartContextType {
   setIsCartOpen: (open: boolean) => void;
   openCart: () => void;
   closeCart: () => void;
-  addEvent: (event: PublicEvent) => void;
+  addEvent: (event: PublicEvent) => boolean;
   removeEvent: (eventId: string) => void;
-  toggleEvent: (event: PublicEvent) => void;
+  toggleEvent: (event: PublicEvent) => boolean;
   clearCart: () => void;
   isEventSelected: (eventId: string) => boolean;
+  canSelectEvent: (event: PublicEvent) => SelectionValidation;
+  hasProEventSelected: boolean;
+  firstSelectedEvent: PublicEvent | null;
+  maxEventsLimit: number;
   pricingSettings: PricingSettings;
   setPricingSettings: (settings: PricingSettings) => void;
   calculatePricing: (participantType?: "internal" | "external" | null) => {
@@ -38,7 +49,7 @@ interface CartContextType {
 
 const DEFAULT_PRICING: PricingSettings = {
   internal_base_fee: 300,
-  internal_max_events_included: 3,
+  internal_max_events_included: 2,
   internal_extra_event_fee: 100,
   external_base_fee: 500,
   external_max_events_included: 2,
@@ -89,34 +100,107 @@ export function CartProvider({
   const openCart = useCallback(() => setIsCartOpen(true), []);
   const closeCart = useCallback(() => setIsCartOpen(false), []);
 
-  const addEvent = useCallback((event: PublicEvent) => {
-    setSelectedEvents((prev) => {
-      if (prev.some((e) => e.id === event.id)) return prev;
-      return [...prev, event];
-    });
-  }, []);
+  const isEventSelected = useCallback(
+    (eventId: string) => selectedEvents.some((e) => e.id === eventId),
+    [selectedEvents]
+  );
+
+  const hasProEventSelected = useMemo(() => {
+    return selectedEvents.some((e) => Boolean(e.is_pro_event));
+  }, [selectedEvents]);
+
+  const firstSelectedEvent = useMemo(() => {
+    return selectedEvents.length > 0 ? selectedEvents[0] : null;
+  }, [selectedEvents]);
+
+  // Validation engine for Pro Event and slot limits
+  const canSelectEvent = useCallback(
+    (event: PublicEvent): SelectionValidation => {
+      // If already in cart, user can interact to toggle/remove it
+      if (selectedEvents.some((e) => e.id === event.id)) {
+        return { allowed: true };
+      }
+
+      // Max 2 events per pass
+      if (selectedEvents.length >= MAX_EVENTS_PER_PASS) {
+        return {
+          allowed: false,
+          reason: "Pass full (Maximum 2 events selected)",
+        };
+      }
+
+      // Slot 1: Empty cart - Any event (Pro or Normal) can be chosen
+      if (selectedEvents.length === 0) {
+        return { allowed: true };
+      }
+
+      // Slot 2: Exactly 1 event currently selected
+      const firstEvent = selectedEvents[0];
+      const isFirstPro = Boolean(firstEvent.is_pro_event);
+      const isCandidatePro = Boolean(event.is_pro_event);
+
+      if (isFirstPro) {
+        // Case A: 1st choice is PRO -> 2nd choice MUST be NORMAL
+        if (isCandidatePro) {
+          return {
+            allowed: false,
+            reason: "Only 1 Pro event allowed (choose a normal event for slot 2)",
+          };
+        }
+        return { allowed: true };
+      } else {
+        // Case B: 1st choice is NORMAL -> 2nd choice CANNOT be PRO (Pro must be 1st choice)
+        if (isCandidatePro) {
+          return {
+            allowed: false,
+            reason: "Pro events can only be selected as your 1st choice",
+          };
+        }
+        return { allowed: true };
+      }
+    },
+    [selectedEvents]
+  );
+
+  const addEvent = useCallback(
+    (event: PublicEvent): boolean => {
+      const validation = canSelectEvent(event);
+      if (!validation.allowed) return false;
+
+      setSelectedEvents((prev) => {
+        if (prev.some((e) => e.id === event.id)) return prev;
+        return [...prev, event];
+      });
+      return true;
+    },
+    [canSelectEvent]
+  );
 
   const removeEvent = useCallback((eventId: string) => {
     setSelectedEvents((prev) => prev.filter((e) => e.id !== eventId));
   }, []);
 
-  const toggleEvent = useCallback((event: PublicEvent) => {
-    setSelectedEvents((prev) => {
-      if (prev.some((e) => e.id === event.id)) {
-        return prev.filter((e) => e.id !== event.id);
+  const toggleEvent = useCallback(
+    (event: PublicEvent): boolean => {
+      if (isEventSelected(event.id)) {
+        removeEvent(event.id);
+        return true;
       }
-      return [...prev, event];
-    });
-  }, []);
+
+      const validation = canSelectEvent(event);
+      if (!validation.allowed) {
+        return false;
+      }
+
+      setSelectedEvents((prev) => [...prev, event]);
+      return true;
+    },
+    [isEventSelected, canSelectEvent, removeEvent]
+  );
 
   const clearCart = useCallback(() => {
     setSelectedEvents([]);
   }, []);
-
-  const isEventSelected = useCallback(
-    (eventId: string) => selectedEvents.some((e) => e.id === eventId),
-    [selectedEvents]
-  );
 
   const calculatePricing = useCallback(
     (participantType?: "internal" | "external" | null) => {
@@ -161,6 +245,10 @@ export function CartProvider({
         toggleEvent,
         clearCart,
         isEventSelected,
+        canSelectEvent,
+        hasProEventSelected,
+        firstSelectedEvent,
+        maxEventsLimit: MAX_EVENTS_PER_PASS,
         pricingSettings,
         setPricingSettings,
         calculatePricing,

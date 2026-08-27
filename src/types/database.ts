@@ -77,6 +77,7 @@ export interface Event {
   participant_limit: number;
   allow_internal: boolean;
   allow_external: boolean;
+  is_pro_event?: boolean;
   status: EventStatus;
   banner_url: string | null;
   created_at: string;

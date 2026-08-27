@@ -136,6 +136,7 @@ export async function createEventAdmin(formData: {
   participantLimit: number;
   minTeamSize: number;
   maxTeamSize: number;
+  isProEvent?: boolean;
   status: string;
   prizePool?: { first?: number; second?: number; third?: number };
 }) {
@@ -166,6 +167,7 @@ export async function createEventAdmin(formData: {
       participant_limit: formData.participantLimit,
       min_team_size: formData.minTeamSize,
       max_team_size: formData.maxTeamSize,
+      is_pro_event: Boolean(formData.isProEvent),
       status: formData.status,
       allow_internal: true,
       allow_external: true,
@@ -206,6 +208,7 @@ export async function updateEventAdmin(
     participantLimit?: number;
     minTeamSize?: number;
     maxTeamSize?: number;
+    isProEvent?: boolean;
     status?: string;
   }
 ) {
@@ -239,6 +242,7 @@ export async function updateEventAdmin(
     if (formData.participantLimit !== undefined) updates.participant_limit = formData.participantLimit;
     if (formData.minTeamSize !== undefined) updates.min_team_size = formData.minTeamSize;
     if (formData.maxTeamSize !== undefined) updates.max_team_size = formData.maxTeamSize;
+    if (formData.isProEvent !== undefined) updates.is_pro_event = Boolean(formData.isProEvent);
     if (formData.status !== undefined) updates.status = formData.status;
 
     const { data, error } = await adminClient
@@ -618,6 +622,7 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
   participant_limit?: number | string;
   min_team_size?: number | string;
   max_team_size?: number | string;
+  is_pro_event?: boolean | string;
   short_description?: string;
   rules?: string | string[];
   status?: string;
@@ -691,6 +696,13 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
             "Decision of judges is final and binding",
           ];
 
+      const isPro =
+        typeof evt.is_pro_event === "boolean"
+          ? evt.is_pro_event
+          : typeof evt.is_pro_event === "string"
+          ? evt.is_pro_event.toLowerCase() === "true" || evt.is_pro_event.toLowerCase() === "yes" || evt.is_pro_event === "1"
+          : false;
+
       const payload = {
         category_id: categoryId,
         name: evt.name.trim(),
@@ -711,6 +723,7 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
         participant_limit: Number(evt.participant_limit || 100),
         min_team_size: Number(evt.min_team_size || 1),
         max_team_size: Number(evt.max_team_size || 1),
+        is_pro_event: isPro,
         status: evt.status || "registration_open",
         allow_internal: true,
         allow_external: true,

@@ -54,6 +54,7 @@ export default async function EditEventPage({
     participantLimit: Number(event.participant_limit || 100),
     minTeamSize: Number(event.min_team_size || 1),
     maxTeamSize: Number(event.max_team_size || 1),
+    isProEvent: Boolean(event.is_pro_event),
     status: event.status,
   };
 

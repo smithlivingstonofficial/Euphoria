@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Sparkles,
   AlertCircle,
+  Star,
 } from "lucide-react";
 import { createEventAdmin, updateEventAdmin } from "@/actions/admin";
 
@@ -38,6 +39,7 @@ interface EventFormData {
   participantLimit: number;
   minTeamSize: number;
   maxTeamSize: number;
+  isProEvent?: boolean;
   status: string;
 }
 
@@ -88,6 +90,9 @@ export function EventForm({
   const [maxTeamSize, setMaxTeamSize] = useState<number>(
     initialData?.maxTeamSize ?? 1
   );
+  const [isProEvent, setIsProEvent] = useState<boolean>(
+    initialData?.isProEvent ?? false
+  );
   const [status, setStatus] = useState(initialData?.status || "registration_open");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,6 +120,7 @@ export function EventForm({
       participantLimit: Number(participantLimit),
       minTeamSize: Number(minTeamSize),
       maxTeamSize: Number(maxTeamSize),
+      isProEvent,
       status,
     };
 
@@ -228,6 +234,26 @@ export function EventForm({
               <option value="draft">Draft (Hidden)</option>
             </select>
           </div>
+        </div>
+
+        {/* Pro Event Tier Toggle */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 flex items-start gap-3">
+          <input
+            id="isProEvent"
+            type="checkbox"
+            checked={isProEvent}
+            onChange={(e) => setIsProEvent(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+          />
+          <label htmlFor="isProEvent" className="cursor-pointer select-none">
+            <div className="flex items-center gap-1.5 font-bold text-xs text-amber-950">
+              <Star className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
+              <span>Mark as ⭐ PRO EVENT</span>
+            </div>
+            <p className="text-[11px] text-amber-800/90 mt-0.5 leading-snug">
+              Pro Events are flagship competitions. Participants can select at most 1 Pro Event per pass, and it MUST be selected as their first event choice.
+            </p>
+          </label>
         </div>
       </div>
 

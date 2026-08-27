@@ -128,15 +128,51 @@ export async function registerForEvent(eventId: string) {
       };
     }
 
-    // Check capacity
+    // Check capacity and event data
     const { data: eventData } = await supabase
       .from("events")
-      .select("id, name, participant_limit, registration_fee, status")
+      .select("id, name, participant_limit, registration_fee, is_pro_event, status")
       .eq("id", eventId)
       .single();
 
     if (!eventData || eventData.status === "registration_closed" || eventData.status === "completed") {
       return { success: false, error: "Registrations for this event are currently closed." };
+    }
+
+    // Check user's current total registrations to enforce 2-event limit & Pro rules
+    const { data: userRegistrations } = await supabase
+      .from("event_registrations")
+      .select("id, event:events(id, name, is_pro_event), created_at")
+      .eq("user_id", user.id)
+      .eq("status", "confirmed")
+      .order("created_at", { ascending: true });
+
+    const activeRegs = userRegistrations || [];
+    if (activeRegs.length >= 2) {
+      return {
+        success: false,
+        error: "You have reached the maximum limit of 2 events per pass.",
+      };
+    }
+
+    if (activeRegs.length === 1) {
+      const firstEvt = (activeRegs[0] as unknown as { event?: { is_pro_event?: boolean } })?.event;
+      const isFirstPro = Boolean(firstEvt?.is_pro_event);
+      const isCandidatePro = Boolean(eventData.is_pro_event);
+
+      if (isFirstPro && isCandidatePro) {
+        return {
+          success: false,
+          error: "You can only select at most 1 Pro event per delegate pass.",
+        };
+      }
+
+      if (!isFirstPro && isCandidatePro) {
+        return {
+          success: false,
+          error: "Pro events can only be selected as your first event choice.",
+        };
+      }
     }
 
     const adminClient = await createAdminClient();
@@ -321,7 +357,44 @@ export async function batchRegisterEvents(eventIds: string[]) {
       };
     }
 
+    if (eventIds.length > 2) {
+      return { success: false, error: "You can register for a maximum of 2 events per pass." };
+    }
+
     const adminClient = await createAdminClient();
+
+    // Fetch and validate event tiers
+    const { data: selectedEventsData, error: fetchEventsError } = await adminClient
+      .from("events")
+      .select("id, name, is_pro_event, status, participant_limit, registration_fee")
+      .in("id", eventIds);
+
+    if (fetchEventsError || !selectedEventsData) {
+      return { success: false, error: "Failed to validate selected events." };
+    }
+
+    const eventMap = new Map(selectedEventsData.map((e) => [e.id, e]));
+    const proEventsCount = selectedEventsData.filter((e) => Boolean(e.is_pro_event)).length;
+
+    if (proEventsCount > 1) {
+      return { success: false, error: "You can only select at most 1 Pro event per delegate pass." };
+    }
+
+    // Order constraint: If first event was normal, second cannot be pro
+    if (eventIds.length === 2) {
+      const firstEvent = eventMap.get(eventIds[0]);
+      const secondEvent = eventMap.get(eventIds[1]);
+
+      if (firstEvent && secondEvent) {
+        if (!firstEvent.is_pro_event && secondEvent.is_pro_event) {
+          return {
+            success: false,
+            error: "Pro events must be selected as your first event choice.",
+          };
+        }
+      }
+    }
+
     const pricing = await getPublicPricingSettings();
     const isInternal = profile.participant_type === "internal";
 
