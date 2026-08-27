@@ -11,6 +11,8 @@ export interface SelectionValidation {
 }
 
 export interface PricingSettings {
+  pro_pass_fee: number;
+  normal_pass_fee: number;
   internal_base_fee: number;
   internal_max_events_included: number;
   internal_extra_event_fee: number;
@@ -48,17 +50,20 @@ interface CartContextType {
     proSurcharge: number;
     totalAmount: number;
     isInternal: boolean;
+    isProPass: boolean;
   };
 }
 
 const DEFAULT_PRICING: PricingSettings = {
-  internal_base_fee: 300,
+  pro_pass_fee: 300,
+  normal_pass_fee: 200,
+  internal_base_fee: 200,
   internal_max_events_included: 2,
-  internal_extra_event_fee: 100,
-  external_base_fee: 400,
+  internal_extra_event_fee: 0,
+  external_base_fee: 200,
   external_max_events_included: 2,
-  external_extra_event_fee: 150,
-  pro_event_surcharge: 0,
+  external_extra_event_fee: 0,
+  pro_event_surcharge: 100,
   max_pro_events_allowed: 1,
   require_pro_first: true,
   is_registration_active: true,
@@ -209,34 +214,45 @@ export function CartProvider({
     setSelectedEvents([]);
   }, []);
 
+  // Universal Pass Pricing Calculation:
+  // - Any pass with a Pro event (1 Pro, or 1 Pro + 1 Normal) = ₹300
+  // - Any pass with only Normal events (1 Normal, or 2 Normal) = ₹200
+  // - Common to both internal and external participants
   const calculatePricing = useCallback(
     (participantType?: "internal" | "external" | null) => {
-      const isInternal = participantType !== "external"; // default internal (KARE)
-      const baseFee = isInternal
-        ? Number(pricingSettings.internal_base_fee)
-        : Number(pricingSettings.external_base_fee);
-      const includedLimit = isInternal
-        ? Number(pricingSettings.internal_max_events_included)
-        : Number(pricingSettings.external_max_events_included);
-      const extraFeePerEvent = isInternal
-        ? Number(pricingSettings.internal_extra_event_fee)
-        : Number(pricingSettings.external_extra_event_fee);
-
       const totalCount = selectedEvents.length;
-      const extraEventsCount = Math.max(0, totalCount - includedLimit);
-      const extraFee = extraEventsCount * extraFeePerEvent;
+      const isInternal = participantType !== "external";
+
+      if (totalCount === 0) {
+        return {
+          baseFee: 0,
+          includedCount: 0,
+          extraEventsCount: 0,
+          extraFee: 0,
+          proSurcharge: 0,
+          totalAmount: 0,
+          isInternal,
+          isProPass: false,
+        };
+      }
+
       const hasPro = selectedEvents.some((e) => Boolean(e.is_pro_event));
-      const proSurcharge = hasPro ? Number(pricingSettings.pro_event_surcharge || 0) : 0;
-      const totalAmount = totalCount === 0 ? 0 : baseFee + extraFee + proSurcharge;
+      const proPassFee = Number(pricingSettings.pro_pass_fee ?? 300);
+      const normalPassFee = Number(pricingSettings.normal_pass_fee ?? 200);
+
+      const totalAmount = hasPro ? proPassFee : normalPassFee;
+      const baseFee = normalPassFee;
+      const proSurcharge = hasPro ? Math.max(0, proPassFee - normalPassFee) : 0;
 
       return {
         baseFee,
-        includedCount: Math.min(totalCount, includedLimit),
-        extraEventsCount,
-        extraFee,
+        includedCount: Math.min(totalCount, MAX_EVENTS_PER_PASS),
+        extraEventsCount: Math.max(0, totalCount - MAX_EVENTS_PER_PASS),
+        extraFee: 0,
         proSurcharge,
         totalAmount,
         isInternal,
+        isProPass: hasPro,
       };
     },
     [selectedEvents, pricingSettings]

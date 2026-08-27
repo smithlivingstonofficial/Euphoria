@@ -807,6 +807,8 @@ export async function getMasterEventsPreset() {
 
 // 13. Pricing & Tier Settings Admin Actions
 export interface RegistrationPricingPolicy {
+  pro_pass_fee?: number;
+  normal_pass_fee?: number;
   internal_base_fee: number;
   internal_max_events_included: number;
   internal_extra_event_fee: number;
@@ -821,13 +823,15 @@ export interface RegistrationPricingPolicy {
 }
 
 const DEFAULT_PRICING: RegistrationPricingPolicy = {
-  internal_base_fee: 300,
+  pro_pass_fee: 300,
+  normal_pass_fee: 200,
+  internal_base_fee: 200,
   internal_max_events_included: 2,
-  internal_extra_event_fee: 100,
-  external_base_fee: 400,
+  internal_extra_event_fee: 0,
+  external_base_fee: 200,
   external_max_events_included: 2,
-  external_extra_event_fee: 150,
-  pro_event_surcharge: 0,
+  external_extra_event_fee: 0,
+  pro_event_surcharge: 100,
   max_pro_events_allowed: 1,
   require_pro_first: true,
   is_registration_active: true,
@@ -865,13 +869,15 @@ export async function updatePricingSettingsAdmin(payload: Partial<RegistrationPr
     const updated: RegistrationPricingPolicy = {
       ...current,
       ...payload,
-      internal_base_fee: Number(payload.internal_base_fee ?? current.internal_base_fee),
-      internal_max_events_included: Number(payload.internal_max_events_included ?? current.internal_max_events_included),
-      internal_extra_event_fee: Number(payload.internal_extra_event_fee ?? current.internal_extra_event_fee),
-      external_base_fee: Number(payload.external_base_fee ?? current.external_base_fee),
-      external_max_events_included: Number(payload.external_max_events_included ?? current.external_max_events_included),
-      external_extra_event_fee: Number(payload.external_extra_event_fee ?? current.external_extra_event_fee),
-      pro_event_surcharge: Number(payload.pro_event_surcharge ?? current.pro_event_surcharge ?? 0),
+      pro_pass_fee: Number(payload.pro_pass_fee ?? current.pro_pass_fee ?? 300),
+      normal_pass_fee: Number(payload.normal_pass_fee ?? current.normal_pass_fee ?? 200),
+      internal_base_fee: Number(payload.internal_base_fee ?? current.internal_base_fee ?? 200),
+      internal_max_events_included: Number(payload.internal_max_events_included ?? current.internal_max_events_included ?? 2),
+      internal_extra_event_fee: Number(payload.internal_extra_event_fee ?? current.internal_extra_event_fee ?? 0),
+      external_base_fee: Number(payload.external_base_fee ?? current.external_base_fee ?? 200),
+      external_max_events_included: Number(payload.external_max_events_included ?? current.external_max_events_included ?? 2),
+      external_extra_event_fee: Number(payload.external_extra_event_fee ?? current.external_extra_event_fee ?? 0),
+      pro_event_surcharge: Number(payload.pro_event_surcharge ?? current.pro_event_surcharge ?? 100),
       max_pro_events_allowed: Number(payload.max_pro_events_allowed ?? current.max_pro_events_allowed ?? 1),
       require_pro_first: payload.require_pro_first !== undefined ? Boolean(payload.require_pro_first) : current.require_pro_first ?? true,
       is_registration_active: payload.is_registration_active ?? current.is_registration_active,

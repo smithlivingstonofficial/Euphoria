@@ -1,13 +1,15 @@
 {
-  "internal_base_fee": 300,
+  "pro_pass_fee": 300,
+  "normal_pass_fee": 200,
+  "internal_base_fee": 200,
+  "external_base_fee": 200,
   "internal_max_events_included": 2,
-  "internal_extra_event_fee": 100,
-  "external_base_fee": 400,
   "external_max_events_included": 2,
-  "external_extra_event_fee": 150,
-  "pro_event_surcharge": 0,
+  "internal_extra_event_fee": 0,
+  "external_extra_event_fee": 0,
+  "pro_event_surcharge": 100,
   "max_pro_events_allowed": 1,
   "require_pro_first": true,
   "is_registration_active": true,
-  "updated_at": "2026-08-27T10:00:00.000Z"
+  "updated_at": "2026-08-27T10:30:00.000Z"
 }

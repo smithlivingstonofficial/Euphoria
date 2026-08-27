@@ -190,7 +190,8 @@ export async function registerForEvent(eventId: string) {
     const registrationCode = `EUPH-26-${randomHex}`;
     const qrNonce = Math.random().toString(36).substring(2, 12);
 
-    const isFree = Number(eventData.registration_fee || 0) === 0;
+    // If user is registering 2nd event under existing pass or event fee is 0, no additional payment needed
+    const isFree = Number(eventData.registration_fee || 0) === 0 || activeRegs.length > 0;
 
     const { data: newReg, error: insertError } = await adminClient
       .from("event_registrations")
@@ -401,16 +402,30 @@ export async function batchRegisterEvents(eventIds: string[]) {
       }
     }
 
+    // Check prior confirmed registrations
+    const { data: priorRegistrations } = await adminClient
+      .from("event_registrations")
+      .select("id, event:events(id, is_pro_event), payment_status")
+      .eq("user_id", user.id)
+      .eq("status", "confirmed");
+
+    const priorCount = (priorRegistrations || []).length;
+    if (priorCount + eventIds.length > 2) {
+      return { success: false, error: "You can register for a maximum of 2 events per pass." };
+    }
+
     const pricing = await getPublicPricingSettings();
-    const isInternal = profile.participant_type === "internal";
+    const hasPro =
+      selectedEventsData.some((e) => Boolean(e.is_pro_event)) ||
+      (priorRegistrations || []).some((r) =>
+        Boolean((r.event as unknown as { is_pro_event?: boolean })?.is_pro_event)
+      );
 
-    const baseFee = isInternal ? Number(pricing.internal_base_fee) : Number(pricing.external_base_fee);
-    const includedLimit = isInternal ? Number(pricing.internal_max_events_included) : Number(pricing.external_max_events_included);
-    const extraFeePerEvent = isInternal ? Number(pricing.internal_extra_event_fee) : Number(pricing.external_extra_event_fee);
+    const proPassFee = Number(pricing.pro_pass_fee ?? 300);
+    const normalPassFee = Number(pricing.normal_pass_fee ?? 200);
 
-    const totalCount = eventIds.length;
-    const extraEventsCount = Math.max(0, totalCount - includedLimit);
-    const totalPayable = baseFee + extraEventsCount * extraFeePerEvent;
+    // If user is adding a 2nd event to an existing pass, additional fee is ₹0
+    const totalPayable = priorCount > 0 ? 0 : hasPro ? proPassFee : normalPassFee;
 
     // Generate shared master batch Pass code
     const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -453,8 +468,8 @@ export async function batchRegisterEvents(eventIds: string[]) {
       masterCode,
       totalRegistered: eventIds.length,
       totalPayable,
-      baseFee,
-      extraFee: extraEventsCount * extraFeePerEvent,
+      baseFee: totalPayable,
+      extraFee: 0,
       participantType: profile.participant_type,
     };
   } catch (err: unknown) {

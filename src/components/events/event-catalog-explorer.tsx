@@ -370,12 +370,16 @@ export function EventCatalogExplorer({
             <div className="text-xs">
               {selectedEvents.length === 0 && (
                 <p className="text-slate-700">
-                  <strong className="text-primary font-bold">Pass Selection Rule:</strong> You can select up to{" "}
-                  <strong>2 events</strong> per delegate pass. Choose{" "}
-                  <span className="inline-flex items-center font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.2 rounded">
-                    ⭐ 1 Pro Event (must be chosen 1st)
+                  <strong className="text-primary font-bold">Delegate Pass Selection:</strong> Choose up to{" "}
+                  <strong>2 events</strong> per pass:{" "}
+                  <span className="inline-flex items-center font-bold text-amber-800 bg-amber-100/90 px-1.5 py-0.2 rounded">
+                    ⭐ Pro Pass (₹300): 1 Pro + 1 Normal
                   </span>{" "}
-                  + 1 Normal Event, <strong>OR</strong> 2 Normal Events.
+                  <strong>OR</strong>{" "}
+                  <span className="inline-flex items-center font-bold text-indigo-800 bg-indigo-100/90 px-1.5 py-0.2 rounded">
+                    📌 Normal Pass (₹200): Up to 2 Normal Events
+                  </span>
+                  . (Pro events must be chosen as Slot #1).
                 </p>
               )}
 

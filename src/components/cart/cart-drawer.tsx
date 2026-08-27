@@ -321,22 +321,26 @@ export function CartDrawer({
                 {/* Pricing Breakdown Card */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4 space-y-3 text-xs">
                   <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                    <span className="font-bold text-slate-800">Registration Pass Tier</span>
+                    <span className="font-bold text-slate-800">Delegate Pass Type</span>
                     <span className="font-extrabold text-primary">
-                      {pricing.isInternal ? "KARE Student Pass" : "External Delegate Pass"}
+                      {pricing.isProPass ? "⭐ Pro Delegate Pass" : "📌 Normal Delegate Pass"}
                     </span>
                   </div>
 
                   <div className="space-y-1.5 text-[11px] text-slate-600">
                     <div className="flex items-center justify-between">
-                      <span>Delegate Base Pass (covers up to 2 events)</span>
+                      <span>
+                        {pricing.isProPass
+                          ? "Pro Pass (covers 1 Pro + 1 Normal event)"
+                          : "Standard Pass (covers up to 2 Normal events)"}
+                      </span>
                       <span className="font-bold text-slate-900">
-                        {formatCurrency(pricing.baseFee)}
+                        {formatCurrency(pricing.totalAmount)}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span>Events Included</span>
+                      <span>Slots Used</span>
                       <span className="font-bold text-slate-900">
                         {selectedEvents.length} of {maxEventsLimit} Slots Filled
                       </span>
