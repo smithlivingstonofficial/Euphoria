@@ -11,13 +11,9 @@ import {
   ShieldCheck,
   MapPin,
   Map,
-  GraduationCap,
-  Sparkles,
-  CheckCircle2,
-  BookOpen,
-  Calendar,
-  Layers,
   ChevronDown,
+  Sparkles,
+  Lock,
 } from "lucide-react";
 import { saveParticipantProfile } from "@/actions/auth";
 
@@ -207,7 +203,7 @@ export function CompleteProfileForm({
     return "";
   }, [initialProfile?.register_number, user.participantType, user.email]);
 
-  // Auto-detect course from full name if present
+  // Auto-detect course from full name
   const defaultCourse = useMemo(() => {
     if (initialProfile?.course) return initialProfile.course;
     const nameUpper = (user.fullName || "").toUpperCase();
@@ -235,7 +231,7 @@ export function CompleteProfileForm({
   );
   const [customDepartment, setCustomDepartment] = useState("");
 
-  // Course / Degree & Year
+  // Course & Year
   const [course, setCourse] = useState(defaultCourse);
   const [customCourse, setCustomCourse] = useState("");
   const [yearOfStudy, setYearOfStudy] = useState(
@@ -356,7 +352,7 @@ export function CompleteProfileForm({
         return;
       }
 
-      // Secondary fallback to API route
+      // Fallback to API route
       const apiRes = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -393,83 +389,83 @@ export function CompleteProfileForm({
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-12">
-      <div className="rounded-3xl border border-white/10 bg-slate-900/90 backdrop-blur-xl shadow-2xl shadow-black/60 overflow-hidden">
-        {/* Header with Verified Google Badge */}
-        <div className="border-b border-white/10 bg-slate-950/40 p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-md shadow-primary/30">
-                <UserCheck className="h-5 w-5" />
+    <div className="w-full">
+      {/* Main Executive Card */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+        {/* Card Header */}
+        <div className="border-b border-slate-100 bg-white px-6 py-5 sm:px-8 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Euphoria &apos;26 Delegate Registration
+                </span>
               </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base font-extrabold text-white leading-tight truncate">
-                  Complete Participant Profile
-                </h1>
-                <p className="text-[11px] text-slate-400 truncate">
-                  Euphoria &apos;26 Digital Delegate Pass
-                </p>
-              </div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Complete Participant Profile
+              </h1>
+              <p className="text-xs text-slate-500">
+                Verify your personal and academic credentials to issue your official entry pass.
+              </p>
             </div>
 
-            {/* Google Verified Account Badge */}
-            <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 shrink-0">
+            {/* Google Verified Identity Pill */}
+            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-1.5 shrink-0 self-start sm:self-auto">
               {user.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={user.avatarUrl}
                   alt="Avatar"
-                  className="h-4 w-4 rounded-full border border-white/20 shrink-0"
+                  className="h-5 w-5 rounded-full border border-slate-200 shrink-0"
                 />
               ) : (
-                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/30 font-bold text-primary text-[9px]">
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 font-bold text-slate-700 text-[10px]">
                   {user.fullName ? user.fullName.charAt(0).toUpperCase() : "U"}
                 </div>
               )}
-              <span className="text-[11px] font-bold text-slate-200 max-w-[100px] sm:max-w-[150px] truncate">
+              <span className="text-xs font-semibold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]">
                 {user.email}
               </span>
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
             </div>
           </div>
         </div>
 
         {/* Error Alert */}
         {errorMessage && (
-          <div className="mx-4 mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300 flex items-start gap-2.5">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+          <div className="mx-6 mt-5 sm:mx-8 rounded-xl border border-rose-200 bg-rose-50/80 p-3 text-xs text-rose-700 flex items-start gap-2.5">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
             <span className="leading-snug">{errorMessage}</span>
           </div>
         )}
 
-        {/* Form Body */}
+        {/* Form Content */}
         <form
           action="/api/profile"
           method="POST"
           onSubmit={handleSubmit}
-          className="p-4 sm:p-6 space-y-5"
+          className="p-6 sm:p-8 space-y-7"
         >
-          {/* Hidden identity fields */}
           <input type="hidden" name="userId" value={user.id} />
           <input type="hidden" name="userEmail" value={user.email} />
           <input type="hidden" name="participantType" value={user.participantType} />
 
           {/* SECTION 1: Personal Details */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-primary text-[11px] font-black">
-                1
-              </span>
-              <span>Personal Information</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                1. Personal Details
+              </h2>
+              <span className="text-[11px] text-slate-400 font-medium">All fields required</span>
             </div>
 
             {/* Full Name */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">
-                Full Name <span className="text-rose-400">*</span>
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                Full Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   name="fullName"
@@ -477,227 +473,228 @@ export function CompleteProfileForm({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Smith Livingston"
-                  className={`w-full rounded-2xl border bg-white/5 pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
+                  className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
                     fullName.length > 0 && !isNameValid
-                      ? "border-rose-500/50 focus:border-rose-500"
-                      : "border-white/10 focus:border-primary focus:bg-white/10"
+                      ? "border-rose-300 focus:border-rose-500"
+                      : "border-slate-200 focus:border-slate-900"
                   }`}
                 />
               </div>
             </div>
 
-            {/* Gender Segmented Switcher */}
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Gender <span className="text-rose-400">*</span>
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["male", "female", "other"] as const).map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setGender(g)}
-                    className={`rounded-2xl py-2 px-3 text-xs font-bold capitalize transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
-                      gender === g
-                        ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
-                        : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
-                    }`}
-                  >
-                    <span>{g === "male" ? "👨 Male" : g === "female" ? "👩 Female" : "✨ Other"}</span>
-                  </button>
-                ))}
-              </div>
-              <input type="hidden" name="gender" value={gender} />
-            </div>
-
-            {/* Mobile Number */}
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">
-                Mobile Number (WhatsApp) <span className="text-rose-400">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-2.5 flex items-center gap-1 text-xs font-bold text-slate-400 border-r border-white/10 pr-2">
-                  <span>🇮🇳</span>
-                  <span>+91</span>
+            {/* Gender & WhatsApp Mobile - 2 Column Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Gender Segmented Control */}
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  Gender <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+                  {(["male", "female", "other"] as const).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setGender(g)}
+                      className={`py-2 text-xs font-semibold capitalize rounded-lg transition-all cursor-pointer ${
+                        gender === g
+                          ? "bg-white text-slate-900 shadow-xs border border-slate-200"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
                 </div>
-                <input
-                  type="tel"
-                  name="mobileNumber"
-                  inputMode="numeric"
-                  maxLength={10}
-                  required
-                  value={mobileNumber}
-                  onKeyDown={handleMobileKeyDown}
-                  onPaste={handleMobilePaste}
-                  onChange={handleMobileChange}
-                  placeholder="9876543210"
-                  className={`w-full rounded-2xl border bg-white/5 pl-20 pr-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none transition-all ${
-                    mobileNumber.length > 0 && !isMobileValid
-                      ? "border-rose-500/50 focus:border-rose-500"
-                      : mobileNumber.length === 10 && isMobileValid
-                      ? "border-emerald-500/50 focus:border-emerald-500"
-                      : "border-white/10 focus:border-primary focus:bg-white/10"
-                  }`}
-                />
+                <input type="hidden" name="gender" value={gender} />
+              </div>
+
+              {/* Mobile Number */}
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  WhatsApp Contact Number <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-2.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 border-r border-slate-200 pr-2.5">
+                    <span>+91</span>
+                  </div>
+                  <input
+                    type="tel"
+                    name="mobileNumber"
+                    inputMode="numeric"
+                    maxLength={10}
+                    required
+                    value={mobileNumber}
+                    onKeyDown={handleMobileKeyDown}
+                    onPaste={handleMobilePaste}
+                    onChange={handleMobileChange}
+                    placeholder="9876543210"
+                    className={`w-full rounded-xl border bg-white pl-18 pr-3.5 py-2 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
+                      mobileNumber.length > 0 && !isMobileValid
+                        ? "border-rose-300 focus:border-rose-500"
+                        : mobileNumber.length === 10 && isMobileValid
+                        ? "border-emerald-400 focus:border-emerald-500"
+                        : "border-slate-200 focus:border-slate-900"
+                    }`}
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* SECTION 2: Academic Details */}
-          <div className="pt-3 border-t border-white/10 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-primary text-[11px] font-black">
-                  2
-                </span>
-                <span>Academic Record</span>
-              </div>
+          {/* SECTION 2: Academic Record */}
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                2. Academic Institution &amp; Program
+              </h2>
               <span
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold border uppercase tracking-wider ${
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider ${
                   user.participantType === "internal"
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    : "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-slate-100 text-slate-700 border-slate-200"
                 }`}
               >
-                {user.participantType === "internal" ? "⭐ KARE Student" : "External Delegate"}
+                {user.participantType === "internal" ? "KARE Student" : "External Delegate"}
               </span>
             </div>
 
             {/* INTERNAL KARE FLOW */}
             {user.participantType === "internal" ? (
-              <div className="space-y-3.5 rounded-2xl border border-white/10 bg-white/5 p-3.5 sm:p-4">
-                {/* Register Number */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Student Register / Roll No <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="registerNumber"
-                    required
-                    value={registerNumber}
-                    onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
-                    placeholder="9922004001"
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900 pl-3.5 pr-3.5 py-2.5 text-xs font-mono font-bold text-white uppercase focus:border-primary focus:outline-none"
-                  />
+              <div className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Register Number */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Student Register Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="registerNumber"
+                      required
+                      value={registerNumber}
+                      onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
+                      placeholder="9922004001"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-mono font-bold text-slate-900 uppercase focus:border-slate-900 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Year of Study Segmented Chips */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Year of Study <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-5 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
+                      {[
+                        { id: "1", label: "1st" },
+                        { id: "2", label: "2nd" },
+                        { id: "3", label: "3rd" },
+                        { id: "4", label: "4th" },
+                        { id: "5", label: "Final" },
+                      ].map((y) => (
+                        <button
+                          key={y.id}
+                          type="button"
+                          onClick={() => setYearOfStudy(y.id)}
+                          className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                            yearOfStudy === y.id
+                              ? "bg-white text-slate-900 shadow-xs border border-slate-200 font-bold"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {y.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input type="hidden" name="yearOfStudy" value={yearOfStudy} />
+                  </div>
                 </div>
 
-                {/* School Selector Buttons */}
+                {/* School Selector Grid */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    Organizing School <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Organizing School <span className="text-rose-500">*</span>
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                     {KARE_SCHOOLS.map((s) => (
                       <button
                         key={s.id}
                         type="button"
                         onClick={() => setSchool(s.id)}
-                        className={`rounded-2xl p-2.5 text-left border transition-all cursor-pointer ${
+                        className={`rounded-xl p-2.5 text-center border transition-all cursor-pointer ${
                           school === s.id
-                            ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                            : "bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800"
+                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                         }`}
                       >
-                        <div className="text-xs font-black">{s.name}</div>
-                        <div className="text-[10px] opacity-80 truncate">{s.desc}</div>
+                        <div className="text-xs font-bold">{s.name}</div>
+                        <div className="text-[10px] opacity-75 truncate">{s.desc}</div>
                       </button>
                     ))}
                   </div>
                   <input type="hidden" name="school" value={school} />
                 </div>
 
-                {/* Year of Study Chips */}
+                {/* Degree / Program */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    Year of Study <span className="text-rose-400">*</span>
-                  </label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {[
-                      { id: "1", label: "1st Yr" },
-                      { id: "2", label: "2nd Yr" },
-                      { id: "3", label: "3rd Yr" },
-                      { id: "4", label: "4th Yr" },
-                      { id: "5", label: "PG/Final" },
-                    ].map((y) => (
-                      <button
-                        key={y.id}
-                        type="button"
-                        onClick={() => setYearOfStudy(y.id)}
-                        className={`rounded-xl py-2 px-1 text-center text-xs font-bold transition-all cursor-pointer border ${
-                          yearOfStudy === y.id
-                            ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
-                            : "bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800"
-                        }`}
-                      >
-                        {y.label}
-                      </button>
-                    ))}
-                  </div>
-                  <input type="hidden" name="yearOfStudy" value={yearOfStudy} />
-                </div>
-
-                {/* Degree / Program Dropdown */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Degree / Program <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Degree / Academic Program <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       name="course"
                       value={course}
                       onChange={(e) => setCourse(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3.5 py-2.5 text-xs text-white font-semibold focus:border-primary focus:outline-none appearance-none pr-8"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
                     >
                       {DEGREE_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category} className="bg-slate-900 text-slate-200">
+                        <optgroup key={cat.category} label={cat.category}>
                           {cat.options.map((opt) => (
-                            <option key={opt} value={opt} className="bg-slate-900 text-white">
+                            <option key={opt} value={opt}>
                               {opt}
                             </option>
                           ))}
                         </optgroup>
                       ))}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
                   </div>
                 </div>
 
-                {/* Department Selection */}
+                {/* Department */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Department / Discipline <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Department / Discipline <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       name="department"
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3.5 py-2.5 text-xs text-white font-semibold focus:border-primary focus:outline-none appearance-none pr-8"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
                     >
                       {DEPARTMENT_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category} className="bg-slate-900 text-slate-200">
+                        <optgroup key={cat.category} label={cat.category}>
                           {cat.options.map((opt) => (
-                            <option key={opt} value={opt} className="bg-slate-900 text-white">
+                            <option key={opt} value={opt}>
                               {opt}
                             </option>
                           ))}
                         </optgroup>
                       ))}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
                   </div>
                 </div>
               </div>
             ) : (
               /* EXTERNAL PARTICIPANT FLOW */
-              <div className="space-y-3.5 rounded-2xl border border-white/10 bg-white/5 p-3.5 sm:p-4">
+              <div className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    College / University Name <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    College / University Name <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <Building className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                    <Building className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
                       name="collegeName"
@@ -705,23 +702,23 @@ export function CompleteProfileForm({
                       value={collegeName}
                       onChange={(e) => setCollegeName(e.target.value)}
                       placeholder="e.g. Sri Kaliswari College"
-                      className={`w-full rounded-2xl border bg-slate-900 pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
+                      className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
                         collegeName.length > 0 && !isCollegeValid
-                          ? "border-rose-500/50 focus:border-rose-500"
-                          : "border-white/10 focus:border-primary"
+                          ? "border-rose-300 focus:border-rose-500"
+                          : "border-slate-200 focus:border-slate-900"
                       }`}
                     />
                   </div>
                 </div>
 
                 {/* City & Pincode */}
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">
-                      City / Town <span className="text-rose-400">*</span>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Institution City / Town <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                      <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                       <input
                         type="text"
                         name="city"
@@ -729,21 +726,21 @@ export function CompleteProfileForm({
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
                         placeholder="Sivakasi"
-                        className={`w-full rounded-2xl border bg-slate-900 pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none transition-all ${
+                        className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
                           city.length > 0 && !isCityValid
-                            ? "border-rose-500/50 focus:border-rose-500"
-                            : "border-white/10 focus:border-primary"
+                            ? "border-rose-300 focus:border-rose-500"
+                            : "border-slate-200 focus:border-slate-900"
                         }`}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">
-                      Pincode <span className="text-rose-400">*</span>
+                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                      Postal Pincode <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                      <Map className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                      <Map className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                       <input
                         type="tel"
                         name="pincode"
@@ -755,12 +752,12 @@ export function CompleteProfileForm({
                         onPaste={handlePincodePaste}
                         onChange={handlePincodeChange}
                         placeholder="626189"
-                        className={`w-full rounded-2xl border bg-slate-900 pl-9 pr-3 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none transition-all ${
+                        className={`w-full rounded-xl border bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none transition-colors ${
                           pincode.length > 0 && !isPincodeValid
-                            ? "border-rose-500/50 focus:border-rose-500"
+                            ? "border-rose-300 focus:border-rose-500"
                             : pincode.length === 6 && isPincodeValid
-                            ? "border-emerald-500/50 focus:border-emerald-500"
-                            : "border-white/10 focus:border-primary"
+                            ? "border-emerald-400 focus:border-emerald-500"
+                            : "border-slate-200 focus:border-slate-900"
                         }`}
                       />
                     </div>
@@ -769,25 +766,25 @@ export function CompleteProfileForm({
 
                 {/* Year of Study Chips */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    Year of Study <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Year of Study <span className="text-rose-500">*</span>
                   </label>
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-5 p-1 bg-slate-200/70 rounded-xl border border-slate-200">
                     {[
-                      { id: "1", label: "1st Yr" },
-                      { id: "2", label: "2nd Yr" },
-                      { id: "3", label: "3rd Yr" },
-                      { id: "4", label: "4th Yr" },
-                      { id: "5", label: "PG/Final" },
+                      { id: "1", label: "1st Year" },
+                      { id: "2", label: "2nd Year" },
+                      { id: "3", label: "3rd Year" },
+                      { id: "4", label: "4th Year" },
+                      { id: "5", label: "PG / Final" },
                     ].map((y) => (
                       <button
                         key={y.id}
                         type="button"
                         onClick={() => setYearOfStudy(y.id)}
-                        className={`rounded-xl py-2 px-1 text-center text-xs font-bold transition-all cursor-pointer border ${
+                        className={`py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                           yearOfStudy === y.id
-                            ? "bg-primary text-white border-primary shadow-md shadow-primary/25"
-                            : "bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800"
+                            ? "bg-white text-slate-900 shadow-xs border border-slate-200 font-bold"
+                            : "text-slate-600 hover:text-slate-900"
                         }`}
                       >
                         {y.label}
@@ -799,68 +796,68 @@ export function CompleteProfileForm({
 
                 {/* Degree */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Degree / Course <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Degree / Course <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       name="course"
                       value={course}
                       onChange={(e) => setCourse(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3.5 py-2.5 text-xs text-white font-semibold focus:border-primary focus:outline-none appearance-none pr-8"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
                     >
                       {DEGREE_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category} className="bg-slate-900 text-slate-200">
+                        <optgroup key={cat.category} label={cat.category}>
                           {cat.options.map((opt) => (
-                            <option key={opt} value={opt} className="bg-slate-900 text-white">
+                            <option key={opt} value={opt}>
                               {opt}
                             </option>
                           ))}
                         </optgroup>
                       ))}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
                   </div>
                 </div>
 
                 {/* Department */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Department / Branch <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Department / Discipline <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <select
                       name="department"
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3.5 py-2.5 text-xs text-white font-semibold focus:border-primary focus:outline-none appearance-none pr-8"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-slate-900 focus:outline-none appearance-none pr-8"
                     >
                       {DEPARTMENT_CATEGORIES.map((cat) => (
-                        <optgroup key={cat.category} label={cat.category} className="bg-slate-900 text-slate-200">
+                        <optgroup key={cat.category} label={cat.category}>
                           {cat.options.map((opt) => (
-                            <option key={opt} value={opt} className="bg-slate-900 text-white">
+                            <option key={opt} value={opt}>
                               {opt}
                             </option>
                           ))}
                         </optgroup>
                       ))}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-slate-400" />
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Submit Button */}
-          <div className="pt-2">
+          {/* Submit Action */}
+          <div className="pt-3 space-y-3">
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-primary py-3 px-4 text-xs sm:text-sm font-bold text-white shadow-xl shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 px-5 text-sm font-bold text-white shadow-sm hover:bg-slate-800 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
             >
               {isLoading ? (
-                <span>Saving Profile &amp; Opening Dashboard...</span>
+                <span>Verifying &amp; Generating Pass...</span>
               ) : (
                 <>
                   <span>Save Profile &amp; Open Event Portal</span>
@@ -868,6 +865,11 @@ export function CompleteProfileForm({
                 </>
               )}
             </button>
+
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <Lock className="h-3 w-3 text-slate-400" />
+              <span>Official Delegate Verification • Kalasalingam University Euphoria 2026</span>
+            </div>
           </div>
         </form>
       </div>

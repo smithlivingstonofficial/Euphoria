@@ -53,19 +53,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-950 px-4 py-8 sm:px-6 overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-blue-600/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-indigo-600/25 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-100 px-4 py-8 sm:px-6 overflow-hidden">
+      {/* Light Ambient Glows */}
+      <div className="pointer-events-none absolute -top-24 -left-24 h-96 w-96 rounded-full bg-indigo-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-blue-200/35 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
 
       <div className="relative w-full max-w-md space-y-6">
-        <div className="rounded-3xl border border-white/10 bg-slate-900/80 backdrop-blur-xl p-6 sm:p-8 shadow-2xl shadow-black/50 space-y-6">
+        <div className="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-xl shadow-slate-200/60 space-y-6">
           {/* Brand Header */}
           <div className="text-center space-y-2">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-white/10 transition-colors"
+              className="inline-flex items-center gap-2 rounded-full border border-indigo-200/80 bg-indigo-50/80 px-3.5 py-1 text-xs font-bold text-primary hover:bg-indigo-100 transition-colors shadow-2xs"
             >
               <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white shadow-xs">
                 <Sparkles className="h-3 w-3" />
@@ -73,24 +73,24 @@ export default function LoginPage() {
               <span>EUPHORIA &apos;26 • LOGIN</span>
             </Link>
 
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Sign In to Pass Portal
             </h1>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto">
+            <p className="text-xs text-slate-500 max-w-xs mx-auto">
               Access your registered competitions, event schedule &amp; digital entry QR passes.
             </p>
           </div>
 
           {errorMessage && (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300 flex items-start gap-2.5">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
               <span className="leading-snug">{errorMessage}</span>
             </div>
           )}
 
           {/* 1. Fast Google Authentication */}
           <div className="space-y-3">
-            <div className="[&>button]:min-h-[50px] [&>button]:rounded-2xl [&>button]:text-sm [&>button]:font-bold [&>button]:shadow-lg">
+            <div className="[&>button]:min-h-[50px] [&>button]:rounded-2xl [&>button]:text-sm [&>button]:font-bold [&>button]:shadow-sm">
               <GoogleSignInButton
                 redirectUrl={redirectUrl}
                 label="Continue with Google"
@@ -99,8 +99,8 @@ export default function LoginPage() {
 
             {/* Divider */}
             <div className="relative flex items-center justify-center pt-1">
-              <div className="w-full border-t border-white/10" />
-              <span className="bg-slate-900 px-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="w-full border-t border-slate-200" />
+              <span className="bg-white px-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 Or sign in with email
               </span>
             </div>
@@ -109,22 +109,22 @@ export default function LoginPage() {
           {/* 2. Email / Password Form */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@klu.ac.in or personal email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-primary focus:bg-white/10 focus:outline-none transition-all"
+                  className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/10 focus:outline-none transition-all shadow-2xs"
                 />
               </div>
               {email.toLowerCase().endsWith("@klu.ac.in") && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 mt-1">
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 mt-1">
                   <CheckCircle2 className="h-3 w-3" />
                   <span>KARE Verified Domain (@klu.ac.in)</span>
                 </span>
@@ -132,8 +132,8 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-300">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700">
                   Password
                 </label>
                 <Link
@@ -144,14 +144,14 @@ export default function LoginPage() {
                 </Link>
               </div>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-primary focus:bg-white/10 focus:outline-none transition-all"
+                  className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/10 focus:outline-none transition-all shadow-2xs"
                 />
               </div>
             </div>
@@ -159,7 +159,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-xs font-bold text-white shadow-lg shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
             >
               {isLoading ? (
                 <span>Signing in...</span>
@@ -173,8 +173,8 @@ export default function LoginPage() {
           </form>
 
           {/* Footer Info */}
-          <div className="pt-2 border-t border-white/10 text-center space-y-2">
-            <p className="text-xs text-slate-400">
+          <div className="pt-2 border-t border-slate-100 text-center space-y-2">
+            <p className="text-xs text-slate-500">
               Need to register first?{" "}
               <Link
                 href="/register"
@@ -184,7 +184,7 @@ export default function LoginPage() {
               </Link>
             </p>
 
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
+            <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
               <Shield className="h-3 w-3" />
               <span>Encrypted Authentication • KARE Euphoria &apos;26</span>
             </div>
@@ -195,7 +195,7 @@ export default function LoginPage() {
         <div className="text-center">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
           >
             <span>← Back to Euphoria Home</span>
           </Link>
