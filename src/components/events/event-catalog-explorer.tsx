@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -18,6 +18,7 @@ import {
   X,
   Building,
   ChevronRight,
+  ChevronDown,
   Cpu,
   Bot,
   Plane,
@@ -35,7 +36,7 @@ import {
   Zap,
   Info,
 } from "lucide-react";
-import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { registerForEvent } from "@/actions/events";
 import { useCart } from "@/context/cart-context";
 
@@ -83,92 +84,17 @@ function getCategoryTheme(catName?: string, isPro?: boolean) {
   if (isPro) {
     return {
       badge: "bg-amber-50 text-amber-900 border-amber-300 font-bold",
-      accent: "from-amber-500 via-orange-500 to-amber-600",
-      cardBorder: "hover:border-amber-400 hover:shadow-amber-500/15 border-amber-200/90",
+      accent: "from-amber-500 to-amber-600",
+      cardBorder: "border-amber-200/90 hover:border-amber-400 hover:shadow-amber-500/10",
       icon: Star,
-      lightBg: "bg-amber-50/50",
     };
   }
 
-  const c = (catName || "").toLowerCase();
-  if (c.includes("comput") || c.includes("ai") || c.includes("code")) {
-    return {
-      badge: "bg-blue-50 text-blue-700 border-blue-200",
-      accent: "from-blue-600 to-indigo-600",
-      cardBorder: "hover:border-blue-300 hover:shadow-blue-500/10",
-      icon: Cpu,
-      lightBg: "bg-blue-50/40",
-    };
-  }
-  if (c.includes("electr") || c.includes("robot") || c.includes("iot")) {
-    return {
-      badge: "bg-amber-50 text-amber-800 border-amber-200",
-      accent: "from-amber-500 to-orange-600",
-      cardBorder: "hover:border-amber-300 hover:shadow-amber-500/10",
-      icon: Bot,
-      lightBg: "bg-amber-50/40",
-    };
-  }
-  if (c.includes("mech") || c.includes("civil") || c.includes("aero")) {
-    return {
-      badge: "bg-sky-50 text-sky-700 border-sky-200",
-      accent: "from-sky-500 to-cyan-600",
-      cardBorder: "hover:border-sky-300 hover:shadow-sky-500/10",
-      icon: Plane,
-      lightBg: "bg-sky-50/40",
-    };
-  }
-  if (c.includes("bio") || c.includes("chem")) {
-    return {
-      badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      accent: "from-emerald-500 to-teal-600",
-      cardBorder: "hover:border-emerald-300 hover:shadow-emerald-500/10",
-      icon: Dna,
-      lightBg: "bg-emerald-50/40",
-    };
-  }
-  if (c.includes("manage") || c.includes("business") || c.includes("commerce")) {
-    return {
-      badge: "bg-purple-50 text-purple-700 border-purple-200",
-      accent: "from-purple-500 to-violet-600",
-      cardBorder: "hover:border-purple-300 hover:shadow-purple-500/10",
-      icon: Briefcase,
-      lightBg: "bg-purple-50/40",
-    };
-  }
-  if (c.includes("scienc") || c.includes("math")) {
-    return {
-      badge: "bg-rose-50 text-rose-700 border-rose-200",
-      accent: "from-rose-500 to-pink-600",
-      cardBorder: "hover:border-rose-300 hover:shadow-rose-500/10",
-      icon: FlaskConical,
-      lightBg: "bg-rose-50/40",
-    };
-  }
-  if (c.includes("arch") || c.includes("design")) {
-    return {
-      badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
-      accent: "from-indigo-500 to-primary",
-      cardBorder: "hover:border-indigo-300 hover:shadow-indigo-500/10",
-      icon: Compass,
-      lightBg: "bg-indigo-50/40",
-    };
-  }
-  if (c.includes("law")) {
-    return {
-      badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
-      accent: "from-fuchsia-500 to-purple-600",
-      cardBorder: "hover:border-fuchsia-300 hover:shadow-fuchsia-500/10",
-      icon: Scale,
-      lightBg: "bg-fuchsia-50/40",
-    };
-  }
   return {
     badge: "bg-slate-100 text-slate-700 border-slate-200",
-    accent: "from-slate-600 to-slate-800",
-    cardBorder: "hover:border-primary/50 hover:shadow-indigo-500/10",
+    accent: "from-slate-700 to-slate-900",
+    cardBorder: "border-slate-200/90 hover:border-slate-300 hover:shadow-slate-200/50",
     icon: Sparkles,
-    lightBg: "bg-slate-50/60",
   };
 }
 
@@ -185,21 +111,9 @@ export function EventCatalogExplorer({
   initialQuery?: string;
   user?: { id: string; email: string; fullName?: string } | null;
 }) {
-  // Determine initial category from prop
-  const initialCategoryName = useMemo(() => {
-    if (!initialTrack) return "all";
-    const found = categories.find(
-      (c) =>
-        c.name.toLowerCase().includes(initialTrack.toLowerCase()) ||
-        c.slug.toLowerCase().includes(initialTrack.toLowerCase())
-    );
-    return found ? found.name : "all";
-  }, [initialTrack, categories]);
-
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [selectedCategory, setSelectedCategory] = useState(initialCategoryName);
-  const [selectedDate, setSelectedDate] = useState("all");
-  const [selectedSchool, setSelectedSchool] = useState("all");
+  const [selectedDate, setSelectedDate] = useState<string>("all");
+  const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
   const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
 
@@ -215,6 +129,10 @@ export function EventCatalogExplorer({
     maxEventsLimit,
   } = useCart();
 
+  const passTotalAmount = useMemo(() => {
+    return hasProEventSelected ? 300 : 200;
+  }, [hasProEventSelected]);
+
   // Registration state
   const [isRegistering, setIsRegistering] = useState(false);
   const [regSuccessCode, setRegSuccessCode] = useState<string | null>(null);
@@ -229,16 +147,6 @@ export function EventCatalogExplorer({
     return Array.from(set).sort();
   }, [initialEvents]);
 
-  // Category event counts
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    initialEvents.forEach((e) => {
-      const c = e.category?.name || "Other";
-      counts[c] = (counts[c] || 0) + 1;
-    });
-    return counts;
-  }, [initialEvents]);
-
   // Pro and Normal event counts
   const proCount = useMemo(
     () => initialEvents.filter((e) => Boolean(e.is_pro_event)).length,
@@ -251,11 +159,17 @@ export function EventCatalogExplorer({
 
   // Date counts
   const day1Count = useMemo(
-    () => initialEvents.filter((e) => e.event_date?.includes("2026-09-25")).length,
+    () =>
+      initialEvents.filter(
+        (e) => e.event_date && (e.event_date.startsWith("2026-09-25") || e.event_date.includes("-09-25"))
+      ).length,
     [initialEvents]
   );
   const day2Count = useMemo(
-    () => initialEvents.filter((e) => e.event_date?.includes("2026-09-26")).length,
+    () =>
+      initialEvents.filter(
+        (e) => e.event_date && (e.event_date.startsWith("2026-09-26") || e.event_date.includes("-09-26"))
+      ).length,
     [initialEvents]
   );
 
@@ -268,7 +182,7 @@ export function EventCatalogExplorer({
       // 1. Text Search matching across all tokens
       if (queryTokens.length > 0) {
         const eventSearchTarget = normalizeText(
-          `${evt.name} ${evt.school_or_dept} ${evt.venue} ${evt.category?.name || ""} ${evt.short_description || ""} ${evt.description || ""}`
+          `${evt.name || ""} ${evt.school_or_dept || ""} ${evt.venue || ""} ${evt.category?.name || ""} ${evt.short_description || ""} ${evt.description || ""}`
         );
 
         const allTokensMatch = queryTokens.every((token) =>
@@ -278,46 +192,41 @@ export function EventCatalogExplorer({
         if (!allTokensMatch) return false;
       }
 
-      // 2. Category Filter
-      if (selectedCategory !== "all") {
-        const catName = evt.category?.name?.toLowerCase().trim() || "";
-        const targetCat = selectedCategory.toLowerCase().trim();
-        if (catName !== targetCat) return false;
-      }
-
-      // 3. Date Filter
+      // 2. Date Filter
       if (selectedDate !== "all") {
-        if (!evt.event_date || !evt.event_date.includes(selectedDate)) {
-          return false;
+        const dateStr = String(evt.event_date || "");
+        if (selectedDate === "2026-09-25") {
+          if (!dateStr.includes("-09-25") && !dateStr.includes("2026-09-25")) return false;
+        } else if (selectedDate === "2026-09-26") {
+          if (!dateStr.includes("-09-26") && !dateStr.includes("2026-09-26")) return false;
         }
       }
 
-      // 4. School Filter
+      // 3. School Filter
       if (selectedSchool !== "all") {
         if (evt.school_or_dept !== selectedSchool) return false;
       }
 
-      // 5. Tier Filter (Pro vs Normal)
+      // 4. Tier Filter (Pro vs Normal)
       if (selectedTier === "pro" && !evt.is_pro_event) return false;
       if (selectedTier === "normal" && evt.is_pro_event) return false;
 
       return true;
     });
-  }, [initialEvents, searchQuery, selectedCategory, selectedDate, selectedSchool, selectedTier]);
+  }, [initialEvents, searchQuery, selectedDate, selectedSchool, selectedTier]);
 
-  // Global search matches
-  const globalSearchMatchCount = useMemo(() => {
-    const rawQuery = searchQuery.trim();
-    if (!rawQuery) return initialEvents.length;
-    const queryTokens = normalizeText(rawQuery).split(" ").filter((t) => t.length > 0);
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    selectedDate !== "all" ||
+    selectedSchool !== "all" ||
+    selectedTier !== "all";
 
-    return initialEvents.filter((evt) => {
-      const eventSearchTarget = normalizeText(
-        `${evt.name} ${evt.school_or_dept} ${evt.venue} ${evt.category?.name || ""} ${evt.short_description || ""} ${evt.description || ""}`
-      );
-      return queryTokens.every((token) => eventSearchTarget.includes(token));
-    }).length;
-  }, [initialEvents, searchQuery]);
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setSelectedDate("all");
+    setSelectedSchool("all");
+    setSelectedTier("all");
+  };
 
   const handleRegister = async (eventId: string) => {
     if (!user) {
@@ -343,184 +252,276 @@ export function EventCatalogExplorer({
     setIsRegistering(false);
   };
 
-  const hasActiveFilters =
-    searchQuery.trim() !== "" ||
-    selectedCategory !== "all" ||
-    selectedDate !== "all" ||
-    selectedSchool !== "all" ||
-    selectedTier !== "all";
-
-  const clearAllFilters = () => {
-    setSearchQuery("");
-    setSelectedCategory("all");
-    setSelectedDate("all");
-    setSelectedSchool("all");
-    setSelectedTier("all");
-  };
-
   return (
-    <div className="space-y-5">
-      {/* Dynamic Cart Selection Rule Guidance Banner */}
-      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-purple-50/90 p-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-white shadow-xs shrink-0">
-              <Zap className="h-4 w-4" />
-            </div>
-            <div className="text-xs">
-              {selectedEvents.length === 0 && (
-                <p className="text-slate-700">
-                  <strong className="text-primary font-bold">Delegate Pass Selection:</strong> Choose up to{" "}
-                  <strong>2 events</strong> per pass:{" "}
-                  <span className="inline-flex items-center font-bold text-amber-800 bg-amber-100/90 px-1.5 py-0.2 rounded">
-                    ⭐ Pro Pass (₹300): 1 Pro + 1 Normal
-                  </span>{" "}
-                  <strong>OR</strong>{" "}
-                  <span className="inline-flex items-center font-bold text-indigo-800 bg-indigo-100/90 px-1.5 py-0.2 rounded">
-                    📌 Normal Pass (₹200): Up to 2 Normal Events
-                  </span>
-                  . (Pro events must be chosen as Slot #1).
-                </p>
-              )}
-
+    <div className="space-y-3 sm:space-y-4">
+      {/* Dynamic Selection Alert (Only shown when 1+ events selected) */}
+      {selectedEvents.length > 0 && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3 sm:p-3.5 text-xs text-indigo-950 flex items-center justify-between gap-3 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2 min-w-0">
+            <Zap className="h-4 w-4 shrink-0 text-primary" />
+            <div className="truncate text-xs">
               {selectedEvents.length === 1 && firstSelectedEvent?.is_pro_event && (
-                <p className="text-amber-900 font-medium">
-                  <span className="font-bold text-amber-800">⭐ Slot 1 (Pro Event) Selected:</span> &quot;{firstSelectedEvent?.name}&quot;. For Slot 2, you can now select{" "}
-                  <strong>1 Normal Event</strong>.
-                </p>
+                <span>
+                  <strong>Slot 1 (Pro):</strong> &quot;{firstSelectedEvent?.name}&quot; •{" "}
+                  <span className="text-indigo-700 font-medium">Choose 1 Normal Event for Slot 2.</span>
+                </span>
               )}
-
               {selectedEvents.length === 1 && !firstSelectedEvent?.is_pro_event && (
-                <p className="text-slate-800 font-medium">
-                  <span className="font-bold text-indigo-900">📌 Slot 1 (Normal Event) Selected:</span> &quot;{firstSelectedEvent?.name}&quot;. Pro events are now locked (Pro events must be picked 1st). You can choose{" "}
-                  <strong>1 more Normal Event</strong>.
-                </p>
+                <span>
+                  <strong>Slot 1 (Normal):</strong> &quot;{firstSelectedEvent?.name}&quot; •{" "}
+                  <span className="text-indigo-700 font-medium">Choose 1 more Normal Event for Slot 2.</span>
+                </span>
               )}
-
               {selectedEvents.length >= maxEventsLimit && (
-                <p className="text-emerald-900 font-medium">
-                  <span className="font-bold text-emerald-800">✅ Pass Complete (2/2 Events Selected):</span> Your 2 event slots are filled. Click &quot;Selected Events&quot; below to review and confirm your registration pass.
-                </p>
+                <span className="text-emerald-900 font-bold">
+                  ✅ Pass Ready (2/2 Selected) • Total: ₹{passTotalAmount}
+                </span>
               )}
             </div>
           </div>
 
-          {selectedEvents.length > 0 && (
-            <button
-              onClick={openCart}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-primary transition-colors shrink-0 cursor-pointer"
-            >
-              <ShoppingBag className="h-3.5 w-3.5" />
-              <span>Review Pass ({selectedEvents.length}/2)</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={openCart}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 active:scale-95 transition-all shrink-0 cursor-pointer"
+          >
+            <ShoppingBag className="h-3.5 w-3.5" />
+            <span>Pass ({selectedEvents.length}/2)</span>
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Search & Multi-Filter Control Panel */}
-      <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
-        {/* Row 1: Search Bar & Day Switcher */}
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+      {/* Unified Search & Filters Container */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-3 sm:p-3.5 shadow-xs space-y-2.5">
+        {/* Mobile View: 4 Clean, Spacious Full-Width Rows */}
+        <div className="space-y-2 lg:hidden">
+          {/* Row 1: Full-Width Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by event title, keyword, school, or venue (e.g. Fusion, AI, Drone, CAD, Quiz, Archathon)..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:bg-white focus:outline-none shadow-2xs transition-all"
+              placeholder="Search competitions by title, topic, venue..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery("")}
-                title="Clear search"
-                className="absolute right-3 top-2.5 p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
+                className="absolute right-2.5 top-2 p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          {/* Day Filter Tabs */}
-          <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200/80 shrink-0">
+          {/* Row 2: Tier Switcher (Full Width 3 Segments) */}
+          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-center">
             <button
-              onClick={() => setSelectedDate("all")}
-              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                selectedDate === "all"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              All Days ({initialEvents.length})
-            </button>
-            <button
-              onClick={() => setSelectedDate("2026-09-25")}
-              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                selectedDate === "2026-09-25"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Day 1 • Sept 25 ({day1Count})
-            </button>
-            <button
-              onClick={() => setSelectedDate("2026-09-26")}
-              className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                selectedDate === "2026-09-26"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Day 2 • Sept 26 ({day2Count})
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Event Tier (Pro vs Normal) & School Dropdown & Category Tracks */}
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3 pt-1 border-t border-slate-100">
-          {/* Tier Switcher (Pro / Normal) */}
-          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/80 shrink-0">
-            <button
+              type="button"
               onClick={() => setSelectedTier("all")}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 selectedTier === "all"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               All Tiers ({initialEvents.length})
             </button>
             <button
-              onClick={() => setSelectedTier("pro")}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
                 selectedTier === "pro"
-                  ? "bg-amber-500 text-white shadow-xs font-black"
-                  : "text-amber-700 hover:text-amber-900"
+                  ? "bg-amber-500 text-white shadow-xs font-bold"
+                  : "text-amber-800 hover:text-amber-950"
               }`}
             >
               <Star className="h-3 w-3 fill-current" />
-              <span>Pro Events ({proCount})</span>
+              <span>Pro ({proCount})</span>
             </button>
             <button
-              onClick={() => setSelectedTier("normal")}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 selectedTier === "normal"
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              Normal Events ({normalCount})
+              Normal ({normalCount})
             </button>
           </div>
 
-          {/* School Selector */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Building className="h-4 w-4 text-slate-400" />
+          {/* Row 3: Day Switcher (Full Width 3 Segments) */}
+          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-center">
+            <button
+              type="button"
+              onClick={() => setSelectedDate("all")}
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "all"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All Days ({initialEvents.length})
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
+              }
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "2026-09-25"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Day 1 ({day1Count})
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
+              }
+              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "2026-09-26"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Day 2 ({day2Count})
+            </button>
+          </div>
+
+          {/* Row 4: Full-Width School Selector Dropdown */}
+          <div className="relative">
             <select
               value={selectedSchool}
               onChange={(e) => setSelectedSchool(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:border-primary focus:outline-none shadow-2xs max-w-[240px] truncate cursor-pointer"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate cursor-pointer shadow-2xs"
+            >
+              <option value="all">All 14 Schools &amp; Departments</option>
+              {schoolsList.map((school) => (
+                <option key={school} value={school}>
+                  {school}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+          </div>
+        </div>
+
+        {/* Desktop View: Sleek Single-Row Layout */}
+        <div className="hidden lg:flex items-center gap-2.5">
+          {/* 1. Search Input (Flex-1) */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search competitions by title, topic, school, or venue..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                title="Clear search"
+                className="absolute right-2.5 top-2 p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* 2. Tier Selector (All / Pro / Normal) */}
+          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedTier("all")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedTier === "all"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All ({initialEvents.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                selectedTier === "pro"
+                  ? "bg-amber-500 text-white shadow-xs font-bold"
+                  : "text-amber-800 hover:text-amber-950"
+              }`}
+            >
+              <Star className="h-3 w-3 fill-current" />
+              <span>Pro ({proCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedTier === "normal"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Normal ({normalCount})
+            </button>
+          </div>
+
+          {/* 3. Day Selector Tabs (All / Day 1 / Day 2) */}
+          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedDate("all")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "all"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All Days
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
+              }
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "2026-09-25"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Day 1 ({day1Count})
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
+              }
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                selectedDate === "2026-09-26"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Day 2 ({day2Count})
+            </button>
+          </div>
+
+          {/* 4. School Dropdown */}
+          <div className="relative shrink-0 min-w-[190px]">
+            <select
+              value={selectedSchool}
+              onChange={(e) => setSelectedSchool(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate cursor-pointer shadow-2xs"
             >
               <option value="all">All 14 Schools &amp; Depts</option>
               {schoolsList.map((school) => (
@@ -529,137 +530,36 @@ export function EventCatalogExplorer({
                 </option>
               ))}
             </select>
+            <ChevronRight className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 rotate-90" />
           </div>
 
-          {/* Category Track Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-1">
+          {/* 5. Reset Filter Button */}
+          {hasActiveFilters && (
             <button
-              onClick={() => setSelectedCategory("all")}
-              className={`rounded-xl px-3 py-1 text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                selectedCategory === "all"
-                  ? "bg-primary text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900"
-              }`}
-            >
-              All Tracks
-            </button>
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.name;
-              const count = categoryCounts[cat.name] || 0;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  className={`rounded-xl px-3 py-1 text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                    isSelected
-                      ? "bg-primary text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900"
-                  }`}
-                >
-                  <span>{cat.name}</span>
-                  <span
-                    className={`rounded-full px-1.5 py-0.2 text-[9px] font-mono font-bold ${
-                      isSelected
-                        ? "bg-white/20 text-white"
-                        : "bg-slate-200/80 text-slate-600"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Active Filter Tags Bar */}
-        {hasActiveFilters && (
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
-            <span className="text-slate-400 font-medium">Active filters:</span>
-
-            {searchQuery && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs text-primary font-medium">
-                Keyword: &quot;{searchQuery}&quot;
-                <button onClick={() => setSearchQuery("")} className="hover:text-indigo-900 cursor-pointer">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedTier !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs text-amber-800 font-bold">
-                Tier: {selectedTier === "pro" ? "⭐ Pro Events Only" : "Normal Events Only"}
-                <button onClick={() => setSelectedTier("all")} className="hover:text-amber-950 cursor-pointer">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedCategory !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs text-primary font-medium">
-                Track: {selectedCategory}
-                <button onClick={() => setSelectedCategory("all")} className="hover:text-indigo-900 cursor-pointer">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedDate !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs text-primary font-medium">
-                Date: {selectedDate === "2026-09-25" ? "Day 1 (Sept 25)" : "Day 2 (Sept 26)"}
-                <button onClick={() => setSelectedDate("all")} className="hover:text-indigo-900 cursor-pointer">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-
-            {selectedSchool !== "all" && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs text-primary font-medium">
-                School: {selectedSchool}
-                <button onClick={() => setSelectedSchool("all")} className="hover:text-indigo-900 cursor-pointer">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-
-            <button
+              type="button"
               onClick={clearAllFilters}
-              className="text-rose-600 font-bold hover:underline ml-auto cursor-pointer"
+              title="Reset all filters"
+              className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/80 px-2.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shrink-0 cursor-pointer"
             >
-              Reset All Filters
+              <RefreshCw className="h-3 w-3" />
+              <span>Reset</span>
             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Result Status Counter */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between px-1 text-xs text-slate-500">
-          <div>
-            Showing <strong className="text-slate-900 font-bold">{filteredEvents.length}</strong> of{" "}
-            {initialEvents.length} official competitions
-          </div>
+          )}
         </div>
 
-        {/* Cross-track helpful alert */}
-        {filteredEvents.length === 0 && globalSearchMatchCount > 0 && (
-          <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-3.5 text-xs text-primary flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-              <span>
-                Found <strong>{globalSearchMatchCount}</strong> matching events in other tracks or dates.
-              </span>
+        {/* Active Filter Results Counter */}
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+            <div className="text-slate-500">
+              Showing <strong className="text-slate-900 font-bold">{filteredEvents.length}</strong> of{" "}
+              {initialEvents.length} competitions
             </div>
             <button
-              onClick={() => {
-                setSelectedCategory("all");
-                setSelectedDate("all");
-                setSelectedSchool("all");
-                setSelectedTier("all");
-              }}
-              className="rounded-lg bg-primary px-3 py-1 text-xs font-bold text-white shadow-2xs hover:bg-primary-hover transition-colors shrink-0 cursor-pointer"
+              type="button"
+              onClick={clearAllFilters}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
             >
-              Show All {globalSearchMatchCount} Matches
+              Clear filters ({filteredEvents.length} matches)
             </button>
           </div>
         )}
@@ -667,11 +567,10 @@ export function EventCatalogExplorer({
 
       {/* Events Grid */}
       {filteredEvents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredEvents.map((evt) => {
             const isPro = Boolean(evt.is_pro_event);
             const theme = getCategoryTheme(evt.category?.name, isPro);
-            const Icon = theme.icon;
             const regCount = (evt.registrations || []).length;
             const limit = evt.participant_limit || 100;
             const isSelected = isEventSelected(evt.id);
@@ -680,27 +579,25 @@ export function EventCatalogExplorer({
             return (
               <div
                 key={evt.id}
-                className={`group relative rounded-3xl border bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-                  isPro ? "border-amber-300/80 bg-gradient-to-b from-amber-50/30 via-white to-white" : "border-slate-200/90"
+                className={`group relative rounded-2xl border bg-white p-4 sm:p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                  isPro
+                    ? "border-amber-300/90 bg-gradient-to-b from-amber-50/20 via-white to-white"
+                    : "border-slate-200/90"
                 } ${theme.cardBorder} flex flex-col justify-between overflow-hidden`}
               >
                 {/* Top Accent Gradient Bar */}
                 <div
-                  className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${theme.accent}`}
+                  className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${theme.accent}`}
                 />
 
-                <div className="space-y-3">
-                  {/* Top Metadata Badges */}
+                <div className="space-y-2.5 pt-0.5">
+                  {/* Top Metadata Row */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {isPro ? (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-xs animate-pulse">
+                      {isPro && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                           <Star className="h-3 w-3 fill-current" />
                           <span>PRO EVENT</span>
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold">
-                          Normal Event
                         </span>
                       )}
 
@@ -711,29 +608,28 @@ export function EventCatalogExplorer({
                       </span>
                     </div>
 
-                    <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-                      Day {evt.event_date?.includes("2026-09-25") ? "1" : "2"}
+                    <span className="text-[11px] font-mono font-semibold text-slate-400 shrink-0">
+                      Day {evt.event_date?.includes("2026-09-25") ? "1 (Sept 25)" : "2 (Sept 26)"}
                     </span>
                   </div>
 
-                  {/* Title & Department */}
+                  {/* Event Title & Department */}
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-900 group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-primary transition-colors leading-snug line-clamp-2">
                       {evt.name}
                     </h3>
-                    <p className="text-xs font-semibold text-slate-500 mt-1 line-clamp-1">
+                    <p className="text-xs font-normal text-slate-500 mt-1 line-clamp-1">
                       {evt.school_or_dept}
                     </p>
                   </div>
 
-                  {/* Schedule & Venue Specs */}
-                  <div className="space-y-1.5 rounded-2xl bg-slate-50/80 p-3 text-xs text-slate-700 border border-slate-100">
-                    <div className="flex items-center gap-2 font-semibold">
-                      <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+                  {/* Schedule & Location Box */}
+                  <div className="space-y-1.5 rounded-xl bg-slate-50/70 p-2.5 sm:p-3 text-xs text-slate-700 border border-slate-100">
+                    <div className="flex items-center gap-2 font-medium">
+                      <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                       <span>
                         {evt.event_date ? formatDate(evt.event_date) : "TBA"} •{" "}
-                        {evt.start_time ? formatTime(evt.start_time) : ""} -{" "}
-                        {evt.end_time ? formatTime(evt.end_time) : ""}
+                        {formatEventTimeRange(evt.start_time, evt.end_time)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-slate-500 text-[11px]">
@@ -743,31 +639,33 @@ export function EventCatalogExplorer({
                   </div>
                 </div>
 
-                {/* Bottom Action Footer */}
-                <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                {/* Card Action Footer */}
+                <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-slate-500 font-medium">
                       <span className="font-bold text-slate-800">{regCount}</span> /{" "}
                       {limit} Seats
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {/* Multi-Event Select Toggle Button */}
+                      {/* Event Selection Toggle */}
                       {isSelected ? (
                         <button
+                          type="button"
                           onClick={() => toggleEvent(evt)}
-                          className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 transition-all cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700 transition-all cursor-pointer"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           <span>Selected</span>
                         </button>
                       ) : validation.allowed ? (
                         <button
+                          type="button"
                           onClick={() => toggleEvent(evt)}
-                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                             isPro
                               ? "bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200 shadow-2xs font-extrabold"
-                              : "bg-indigo-50 text-primary hover:bg-indigo-100 border border-indigo-100"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200"
                           }`}
                         >
                           <ShoppingBag className="h-3.5 w-3.5" />
@@ -775,35 +673,37 @@ export function EventCatalogExplorer({
                         </button>
                       ) : (
                         <button
+                          type="button"
                           disabled
                           title={validation.reason}
-                          className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-400 border border-slate-200/80 cursor-not-allowed opacity-75"
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
                         >
                           <Lock className="h-3 w-3 text-slate-400" />
                           <span>Locked</span>
                         </button>
                       )}
 
-                      {/* View Details Modal Trigger */}
+                      {/* View Details Button */}
                       <button
+                        type="button"
                         onClick={() => {
                           setRegSuccessCode(null);
                           setRegError(null);
                           setActiveModalEvent(evt);
                         }}
-                        className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-colors cursor-pointer"
-                        title="View full event details"
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+                        title="View details"
                       >
                         <span>Details</span>
-                        <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                        <ArrowRight className="h-3 w-3 ml-1 text-slate-400" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Inline helpful notice when locked */}
+                  {/* Inline notice when locked */}
                   {!isSelected && !validation.allowed && validation.reason && (
-                    <p className="text-[10px] text-amber-700 font-medium flex items-center gap-1 leading-tight">
-                      <Info className="h-3 w-3 shrink-0" />
+                    <p className="text-[10px] text-amber-800 font-medium flex items-center gap-1 leading-tight">
+                      <Info className="h-3 w-3 shrink-0 text-amber-600" />
                       <span>{validation.reason}</span>
                     </p>
                   )}
@@ -813,17 +713,18 @@ export function EventCatalogExplorer({
           })}
         </div>
       ) : (
-        <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center space-y-3 shadow-xs">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
             <Search className="h-6 w-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-900">No Events Match Your Filters</h3>
+          <h3 className="text-base font-bold text-slate-900">No Events Found</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
             No technical competitions match your current search query or tier filters.
           </p>
           <button
+            type="button"
             onClick={clearAllFilters}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary-hover transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             <span>Reset All Filters</span>
@@ -834,7 +735,7 @@ export function EventCatalogExplorer({
       {/* Mobile Floating Pass Sticky Dock */}
       {selectedEvents.length > 0 && (
         <div className="fixed bottom-4 inset-x-4 z-40 sm:hidden">
-          <div className="rounded-2xl border border-white/15 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl shadow-black/70 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl shadow-black/70 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200">
             <div className="min-w-0 flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shrink-0 shadow-md">
                 <ShoppingBag className="h-4 w-4" />
@@ -853,17 +754,17 @@ export function EventCatalogExplorer({
                   )}
                 </div>
                 <div className="text-[11px] font-semibold text-slate-300">
-                  {hasProEventSelected ? "₹300 Pass" : "₹200 Pass"}
+                  Total: ₹{passTotalAmount}
                 </div>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={openCart}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2.5 text-xs font-black text-white shadow-lg shadow-primary/30 active:scale-95 transition-transform cursor-pointer shrink-0"
+              className="rounded-xl bg-white px-3.5 py-2 text-xs font-extrabold text-slate-900 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer"
             >
-              <span>Review</span>
-              <ArrowRight className="h-3.5 w-3.5" />
+              Review Pass →
             </button>
           </div>
         </div>
@@ -872,11 +773,12 @@ export function EventCatalogExplorer({
       {/* Quick Registration & Event Details Modal */}
       {activeModalEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 sm:p-7 shadow-2xl space-y-5 my-8">
+          <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-2xl space-y-4 sm:space-y-5 my-8">
             {/* Close Button */}
             <button
+              type="button"
               onClick={() => setActiveModalEvent(null)}
-              className="absolute right-5 top-5 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+              className="absolute right-4 top-4 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -884,48 +786,43 @@ export function EventCatalogExplorer({
             {/* Modal Header */}
             <div className="space-y-1.5 pr-8">
               <div className="flex items-center gap-2 flex-wrap">
-                {activeModalEvent.is_pro_event ? (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-xs">
+                {activeModalEvent.is_pro_event && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                     <Star className="h-3 w-3 fill-current" />
                     <span>PRO EVENT</span>
                   </span>
-                ) : (
-                  <span className="rounded-md bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-semibold border border-slate-200">
-                    Normal Event
-                  </span>
                 )}
-                <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-primary border border-indigo-100">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
                   {activeModalEvent.category?.name || "Track"}
                 </span>
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 border border-slate-200">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-600 border border-slate-200">
                   Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Sept 25)" : "2 (Sept 26)"}
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 leading-snug">
                 {activeModalEvent.name}
               </h2>
-              <p className="text-xs font-bold text-slate-500">
+              <p className="text-xs font-medium text-slate-500">
                 {activeModalEvent.school_or_dept}
               </p>
             </div>
 
             {/* Schedule & Venue Box */}
-            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50/80 p-3.5 border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 rounded-xl bg-slate-50 p-3 sm:p-3.5 border border-slate-200 text-xs">
               <div>
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Date &amp; Time
                 </span>
                 <span className="font-bold text-slate-900 mt-0.5 block">
                   {formatDate(activeModalEvent.event_date)}
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  {formatTime(activeModalEvent.start_time)} -{" "}
-                  {formatTime(activeModalEvent.end_time)}
+                  {formatEventTimeRange(activeModalEvent.start_time, activeModalEvent.end_time)}
                 </span>
               </div>
 
               <div>
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Venue Location
                 </span>
                 <span className="font-bold text-slate-900 mt-0.5 block truncate">
@@ -940,7 +837,7 @@ export function EventCatalogExplorer({
             {/* Event Overview */}
             {activeModalEvent.description && (
               <div className="space-y-1 text-xs">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px]">
+                <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px]">
                   Event Overview
                 </span>
                 <p className="text-slate-600 leading-relaxed">
@@ -952,8 +849,8 @@ export function EventCatalogExplorer({
             {/* Rules & Guidelines */}
             {activeModalEvent.rules && (
               <div className="space-y-1.5 text-xs border-t border-slate-100 pt-3">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px]">
-                  Rules &amp; Eligibility
+                <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px]">
+                  Rules &amp; Guidelines
                 </span>
                 <ul className="space-y-1 text-slate-600 list-disc list-inside">
                   {(typeof activeModalEvent.rules === "string"
@@ -972,7 +869,7 @@ export function EventCatalogExplorer({
 
             {/* Success Alert */}
             {regSuccessCode && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-2">
                 <div className="flex items-center gap-2 font-bold text-sm">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                   <span>Registration Confirmed!</span>
@@ -1006,27 +903,30 @@ export function EventCatalogExplorer({
             {/* Modal Action CTA */}
             {!regSuccessCode && (
               <div className="pt-2 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-2.5">
                   {isEventSelected(activeModalEvent.id) ? (
                     <button
+                      type="button"
                       onClick={() => toggleEvent(activeModalEvent)}
                       className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
                     >
                       <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      <span>In Selection (Click to Remove)</span>
+                      <span>Selected (Remove)</span>
                     </button>
                   ) : canSelectEvent(activeModalEvent).allowed ? (
                     <button
+                      type="button"
                       onClick={() => toggleEvent(activeModalEvent)}
-                      className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-indigo-50 text-primary border border-indigo-100 hover:bg-indigo-100 transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer"
                     >
-                      <ShoppingBag className="h-4 w-4 text-primary" />
-                      <span>Add to Selection</span>
+                      <ShoppingBag className="h-4 w-4" />
+                      <span>Add to Pass</span>
                     </button>
                   ) : (
                     <button
+                      type="button"
                       disabled
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200/80 cursor-not-allowed opacity-75"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
                     >
                       <Lock className="h-4 w-4 text-slate-400" />
                       <span>Selection Locked</span>
@@ -1035,15 +935,17 @@ export function EventCatalogExplorer({
 
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => setActiveModalEvent(null)}
                       className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
                     >
                       Close
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleRegister(activeModalEvent.id)}
                       disabled={isRegistering}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                     >
                       {isRegistering ? (
                         <span>Issuing Pass...</span>
@@ -1058,8 +960,8 @@ export function EventCatalogExplorer({
                 </div>
 
                 {!isEventSelected(activeModalEvent.id) && !canSelectEvent(activeModalEvent).allowed && (
-                  <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                    <Info className="h-3.5 w-3.5 shrink-0" />
+                  <p className="text-[11px] text-amber-800 font-medium flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5 shrink-0 text-amber-600" />
                     <span>{canSelectEvent(activeModalEvent).reason}</span>
                   </p>
                 )}

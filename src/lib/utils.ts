@@ -36,3 +36,13 @@ export function formatTime(timeString: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
+export function formatEventTimeRange(startTime?: string, endTime?: string): string {
+  if (!startTime) return "Time TBA";
+  const start = formatTime(startTime);
+  const end = endTime ? formatTime(endTime) : "";
+  if (!end || start === end) {
+    return `${start} onwards`;
+  }
+  return `${start} - ${end}`;
+}
+
