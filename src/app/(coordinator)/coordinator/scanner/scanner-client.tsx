@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { recordAttendanceCoordinator, CoordinatorEventItem } from "@/actions/coordinator";
+import { UniversalQRScanner } from "@/components/scanner/universal-qr-scanner";
 import {
   QrCode,
   Search,
@@ -16,6 +17,9 @@ import {
   History,
   ShieldCheck,
   RefreshCw,
+  Star,
+  Check,
+  X,
 } from "lucide-react";
 
 interface RecentScan {
@@ -43,22 +47,20 @@ export function ScannerClient({
     message?: string;
     student?: any;
     event?: any;
+    slotNumber?: number;
     registrationCode?: string;
     scannedAt?: string;
     error?: string;
   } | null>(null);
 
   const [recentScans, setRecentScans] = useState<RecentScan[]>([]);
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(true);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionProcessedCodesRef = useRef<Set<string>>(new Set());
 
-  const handleVerifyCode = async (codeToVerify: string) => {
+  const handleVerifyCode = async (codeToVerify: string, method: "qr_camera" | "manual_code_entry" = "manual_code_entry") => {
     if (!codeToVerify.trim()) return;
-
-    setIsProcessing(true);
-    setVerificationResult(null);
 
     // Extract code if JSON QR payload
     let cleanCode = codeToVerify.trim();
@@ -66,33 +68,59 @@ export function ScannerClient({
       try {
         const parsed = JSON.parse(cleanCode);
         if (parsed.code) cleanCode = parsed.code;
-      } catch (e) {
+      } catch {
         // use raw string
       }
     }
 
+    cleanCode = cleanCode.toUpperCase();
+
+    // If already verified in this session and scanned via camera, ignore it
+    if (method === "qr_camera" && sessionProcessedCodesRef.current.has(cleanCode)) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setVerificationResult(null);
+
     const res = await recordAttendanceCoordinator({
       eventId: selectedEventId === "all" ? undefined : selectedEventId,
       registrationCode: cleanCode,
-      scanMethod: isCameraActive ? "qr_camera" : "manual_search",
+      scanMethod: method,
     });
 
     if (!res.success) {
       setVerificationResult({
         success: false,
-        error: res.error || "Verification failed",
+        error: res.error || `Invalid or unassigned pass code "${cleanCode}".`,
       });
     } else {
-      setVerificationResult(res);
+      const { alreadyCheckedIn, student, event, slotNumber, registrationCode, scannedAt, message } = res;
 
-      if (res.student && res.event) {
+      sessionProcessedCodesRef.current.add(cleanCode);
+      if (registrationCode) {
+        sessionProcessedCodesRef.current.add(registrationCode.toUpperCase());
+      }
+
+      setVerificationResult({
+        success: true,
+        alreadyCheckedIn,
+        message,
+        student,
+        event,
+        slotNumber,
+        registrationCode,
+        scannedAt,
+      });
+
+      if (student && event) {
         setRecentScans((prev) => [
           {
             code: cleanCode,
-            studentName: res.student?.full_name || "Delegate",
-            eventName: res.event?.name || "Competition",
+            studentName: student?.full_name || "Delegate",
+            eventName: event?.name || "Competition",
             time: new Date().toLocaleTimeString(),
-            alreadyCheckedIn: Boolean(res.alreadyCheckedIn),
+            alreadyCheckedIn: Boolean(alreadyCheckedIn),
           },
           ...prev.slice(0, 14),
         ]);
@@ -104,40 +132,12 @@ export function ScannerClient({
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleVerifyCode(manualCode);
+    handleVerifyCode(manualCode, "manual_code_entry");
   };
 
-  // Start / Stop Camera Scanner using WebRTC getUserMedia
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let videoEl: HTMLVideoElement | null = null;
-
-    if (isCameraActive) {
-      videoEl = document.getElementById("qr-video-feed") as HTMLVideoElement;
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" } })
-          .then((s) => {
-            stream = s;
-            if (videoEl) {
-              videoEl.srcObject = s;
-              videoEl.play();
-            }
-          })
-          .catch((err) => {
-            console.error("Camera access error:", err);
-            setCameraError("Camera permission denied or camera not found on this device.");
-            setIsCameraActive(false);
-          });
-      }
-    }
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [isCameraActive]);
+  const handleCameraScan = (decodedText: string) => {
+    handleVerifyCode(decodedText, "qr_camera");
+  };
 
   return (
     <div className="space-y-6">
@@ -149,7 +149,7 @@ export function ScannerClient({
               Competition Check-In Gate
             </label>
             <p className="text-[11px] text-slate-400">
-              Select specific competition or verify across all assigned events.
+              Select a specific competition or scan across all your assigned events.
             </p>
           </div>
 
@@ -176,7 +176,7 @@ export function ScannerClient({
               type="text"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
-              placeholder="Enter or paste Registration Pass Code (e.g. EUPH-26-XXXXXX)..."
+              placeholder="Enter or paste Pass Code (e.g. EUPH-26-XXXXXX)..."
               className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-primary focus:bg-white focus:outline-none transition-all uppercase"
             />
           </div>
@@ -198,10 +198,7 @@ export function ScannerClient({
 
           <button
             type="button"
-            onClick={() => {
-              setCameraError(null);
-              setIsCameraActive(!isCameraActive);
-            }}
+            onClick={() => setIsCameraActive(!isCameraActive)}
             className={`inline-flex items-center gap-1.5 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer border shrink-0 ${
               isCameraActive
                 ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
@@ -209,37 +206,22 @@ export function ScannerClient({
             }`}
           >
             <Camera className="h-4 w-4" />
-            <span>{isCameraActive ? "Close Camera" : "Use Camera"}</span>
+            <span>{isCameraActive ? "Hide Camera" : "Open Camera"}</span>
           </button>
         </form>
 
-        {/* Camera View Finder */}
+        {/* Live Universal QR Scanner */}
         {isCameraActive && (
-          <div className="rounded-2xl border-2 border-dashed border-primary/40 bg-slate-900 p-4 text-center space-y-3">
-            <div className="relative max-w-sm mx-auto aspect-square rounded-xl overflow-hidden bg-black flex items-center justify-center">
-              <video
-                id="qr-video-feed"
-                className="w-full h-full object-cover"
-                playsInline
-                muted
-              />
-              <div className="absolute inset-0 border-2 border-emerald-400 rounded-xl pointer-events-none animate-pulse opacity-60 m-8" />
-            </div>
-            <p className="text-xs text-slate-300">
-              Point camera at student&apos;s digital QR code pass.
-            </p>
-          </div>
-        )}
-
-        {cameraError && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-            <span>{cameraError}</span>
+          <div className="pt-2">
+            <UniversalQRScanner
+              isScanning={isCameraActive}
+              onScanSuccess={handleCameraScan}
+            />
           </div>
         )}
       </div>
 
-      {/* Instant Verification Result Modal / Card */}
+      {/* Instant Verification Result Card */}
       {verificationResult && (
         <div
           className={`rounded-3xl border-2 p-6 shadow-md animate-in fade-in duration-200 ${
@@ -273,9 +255,16 @@ export function ScannerClient({
                   </div>
                 </div>
 
-                <span className="rounded-xl bg-white px-3 py-1 text-xs font-mono font-black shadow-2xs">
-                  {verificationResult.registrationCode}
-                </span>
+                <div className="flex items-center gap-2">
+                  {verificationResult.slotNumber && (
+                    <span className="rounded-xl bg-indigo-600 text-white px-2.5 py-1 text-xs font-bold shadow-2xs">
+                      Slot #{verificationResult.slotNumber}
+                    </span>
+                  )}
+                  <span className="rounded-xl bg-white px-3 py-1 text-xs font-mono font-black shadow-2xs">
+                    {verificationResult.registrationCode}
+                  </span>
+                </div>
               </div>
 
               {/* Student Credential Box */}
@@ -325,44 +314,61 @@ export function ScannerClient({
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 text-rose-600 shrink-0" />
-              <div>
-                <h3 className="text-sm font-bold text-rose-900">Verification Failed</h3>
-                <p className="text-xs text-rose-700 mt-0.5">{verificationResult.error}</p>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-600 text-white shrink-0 shadow-xs">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-bold text-rose-950">Verification Denied</h3>
+                <p className="text-xs text-rose-800 leading-snug">
+                  {verificationResult.error}
+                </p>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Session Check-ins History */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+      {/* Recent Session Scan Stream */}
+      <div className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-slate-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Recent Check-Ins (This Terminal Session)
-            </h3>
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+            <History className="h-4 w-4 text-primary" />
+            <span>Recent Gate Check-In Stream</span>
           </div>
-          <span className="text-xs font-bold text-slate-400 font-mono">
-            {recentScans.length} Scans
+          <span className="text-xs text-slate-400">
+            {recentScans.length} verified this session
           </span>
         </div>
 
         {recentScans.length > 0 ? (
           <div className="divide-y divide-slate-100">
-            {recentScans.map((scan, idx) => (
+            {recentScans.map((scan, i) => (
               <div
-                key={idx}
+                key={i}
                 className="py-2.5 flex items-center justify-between gap-3 text-xs"
               >
-                <div className="space-y-0.5">
-                  <div className="font-bold text-slate-900">{scan.studentName}</div>
-                  <div className="text-[11px] text-slate-500">{scan.eventName}</div>
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`flex h-7 w-7 items-center justify-center rounded-xl font-bold text-[10px] ${
+                      scan.alreadyCheckedIn
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-emerald-100 text-emerald-800"
+                    }`}
+                  >
+                    {scan.alreadyCheckedIn ? "DUP" : "OK"}
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900 block">
+                      {scan.studentName}
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      {scan.eventName}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="font-mono text-[11px] font-bold text-slate-700 block">
+                <div className="text-right font-mono">
+                  <span className="font-bold text-slate-700 text-[11px] block">
                     {scan.code}
                   </span>
                   <span className="text-[10px] text-slate-400">{scan.time}</span>
@@ -371,8 +377,8 @@ export function ScannerClient({
             ))}
           </div>
         ) : (
-          <div className="text-center py-6 text-xs text-slate-400">
-            No check-ins recorded in this session yet.
+          <div className="py-8 text-center text-slate-400 text-xs">
+            No QR passes scanned in this session yet. Ready for check-ins!
           </div>
         )}
       </div>

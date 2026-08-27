@@ -80,15 +80,31 @@ export default async function CoordinatorDashboardPage() {
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-0.5 text-xs font-bold text-primary shadow-2xs">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>Coordinator Control Center</span>
+            <div className="flex items-center gap-2">
+              {data.primaryRole === "staff" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-0.5 text-xs font-bold text-purple-900 shadow-2xs">
+                  <ShieldCheck className="h-3.5 w-3.5 text-purple-700" />
+                  <span>Faculty Staff Coordinator</span>
+                </span>
+              ) : data.primaryRole === "admin" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-0.5 text-xs font-bold text-white shadow-2xs">
+                  <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Super Administrator</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-0.5 text-xs font-bold text-amber-900 shadow-2xs">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Student Coordinator (Field &amp; Entry)</span>
+                </span>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Event Management &amp; Check-In Hub
             </h1>
             <p className="text-xs text-slate-500">
-              Manage participant rosters, scan entry QR passes, and record attendance for your assigned competitions.
+              {data.primaryRole === "staff"
+                ? "Oversee competition logistics, manage participant rosters, venue updates, and check-in audit records."
+                : "Verify participant entry passes, scan QR codes, and record verified gate attendance."}
             </p>
           </div>
 

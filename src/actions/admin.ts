@@ -46,9 +46,10 @@ export async function getAdminOverviewMetrics() {
       { count: externalParticipants },
       { count: totalRegistrations },
       { data: events },
-      { data: registrations },
       { count: totalAttendance },
       { data: categories },
+      { data: passes },
+      { data: orders },
     ] = await Promise.all([
       adminClient.from("profiles").select("*", { count: "exact", head: true }),
       adminClient
@@ -60,24 +61,37 @@ export async function getAdminOverviewMetrics() {
         .select("*", { count: "exact", head: true })
         .eq("participant_type", "external"),
       adminClient.from("event_registrations").select("*", { count: "exact", head: true }),
-      adminClient.from("events").select("id, name, registration_fee, participant_limit, status, category_id"),
-      adminClient.from("event_registrations").select("id, status, payment_status, event_id"),
+      adminClient.from("events").select("id, name, registration_fee, participant_limit, status, category_id, is_pro_event"),
       adminClient.from("attendance").select("*", { count: "exact", head: true }),
       adminClient.from("event_categories").select("id, name"),
+      adminClient.from("delegate_passes").select("id, pass_tier, amount_paid, slots_used, status"),
+      adminClient.from("orders").select("id, amount, status"),
     ]);
 
-    // Calculate revenue
+    // Calculate revenue from paid delegate passes / orders
     let totalRevenue = 0;
-    const eventMap = new Map((events || []).map((e) => [e.id, e]));
+    let totalProPasses = 0;
+    let totalStandardPasses = 0;
 
-    (registrations || []).forEach((reg) => {
-      if (reg.payment_status === "paid") {
-        const evt = eventMap.get(reg.event_id);
-        if (evt && evt.registration_fee) {
-          totalRevenue += Number(evt.registration_fee);
+    (passes || []).forEach((pass) => {
+      if (pass.status === "active") {
+        totalRevenue += Number(pass.amount_paid || 0);
+        if (pass.pass_tier === "pro_pass") {
+          totalProPasses += 1;
+        } else {
+          totalStandardPasses += 1;
         }
       }
     });
+
+    // Fallback if passes table is empty yet orders exist
+    if (totalRevenue === 0 && orders && orders.length > 0) {
+      orders.forEach((o) => {
+        if (o.status === "paid") {
+          totalRevenue += Number(o.amount || 0);
+        }
+      });
+    }
 
     return {
       success: true,
@@ -86,6 +100,9 @@ export async function getAdminOverviewMetrics() {
         internalParticipants: internalParticipants || 0,
         externalParticipants: externalParticipants || 0,
         totalRegistrations: totalRegistrations || 0,
+        totalPasses: (passes || []).length,
+        totalProPasses,
+        totalStandardPasses,
         totalEvents: (events || []).length,
         activeEvents: (events || []).filter((e) => e.status === "registration_open" || e.status === "published").length,
         totalRevenue,
@@ -333,11 +350,20 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
       .from("event_registrations")
       .select(`
         id,
+        slot_number,
         registration_code,
         status,
         payment_status,
         created_at,
         qr_secret_nonce,
+        pass:delegate_passes (
+          id,
+          pass_code,
+          pass_tier,
+          amount_paid,
+          slots_used,
+          status
+        ),
         user:profiles (
           id,
           full_name,
@@ -347,12 +373,14 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
           participant_type,
           college_name,
           department,
+          course,
           year_of_study,
           register_number
         ),
         event:events (
           id,
           name,
+          is_pro_event,
           registration_fee,
           event_date,
           venue,
@@ -931,6 +959,311 @@ export async function updatePricingSettingsAdmin(payload: Partial<RegistrationPr
     return { success: true, settings: updated };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update pricing settings";
+    return { success: false, error: msg };
+  }
+}
+
+// 12. Fetch All Registered Users & Pass Holders for Admin
+export interface AdminUserListItem {
+  id: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string;
+  gender?: string;
+  participantType: "internal" | "external";
+  registerNumber?: string;
+  collegeName?: string;
+  department?: string;
+  course?: string;
+  yearOfStudy?: number;
+  isProfileCompleted: boolean;
+  createdAt: string;
+  roles: string[];
+  pass?: {
+    id: string;
+    passCode: string;
+    passTier: "standard_pass" | "pro_pass";
+    amountPaid: number;
+    slotsUsed: number;
+    totalSlots: number;
+    status: string;
+    createdAt: string;
+  } | null;
+  registrations: Array<{
+    id: string;
+    slotNumber: number;
+    registrationCode: string;
+    status: string;
+    paymentStatus: string;
+    isAttended: boolean;
+    scannedAt?: string | null;
+    event: {
+      id: string;
+      name: string;
+      slug: string;
+      isProEvent?: boolean;
+      venue: string;
+      eventDate: string;
+      startTime: string;
+      category?: string;
+    };
+  }>;
+  orders: Array<{
+    id: string;
+    orderNumber: string;
+    amount: number;
+    status: string;
+    provider: string;
+    createdAt: string;
+  }>;
+}
+
+export async function getAllUsersAndPassesAdmin() {
+  try {
+    const adminClient = await createAdminClient();
+
+    // Fetch all profiles, passes, registrations, roles, and orders in parallel
+    const [
+      { data: profiles, error: pErr },
+      { data: passes, error: passErr },
+      { data: registrations, error: regErr },
+      { data: roleAssignments, error: roleErr },
+      { data: orders, error: ordErr },
+    ] = await Promise.all([
+      adminClient
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      adminClient
+        .from("delegate_passes")
+        .select("*"),
+      adminClient
+        .from("event_registrations")
+        .select(`
+          id,
+          user_id,
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          event:events (
+            id,
+            name,
+            slug,
+            is_pro_event,
+            venue,
+            event_date,
+            start_time,
+            category:event_categories (name)
+          ),
+          attendance (
+            id,
+            scanned_at
+          )
+        `),
+      adminClient
+        .from("user_role_assignments")
+        .select("user_id, role_id"),
+      adminClient
+        .from("orders")
+        .select("id, user_id, order_number, amount, status, provider, created_at")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (pErr) throw pErr;
+
+    // Index related data by user_id
+    const passMap = new Map<string, any>();
+    (passes || []).forEach((pass) => {
+      passMap.set(pass.user_id, pass);
+    });
+
+    const regMap = new Map<string, any[]>();
+    (registrations || []).forEach((reg) => {
+      const list = regMap.get(reg.user_id) || [];
+      list.push(reg);
+      regMap.set(reg.user_id, list);
+    });
+
+    const roleMap = new Map<string, string[]>();
+    (roleAssignments || []).forEach((ra) => {
+      const list = roleMap.get(ra.user_id) || [];
+      list.push(ra.role_id);
+      roleMap.set(ra.user_id, list);
+    });
+
+    const orderMap = new Map<string, any[]>();
+    (orders || []).forEach((ord) => {
+      const list = orderMap.get(ord.user_id) || [];
+      list.push(ord);
+      orderMap.set(ord.user_id, list);
+    });
+
+    // Assemble unified user list
+    const users: AdminUserListItem[] = (profiles || []).map((prof) => {
+      const pass = passMap.get(prof.id);
+      const userRegs = regMap.get(prof.id) || [];
+      const userRoles = roleMap.get(prof.id) || [];
+      const userOrders = orderMap.get(prof.id) || [];
+
+      return {
+        id: prof.id,
+        fullName: prof.full_name || "Participant",
+        email: prof.email || "",
+        mobileNumber: prof.mobile_number || undefined,
+        gender: prof.gender || undefined,
+        participantType: prof.participant_type || "external",
+        registerNumber: prof.register_number || undefined,
+        collegeName: prof.college_name || undefined,
+        department: prof.department || undefined,
+        course: prof.course || undefined,
+        yearOfStudy: prof.year_of_study || undefined,
+        isProfileCompleted: Boolean(prof.is_profile_completed),
+        createdAt: prof.created_at,
+        roles: userRoles,
+        pass: pass
+          ? {
+              id: pass.id,
+              passCode: pass.pass_code,
+              passTier: pass.pass_tier,
+              amountPaid: Number(pass.amount_paid || 0),
+              slotsUsed: Number(pass.slots_used || userRegs.length),
+              totalSlots: Number(pass.total_slots || 2),
+              status: pass.status,
+              createdAt: pass.created_at,
+            }
+          : null,
+        registrations: userRegs.map((r) => {
+          const isAttended = Array.isArray(r.attendance)
+            ? r.attendance.length > 0
+            : Boolean(r.attendance);
+          const scannedAt = Array.isArray(r.attendance)
+            ? r.attendance[0]?.scanned_at
+            : (r.attendance as any)?.scanned_at;
+          const evt = Array.isArray(r.event) ? r.event[0] : r.event;
+
+          return {
+            id: r.id,
+            slotNumber: r.slot_number || 1,
+            registrationCode: r.registration_code,
+            status: r.status,
+            paymentStatus: r.payment_status,
+            isAttended,
+            scannedAt,
+            event: {
+              id: evt?.id || "",
+              name: evt?.name || "Competition",
+              slug: evt?.slug || "",
+              isProEvent: Boolean(evt?.is_pro_event),
+              venue: evt?.venue || "Main Auditorium",
+              eventDate: evt?.event_date || "",
+              startTime: evt?.start_time || "",
+              category: evt?.category?.name || "Track",
+            },
+          };
+        }),
+        orders: userOrders.map((o) => ({
+          id: o.id,
+          orderNumber: o.order_number,
+          amount: Number(o.amount || 0),
+          status: o.status,
+          provider: o.provider,
+          createdAt: o.created_at,
+        })),
+      };
+    });
+
+    return { success: true, users };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch users";
+    return { success: false, error: msg, users: [] };
+  }
+}
+
+// 13. Update User Profile by Admin
+export async function updateUserProfileAdmin(
+  userId: string,
+  data: {
+    fullName?: string;
+    mobileNumber?: string;
+    registerNumber?: string;
+    collegeName?: string;
+    department?: string;
+    course?: string;
+    yearOfStudy?: number;
+    participantType?: "internal" | "external";
+  }
+) {
+  try {
+    const { authorized } = await verifyAdminSession();
+    if (!authorized) return { success: false, error: "Unauthorized" };
+
+    const adminClient = await createAdminClient();
+
+    const { error } = await adminClient
+      .from("profiles")
+      .update({
+        full_name: data.fullName,
+        mobile_number: data.mobileNumber,
+        register_number: data.registerNumber,
+        college_name: data.collegeName,
+        department: data.department,
+        course: data.course,
+        year_of_study: data.yearOfStudy,
+        participant_type: data.participantType,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+
+    if (error) throw error;
+
+    revalidatePath("/admin/users", "page");
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update profile";
+    return { success: false, error: msg };
+  }
+}
+
+// 14. Assign or Revoke Role by Admin
+export async function updateUserRoleAdmin(
+  userId: string,
+  roleId: "admin" | "staff_coordinator" | "student_coordinator",
+  action: "assign" | "revoke"
+) {
+  try {
+    const { authorized } = await verifyAdminSession();
+    if (!authorized) return { success: false, error: "Unauthorized" };
+
+    const adminClient = await createAdminClient();
+
+    if (action === "assign") {
+      const { error } = await adminClient
+        .from("user_role_assignments")
+        .upsert(
+          {
+            user_id: userId,
+            role_id: roleId,
+          },
+          { onConflict: "user_id,role_id" }
+        );
+
+      if (error) throw error;
+    } else {
+      const { error } = await adminClient
+        .from("user_role_assignments")
+        .delete()
+        .eq("user_id", userId)
+        .eq("role_id", roleId);
+
+      if (error) throw error;
+    }
+
+    revalidatePath("/admin/users", "page");
+    revalidatePath("/admin/coordinators", "page");
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update role";
     return { success: false, error: msg };
   }
 }

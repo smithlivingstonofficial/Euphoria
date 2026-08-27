@@ -124,6 +124,9 @@ export default async function CoordinatorEventRosterPage({
         <EventRosterClient
           eventId={event.id}
           eventName={event.name}
+          eventVenue={event.venue}
+          eventStatus={event.status}
+          roleType={data.roleType || "student"}
           initialAttendees={attendees as any}
         />
       </main>

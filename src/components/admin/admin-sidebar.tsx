@@ -17,6 +17,7 @@ import {
   LogOut,
   ChevronRight,
   DollarSign,
+  UserCheck,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 
@@ -52,6 +53,12 @@ const NAV_SECTIONS = [
   {
     title: "LOGISTICS & PASSES",
     items: [
+      {
+        href: "/admin/users",
+        label: "Registered Users & Passes",
+        icon: UserCheck,
+        badge: "Directory",
+      },
       {
         href: "/admin/registrations",
         label: "Master Registrations",

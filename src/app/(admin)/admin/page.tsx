@@ -150,10 +150,30 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Quick Access Matrix */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          href="/admin/users"
+          className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs hover:border-primary/50 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
+                  Users &amp; Passes
+                </h3>
+                <p className="text-[11px] text-slate-500">Profiles, pass codes &amp; slots</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 group-hover:text-purple-600 transition-all" />
+          </div>
+        </Link>
+
         <Link
           href="/admin/events"
-          className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:border-primary/50 transition-all"
+          className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs hover:border-primary/50 transition-all"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -161,10 +181,10 @@ export default async function AdminDashboardPage() {
                 <Calendar className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">
-                  Events & Competitions
+                <h3 className="text-xs font-bold text-slate-900 group-hover:text-primary transition-colors">
+                  61 Competitions
                 </h3>
-                <p className="text-xs text-slate-500">Manage schedules, rules, prizes & capacity</p>
+                <p className="text-[11px] text-slate-500">Schedules, venues &amp; capacity</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 group-hover:text-primary transition-all" />
@@ -173,18 +193,18 @@ export default async function AdminDashboardPage() {
 
         <Link
           href="/admin/registrations"
-          className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:border-primary/50 transition-all"
+          className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs hover:border-primary/50 transition-all"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                <Users className="h-5 w-5" />
+                <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
-                  Registrations & Passes
+                <h3 className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Event Check-Ins
                 </h3>
-                <p className="text-xs text-slate-500">Search directory, QR codes & check-ins</p>
+                <p className="text-[11px] text-slate-500">Search directory &amp; attendance</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 group-hover:text-emerald-600 transition-all" />
@@ -193,7 +213,7 @@ export default async function AdminDashboardPage() {
 
         <Link
           href="/admin/reports"
-          className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:border-primary/50 transition-all"
+          className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-xs hover:border-primary/50 transition-all"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -201,10 +221,10 @@ export default async function AdminDashboardPage() {
                 <FileSpreadsheet className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 group-hover:text-amber-700 transition-colors">
-                  Reports & CSV Export
+                <h3 className="text-xs font-bold text-slate-900 group-hover:text-amber-700 transition-colors">
+                  Export Reports
                 </h3>
-                <p className="text-xs text-slate-500">Printable attendance sheets & spreadsheets</p>
+                <p className="text-[11px] text-slate-500">Attendance &amp; accounting CSVs</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 group-hover:text-amber-600 transition-all" />

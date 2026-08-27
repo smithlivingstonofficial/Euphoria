@@ -19,11 +19,17 @@ import {
   ExternalLink,
   Layers,
   ShoppingBag,
+  Star,
+  Gift,
+  Plus,
+  ArrowRight,
 } from "lucide-react";
-import { formatDate, formatTime } from "@/lib/utils";
+import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
+import { UserPassSummary } from "@/actions/passes";
 
 interface RegistrationItem {
   id: string;
+  slot_number?: number;
   registration_code: string;
   status: string;
   payment_status: string;
@@ -33,6 +39,7 @@ interface RegistrationItem {
     id: string;
     name: string;
     slug: string;
+    is_pro_event?: boolean;
     school_or_dept: string;
     venue: string;
     event_date: string;
@@ -62,18 +69,28 @@ interface ProfileData {
 export function DigitalPassClient({
   profile,
   registrations,
+  passSummary,
 }: {
   profile: ProfileData;
   registrations: RegistrationItem[];
+  passSummary?: UserPassSummary | null;
 }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
-  // Determine master code
+  const hasPro =
+    passSummary?.passTier === "pro_pass" ||
+    registrations.some((r) => Boolean(r.event?.is_pro_event));
+
+  const slotsUsed = passSummary?.slotsUsed ?? registrations.length;
+  const remainingSlots = Math.max(0, 2 - slotsUsed);
+
+  // Determine master pass code
   const masterCode =
-    registrations.length > 0
+    passSummary?.passCode ||
+    (registrations.length > 0
       ? registrations[0].registration_code
-      : `EUPH-26-${profile.id.substring(0, 6).toUpperCase()}`;
+      : `EUPH-26-${profile.id.substring(0, 6).toUpperCase()}`);
 
   useEffect(() => {
     // Generate high resolution QR code encoding registration verification payload
@@ -82,19 +99,24 @@ export function DigitalPassClient({
       uid: profile.id,
       name: profile.full_name,
       type: profile.participant_type,
-      events: registrations.map((r) => r.event.id),
+      tier: hasPro ? "pro_pass" : "standard_pass",
+      events: registrations.map((r) => ({
+        id: r.event.id,
+        name: r.event.name,
+        slot: r.slot_number || 1,
+      })),
       ts: Date.now(),
     });
 
     QRCode.toDataURL(qrPayload, {
-      width: 280,
+      width: 320,
       margin: 1.5,
       color: {
         dark: "#0F172A",
         light: "#FFFFFF",
       },
     }).then((url) => setQrDataUrl(url));
-  }, [masterCode, profile, registrations]);
+  }, [masterCode, profile, registrations, hasPro]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(masterCode);
@@ -112,9 +134,9 @@ export function DigitalPassClient({
         <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-primary">
           <QrCode className="h-7 w-7" />
         </div>
-        <h3 className="text-lg font-bold text-slate-900">No Active Event Passes</h3>
+        <h3 className="text-lg font-bold text-slate-900">No Active Festival Pass</h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto">
-          You haven&apos;t registered for any competitions yet. Explore our 61 technical symposium events and claim your delegate pass.
+          You haven&apos;t registered for any competitions yet. Explore our 61 technical symposium events and claim your pass.
         </p>
         <div className="pt-2">
           <Link
@@ -134,7 +156,8 @@ export function DigitalPassClient({
       {/* Action Toolbar */}
       <div className="flex items-center justify-between gap-3 print:hidden">
         <div className="text-xs text-slate-500 font-medium">
-          Pass Status: <strong className="text-emerald-600 font-bold">Active &amp; Valid</strong> • {registrations.length} Competitions Registered
+          Status: <strong className="text-emerald-600 font-bold">Active Pass</strong> •{" "}
+          {slotsUsed}/2 Slots Used {remainingSlots > 0 ? `(1 Slot Open • ₹0)` : `(Complete)`}
         </div>
 
         <div className="flex items-center gap-2">
@@ -168,20 +191,33 @@ export function DigitalPassClient({
       {/* Main Digital Pass Card (Printable Layout) */}
       <div className="rounded-3xl border-2 border-slate-200/90 bg-white shadow-xl overflow-hidden print:border-none print:shadow-none max-w-2xl mx-auto">
         {/* Pass Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-primary p-6 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div
+          className={`p-6 sm:p-7 text-white relative overflow-hidden ${
+            hasPro
+              ? "bg-gradient-to-r from-amber-600 via-slate-900 to-amber-700"
+              : "bg-gradient-to-r from-slate-900 via-indigo-950 to-primary"
+          }`}
+        >
+          <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="flex items-start justify-between gap-4 relative z-10">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase backdrop-blur-xs">
-                  Official Delegate Pass
-                </span>
+                {hasPro ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                    <Star className="h-3 w-3 fill-current" />
+                    <span>PRO DELEGATE PASS</span>
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase backdrop-blur-xs">
+                    STANDARD DELEGATE PASS
+                  </span>
+                )}
                 <span className="rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-bold">
                   2026
                 </span>
               </div>
-              <h2 className="text-2xl font-black tracking-tight">EUPHORIA</h2>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">EUPHORIA</h2>
               <p className="text-[11px] text-slate-300">
                 Kalasalingam Academy of Research and Education
               </p>
@@ -267,10 +303,10 @@ export function DigitalPassClient({
 
                 <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                    Event Quota
+                    Pass Allocation
                   </span>
                   <span className="font-bold text-primary">
-                    {registrations.length} Registered
+                    {slotsUsed} / 2 Slots
                   </span>
                 </div>
               </div>
@@ -281,7 +317,7 @@ export function DigitalPassClient({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
-                Registered Event Access
+                Registered Event Access (Slot 1 &amp; Slot 2)
               </span>
               <span className="text-[11px] text-slate-400">
                 Valid for September 25 &amp; 26, 2026
@@ -297,8 +333,14 @@ export function DigitalPassClient({
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="rounded-md bg-slate-100 px-1.5 py-0.2 text-[9px] font-bold text-slate-600">
-                        #{idx + 1}
+                        Slot #{reg.slot_number || idx + 1}
                       </span>
+                      {reg.event.is_pro_event && (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase">
+                          <Star className="h-2.5 w-2.5 fill-current" />
+                          <span>PRO</span>
+                        </span>
+                      )}
                       <span className="rounded-md bg-indigo-50 px-1.5 py-0.2 text-[9px] font-bold text-primary">
                         {reg.event.category?.name || "Track"}
                       </span>
@@ -325,7 +367,7 @@ export function DigitalPassClient({
                     {reg.isAttended ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200 shadow-2xs">
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        <span>Attended / Verified</span>
+                        <span>Attended</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-primary border border-indigo-200">
@@ -335,6 +377,33 @@ export function DigitalPassClient({
                   </div>
                 </div>
               ))}
+
+              {/* Slot 2 open placeholder if user has only 1 registered event */}
+              {remainingSlots > 0 && (
+                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/50 print:hidden">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-emerald-200 px-1.5 py-0.2 text-[9px] font-bold text-emerald-900">
+                        Slot #2 Open
+                      </span>
+                      <span className="text-xs font-bold text-emerald-950">
+                        Included in your pass (₹0 extra fee)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800">
+                      You can still choose 1 more normal event anytime before festival registrations close.
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/events"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition-colors shrink-0"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Claim 2nd Event (+₹0)</span>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 

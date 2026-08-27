@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getUserPassSummary } from "@/actions/passes";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { DigitalPassClient } from "./digital-pass-client";
@@ -31,12 +32,15 @@ export default async function UserPassesPage() {
     redirect("/login?redirect=/dashboard/passes");
   }
 
-  // Fetch profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Fetch profile and pass summary in parallel
+  const [{ data: profile }, passSummaryRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle(),
+    getUserPassSummary(),
+  ]);
 
   if (!profile || !profile.is_profile_completed) {
     redirect("/complete-profile");
@@ -47,6 +51,7 @@ export default async function UserPassesPage() {
     .from("event_registrations")
     .select(`
       id,
+      slot_number,
       registration_code,
       status,
       payment_status,
@@ -60,6 +65,7 @@ export default async function UserPassesPage() {
         id,
         name,
         slug,
+        is_pro_event,
         school_or_dept,
         venue,
         event_date,
@@ -73,7 +79,7 @@ export default async function UserPassesPage() {
       )
     `)
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .order("slot_number", { ascending: true });
 
   const userRegistrations = (registrations || []).map((r) => {
     const isAttended = Array.isArray(r.attendance)
@@ -114,7 +120,7 @@ export default async function UserPassesPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Present this pass with QR code at competition venue entrance gates for instant attendance check-in.
+              Present this pass with QR code at competition venue entrance checkpoints for attendance verification.
             </p>
           </div>
 
@@ -123,7 +129,7 @@ export default async function UserPassesPage() {
             className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary-hover transition-colors shrink-0"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>Browse More Events</span>
+            <span>Browse Catalog</span>
           </Link>
         </div>
 
@@ -131,6 +137,7 @@ export default async function UserPassesPage() {
         <DigitalPassClient
           profile={profile}
           registrations={userRegistrations as any}
+          passSummary={passSummaryRes.data}
         />
       </main>
 

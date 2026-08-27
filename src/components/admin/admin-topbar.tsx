@@ -20,9 +20,11 @@ import { AdminSidebar } from "./admin-sidebar";
 
 const BREADCRUMB_MAP: Record<string, string> = {
   "/admin": "Executive Dashboard",
+  "/admin/users": "Registered Users & Delegate Passes",
   "/admin/events": "Events & Competitions",
   "/admin/events/new": "Create New Event",
   "/admin/events/bulk": "Bulk Event Upload Center",
+  "/admin/pricing": "Pricing & Tier Policy Settings",
   "/admin/registrations": "Master Registrations & Passes",
   "/admin/coordinators": "Coordinator Role Assignments",
   "/admin/announcements": "Broadcast Alerts & Notifications",

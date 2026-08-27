@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -35,9 +35,9 @@ import {
   Lock,
   Zap,
   Info,
+  Gift,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
-import { registerForEvent } from "@/actions/events";
 import { useCart } from "@/context/cart-context";
 
 export interface PublicEvent {
@@ -120,6 +120,7 @@ export function EventCatalogExplorer({
   // Cart Context Hook
   const {
     isEventSelected,
+    isEventConfirmed,
     toggleEvent,
     canSelectEvent,
     openCart,
@@ -127,16 +128,18 @@ export function EventCatalogExplorer({
     hasProEventSelected,
     firstSelectedEvent,
     maxEventsLimit,
+    confirmedEvents,
+    userPass,
   } = useCart();
 
-  const passTotalAmount = useMemo(() => {
-    return hasProEventSelected ? 300 : 200;
-  }, [hasProEventSelected]);
+  const totalConfirmedCount = confirmedEvents.length;
+  const isPassFull = totalConfirmedCount >= 2;
+  const isIncrementalSlotClaim = totalConfirmedCount === 1;
 
-  // Registration state
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [regSuccessCode, setRegSuccessCode] = useState<string | null>(null);
-  const [regError, setRegError] = useState<string | null>(null);
+  const passTotalAmount = useMemo(() => {
+    if (isIncrementalSlotClaim) return 0;
+    return hasProEventSelected ? 300 : 200;
+  }, [hasProEventSelected, isIncrementalSlotClaim]);
 
   // Unique list of schools
   const schoolsList = useMemo(() => {
@@ -161,14 +164,18 @@ export function EventCatalogExplorer({
   const day1Count = useMemo(
     () =>
       initialEvents.filter(
-        (e) => e.event_date && (e.event_date.startsWith("2026-09-25") || e.event_date.includes("-09-25"))
+        (e) =>
+          e.event_date &&
+          (e.event_date.startsWith("2026-09-25") || e.event_date.includes("-09-25"))
       ).length,
     [initialEvents]
   );
   const day2Count = useMemo(
     () =>
       initialEvents.filter(
-        (e) => e.event_date && (e.event_date.startsWith("2026-09-26") || e.event_date.includes("-09-26"))
+        (e) =>
+          e.event_date &&
+          (e.event_date.startsWith("2026-09-26") || e.event_date.includes("-09-26"))
       ).length,
     [initialEvents]
   );
@@ -182,7 +189,9 @@ export function EventCatalogExplorer({
       // 1. Text Search matching across all tokens
       if (queryTokens.length > 0) {
         const eventSearchTarget = normalizeText(
-          `${evt.name || ""} ${evt.school_or_dept || ""} ${evt.venue || ""} ${evt.category?.name || ""} ${evt.short_description || ""} ${evt.description || ""}`
+          `${evt.name || ""} ${evt.school_or_dept || ""} ${evt.venue || ""} ${
+            evt.category?.name || ""
+          } ${evt.short_description || ""} ${evt.description || ""}`
         );
 
         const allTokensMatch = queryTokens.every((token) =>
@@ -228,82 +237,70 @@ export function EventCatalogExplorer({
     setSelectedTier("all");
   };
 
-  const handleRegister = async (eventId: string) => {
-    if (!user) {
-      window.location.href = `/login?redirect=/events`;
-      return;
-    }
-
-    setIsRegistering(true);
-    setRegError(null);
-    setRegSuccessCode(null);
-
-    const res = await registerForEvent(eventId);
-
-    if (!res.success) {
-      if (res.redirect) {
-        window.location.href = res.redirect;
-      } else {
-        setRegError(res.error || "Registration failed");
-      }
-    } else {
-      setRegSuccessCode(res.registrationCode || "CONFIRMED");
-    }
-    setIsRegistering(false);
-  };
-
   return (
-    <div className="space-y-3 sm:space-y-4">
-      {/* Dynamic Selection Alert (Only shown when 1+ events selected) */}
-      {selectedEvents.length > 0 && (
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3 sm:p-3.5 text-xs text-indigo-950 flex items-center justify-between gap-3 animate-in fade-in duration-150">
-          <div className="flex items-center gap-2 min-w-0">
-            <Zap className="h-4 w-4 shrink-0 text-primary" />
-            <div className="truncate text-xs">
-              {selectedEvents.length === 1 && firstSelectedEvent?.is_pro_event && (
-                <span>
-                  <strong>Slot 1 (Pro):</strong> &quot;{firstSelectedEvent?.name}&quot; •{" "}
-                  <span className="text-indigo-700 font-medium">Choose 1 Normal Event for Slot 2.</span>
-                </span>
-              )}
-              {selectedEvents.length === 1 && !firstSelectedEvent?.is_pro_event && (
-                <span>
-                  <strong>Slot 1 (Normal):</strong> &quot;{firstSelectedEvent?.name}&quot; •{" "}
-                  <span className="text-indigo-700 font-medium">Choose 1 more Normal Event for Slot 2.</span>
-                </span>
-              )}
-              {selectedEvents.length >= maxEventsLimit && (
-                <span className="text-emerald-900 font-bold">
-                  ✅ Pass Ready (2/2 Selected) • Total: ₹{passTotalAmount}
-                </span>
-              )}
+    <div className="space-y-6">
+      {/* 1. PASS STATUS ALERT BANNERS */}
+      {isPassFull ? (
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-emerald-950">
+                Festival Pass Active • 2 of 2 Events Confirmed
+              </h3>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                You have reached the maximum allowed limit of 2 events. You can view your pass, timings, and QR code in your dashboard.
+              </p>
             </div>
           </div>
-
+          <Link
+            href="/dashboard/passes"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition-colors shrink-0"
+          >
+            <QrCode className="h-4 w-4" />
+            <span>View Festival Pass</span>
+          </Link>
+        </div>
+      ) : isIncrementalSlotClaim ? (
+        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-sky-50 to-indigo-50 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-xs">
+              <Gift className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">
+                1 Slot Remaining on Your Active Pass (+₹0 Included)
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Slot #1 is confirmed ({confirmedEvents[0]?.name}). Choose 1 more eligible normal event below to claim your 2nd included slot at no extra charge!
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={openCart}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 active:scale-95 transition-all shrink-0 cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary-hover transition-colors shrink-0 cursor-pointer"
           >
-            <ShoppingBag className="h-3.5 w-3.5" />
-            <span>Pass ({selectedEvents.length}/2)</span>
+            <ShoppingBag className="h-4 w-4" />
+            <span>Open Pass Selection ({selectedEvents.length}/1)</span>
           </button>
         </div>
-      )}
+      ) : null}
 
-      {/* Unified Search & Filters Container */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-3 sm:p-3.5 shadow-xs space-y-2.5">
-        {/* Mobile View: 4 Clean, Spacious Full-Width Rows */}
-        <div className="space-y-2 lg:hidden">
-          {/* Row 1: Full-Width Search Input */}
+      {/* 2. SEARCH & FILTER CONTROLS */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
+        {/* Mobile Filter View */}
+        <div className="lg:hidden space-y-2.5">
           <div className="relative">
             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search competitions by title, topic, venue..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
+              placeholder="Search competitions, topics, or venues..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
@@ -316,86 +313,85 @@ export function EventCatalogExplorer({
             )}
           </div>
 
-          {/* Row 2: Tier Switcher (Full Width 3 Segments) */}
-          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-center">
-            <button
-              type="button"
-              onClick={() => setSelectedTier("all")}
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                selectedTier === "all"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              All Tiers ({initialEvents.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                selectedTier === "pro"
-                  ? "bg-amber-500 text-white shadow-xs font-bold"
-                  : "text-amber-800 hover:text-amber-950"
-              }`}
-            >
-              <Star className="h-3 w-3 fill-current" />
-              <span>Pro ({proCount})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                selectedTier === "normal"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Normal ({normalCount})
-            </button>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 w-full">
+              <button
+                type="button"
+                onClick={() => setSelectedTier("all")}
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                  selectedTier === "all"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600"
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  selectedTier === "pro"
+                    ? "bg-amber-500 text-white shadow-xs font-bold"
+                    : "text-amber-800"
+                }`}
+              >
+                <Star className="h-2.5 w-2.5 fill-current" />
+                <span>Pro</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                  selectedTier === "normal"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600"
+                }`}
+              >
+                Normal
+              </button>
+            </div>
+
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 w-full">
+              <button
+                type="button"
+                onClick={() => setSelectedDate("all")}
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                  selectedDate === "all"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600"
+                }`}
+              >
+                All Days
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
+                }
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                  selectedDate === "2026-09-25"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600"
+                }`}
+              >
+                Day 1
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
+                }
+                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                  selectedDate === "2026-09-26"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600"
+                }`}
+              >
+                Day 2
+              </button>
+            </div>
           </div>
 
-          {/* Row 3: Day Switcher (Full Width 3 Segments) */}
-          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-center">
-            <button
-              type="button"
-              onClick={() => setSelectedDate("all")}
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                selectedDate === "all"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              All Days ({initialEvents.length})
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
-              }
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                selectedDate === "2026-09-25"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Day 1 ({day1Count})
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
-              }
-              className={`py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                selectedDate === "2026-09-26"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Day 2 ({day2Count})
-            </button>
-          </div>
-
-          {/* Row 4: Full-Width School Selector Dropdown */}
           <div className="relative">
             <select
               value={selectedSchool}
@@ -413,9 +409,9 @@ export function EventCatalogExplorer({
           </div>
         </div>
 
-        {/* Desktop View: Sleek Single-Row Layout */}
+        {/* Desktop Single-Row Layout */}
         <div className="hidden lg:flex items-center gap-2.5">
-          {/* 1. Search Input (Flex-1) */}
+          {/* 1. Search Input */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
@@ -437,7 +433,7 @@ export function EventCatalogExplorer({
             )}
           </div>
 
-          {/* 2. Tier Selector (All / Pro / Normal) */}
+          {/* 2. Tier Selector */}
           <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0">
             <button
               type="button"
@@ -475,7 +471,7 @@ export function EventCatalogExplorer({
             </button>
           </div>
 
-          {/* 3. Day Selector Tabs (All / Day 1 / Day 2) */}
+          {/* 3. Day Selector Tabs */}
           <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0">
             <button
               type="button"
@@ -565,7 +561,7 @@ export function EventCatalogExplorer({
         )}
       </div>
 
-      {/* Events Grid */}
+      {/* 3. EVENTS GRID */}
       {filteredEvents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredEvents.map((evt) => {
@@ -574,32 +570,44 @@ export function EventCatalogExplorer({
             const regCount = (evt.registrations || []).length;
             const limit = evt.participant_limit || 100;
             const isSelected = isEventSelected(evt.id);
+            const isConfirmed = isEventConfirmed(evt.id);
             const validation = canSelectEvent(evt);
 
             return (
               <div
                 key={evt.id}
                 className={`group relative rounded-2xl border bg-white p-4 sm:p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                  isPro
+                  isConfirmed
+                    ? "border-emerald-300/90 bg-gradient-to-b from-emerald-50/30 via-white to-white"
+                    : isPro
                     ? "border-amber-300/90 bg-gradient-to-b from-amber-50/20 via-white to-white"
                     : "border-slate-200/90"
                 } ${theme.cardBorder} flex flex-col justify-between overflow-hidden`}
               >
                 {/* Top Accent Gradient Bar */}
                 <div
-                  className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${theme.accent}`}
+                  className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
+                    isConfirmed
+                      ? "from-emerald-500 to-teal-600"
+                      : theme.accent
+                  }`}
                 />
 
-                <div className="space-y-2.5 pt-0.5">
-                  {/* Top Metadata Row */}
+                <div className="space-y-3">
+                  {/* Card Header: Category Badge & Tier */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {isPro && (
+                      {isConfirmed ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>ON YOUR PASS</span>
+                        </span>
+                      ) : isPro ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                           <Star className="h-3 w-3 fill-current" />
                           <span>PRO EVENT</span>
                         </span>
-                      )}
+                      ) : null}
 
                       <span
                         className={`rounded-md px-2 py-0.5 text-[10px] font-bold border ${theme.badge} truncate max-w-[170px]`}
@@ -648,8 +656,13 @@ export function EventCatalogExplorer({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {/* Event Selection Toggle */}
-                      {isSelected ? (
+                      {/* Event Selection States */}
+                      {isConfirmed ? (
+                        <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <span>Confirmed</span>
+                        </span>
+                      ) : isSelected ? (
                         <button
                           type="button"
                           onClick={() => toggleEvent(evt)}
@@ -663,13 +676,21 @@ export function EventCatalogExplorer({
                           type="button"
                           onClick={() => toggleEvent(evt)}
                           className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                            isPro
+                            isIncrementalSlotClaim
+                              ? "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-300 font-extrabold shadow-2xs"
+                              : isPro
                               ? "bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200 shadow-2xs font-extrabold"
                               : "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200"
                           }`}
                         >
-                          <ShoppingBag className="h-3.5 w-3.5" />
-                          <span>Select</span>
+                          {isIncrementalSlotClaim ? (
+                            <Gift className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <ShoppingBag className="h-3.5 w-3.5" />
+                          )}
+                          <span>
+                            {isIncrementalSlotClaim ? "Select (+₹0)" : "Select"}
+                          </span>
                         </button>
                       ) : (
                         <button
@@ -686,11 +707,7 @@ export function EventCatalogExplorer({
                       {/* View Details Button */}
                       <button
                         type="button"
-                        onClick={() => {
-                          setRegSuccessCode(null);
-                          setRegError(null);
-                          setActiveModalEvent(evt);
-                        }}
+                        onClick={() => setActiveModalEvent(evt)}
                         className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
                         title="View details"
                       >
@@ -701,7 +718,7 @@ export function EventCatalogExplorer({
                   </div>
 
                   {/* Inline notice when locked */}
-                  {!isSelected && !validation.allowed && validation.reason && (
+                  {!isConfirmed && !isSelected && !validation.allowed && validation.reason && (
                     <p className="text-[10px] text-amber-800 font-medium flex items-center gap-1 leading-tight">
                       <Info className="h-3 w-3 shrink-0 text-amber-600" />
                       <span>{validation.reason}</span>
@@ -732,18 +749,32 @@ export function EventCatalogExplorer({
         </div>
       )}
 
-      {/* Mobile Floating Pass Sticky Dock */}
+      {/* 4. MOBILE FLOATING PASS STICKY DOCK */}
       {selectedEvents.length > 0 && (
         <div className="fixed bottom-4 inset-x-4 z-40 sm:hidden">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/95 backdrop-blur-xl p-3 shadow-2xl shadow-black/70 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200">
             <div className="min-w-0 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shrink-0 shadow-md">
-                <ShoppingBag className="h-4 w-4" />
+              <div
+                className={`flex h-9 w-9 items-center justify-center rounded-xl text-white shrink-0 shadow-md ${
+                  isIncrementalSlotClaim ? "bg-emerald-600" : "bg-primary"
+                }`}
+              >
+                {isIncrementalSlotClaim ? (
+                  <Gift className="h-4 w-4" />
+                ) : (
+                  <ShoppingBag className="h-4 w-4" />
+                )}
               </div>
               <div className="min-w-0 text-xs">
                 <div className="font-extrabold text-white flex items-center gap-1.5 truncate">
-                  <span>{selectedEvents.length}/2 Selected</span>
-                  {hasProEventSelected ? (
+                  <span>
+                    {totalConfirmedCount + selectedEvents.length}/2 Slots
+                  </span>
+                  {isIncrementalSlotClaim ? (
+                    <span className="rounded bg-emerald-500 text-slate-950 font-black text-[9px] px-1 py-0.2">
+                      CLAIM SLOT 2 (+₹0)
+                    </span>
+                  ) : hasProEventSelected ? (
                     <span className="rounded bg-amber-500 text-slate-950 font-black text-[9px] px-1 py-0.2">
                       ⭐ PRO PASS
                     </span>
@@ -754,7 +785,7 @@ export function EventCatalogExplorer({
                   )}
                 </div>
                 <div className="text-[11px] font-semibold text-slate-300">
-                  Total: ₹{passTotalAmount}
+                  Payable: {formatCurrency(passTotalAmount)}
                 </div>
               </div>
             </div>
@@ -770,7 +801,7 @@ export function EventCatalogExplorer({
         </div>
       )}
 
-      {/* Quick Registration & Event Details Modal */}
+      {/* 5. EVENT DETAILS MODAL */}
       {activeModalEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 shadow-2xl space-y-4 sm:space-y-5 my-8">
@@ -786,6 +817,12 @@ export function EventCatalogExplorer({
             {/* Modal Header */}
             <div className="space-y-1.5 pr-8">
               <div className="flex items-center gap-2 flex-wrap">
+                {isEventConfirmed(activeModalEvent.id) && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>CONFIRMED ON PASS</span>
+                  </span>
+                )}
                 {activeModalEvent.is_pro_event && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                     <Star className="h-3 w-3 fill-current" />
@@ -867,106 +904,66 @@ export function EventCatalogExplorer({
               </div>
             )}
 
-            {/* Success Alert */}
-            {regSuccessCode && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-sm">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <span>Registration Confirmed!</span>
-                </div>
-                <p className="text-[11px]">
-                  Your pass has been generated:{" "}
-                  <strong className="font-mono text-emerald-950 font-bold">
-                    {regSuccessCode}
-                  </strong>
-                </p>
-                <div className="pt-1">
-                  <Link
-                    href="/dashboard"
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition-colors"
-                  >
-                    <QrCode className="h-3.5 w-3.5" />
-                    <span>View Digital Pass in Dashboard</span>
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {/* Error Alert */}
-            {regError && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-                <span>{regError}</span>
-              </div>
-            )}
-
-            {/* Modal Action CTA */}
-            {!regSuccessCode && (
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between gap-2.5">
-                  {isEventSelected(activeModalEvent.id) ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleEvent(activeModalEvent)}
-                      className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      <span>Selected (Remove)</span>
-                    </button>
-                  ) : canSelectEvent(activeModalEvent).allowed ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleEvent(activeModalEvent)}
-                      className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer"
-                    >
-                      <ShoppingBag className="h-4 w-4" />
-                      <span>Add to Pass</span>
-                    </button>
+            {/* Modal Actions */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2.5">
+              {isEventConfirmed(activeModalEvent.id) ? (
+                <span className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>Already on Your Pass</span>
+                </span>
+              ) : isEventSelected(activeModalEvent.id) ? (
+                <button
+                  type="button"
+                  onClick={() => toggleEvent(activeModalEvent)}
+                  className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>Selected (Remove)</span>
+                </button>
+              ) : canSelectEvent(activeModalEvent).allowed ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleEvent(activeModalEvent);
+                    setActiveModalEvent(null);
+                    openCart();
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold text-white shadow-xs transition-all cursor-pointer ${
+                    isIncrementalSlotClaim
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : "bg-slate-900 hover:bg-slate-800"
+                  }`}
+                >
+                  {isIncrementalSlotClaim ? (
+                    <Gift className="h-4 w-4" />
                   ) : (
-                    <button
-                      type="button"
-                      disabled
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
-                    >
-                      <Lock className="h-4 w-4 text-slate-400" />
-                      <span>Selection Locked</span>
-                    </button>
+                    <ShoppingBag className="h-4 w-4" />
                   )}
+                  <span>
+                    {isIncrementalSlotClaim
+                      ? "Claim as 2nd Event (+₹0)"
+                      : "Add to Pass"}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
+                >
+                  <Lock className="h-4 w-4 text-slate-400" />
+                  <span>Selection Locked</span>
+                </button>
+              )}
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveModalEvent(null)}
-                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRegister(activeModalEvent.id)}
-                      disabled={isRegistering}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
-                    >
-                      {isRegistering ? (
-                        <span>Issuing Pass...</span>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>Register Solo</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {!isEventSelected(activeModalEvent.id) && !canSelectEvent(activeModalEvent).allowed && (
-                  <p className="text-[11px] text-amber-800 font-medium flex items-center gap-1">
-                    <Info className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                    <span>{canSelectEvent(activeModalEvent).reason}</span>
-                  </p>
-                )}
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setActiveModalEvent(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { PublicEvent } from "@/components/events/event-catalog-explorer";
 
 export const MAX_EVENTS_PER_PASS = 2;
@@ -8,6 +15,7 @@ export const MAX_EVENTS_PER_PASS = 2;
 export interface SelectionValidation {
   allowed: boolean;
   reason?: string;
+  isConfirmed?: boolean;
 }
 
 export interface PricingSettings {
@@ -25,6 +33,25 @@ export interface PricingSettings {
   is_registration_active: boolean;
 }
 
+export interface ConfirmedEventItem {
+  id: string;
+  eventId: string;
+  name: string;
+  isProEvent: boolean;
+  slotNumber: number;
+  registrationCode: string;
+}
+
+export interface UserPassInfo {
+  hasPass: boolean;
+  passCode?: string;
+  passTier?: "standard_pass" | "pro_pass";
+  amountPaid?: number;
+  totalSlots: number;
+  slotsUsed: number;
+  remainingSlots: number;
+}
+
 interface CartContextType {
   selectedEvents: PublicEvent[];
   isCartOpen: boolean;
@@ -36,12 +63,16 @@ interface CartContextType {
   toggleEvent: (event: PublicEvent) => boolean;
   clearCart: () => void;
   isEventSelected: (eventId: string) => boolean;
+  isEventConfirmed: (eventId: string) => boolean;
   canSelectEvent: (event: PublicEvent) => SelectionValidation;
   hasProEventSelected: boolean;
   firstSelectedEvent: PublicEvent | null;
   maxEventsLimit: number;
   pricingSettings: PricingSettings;
   setPricingSettings: (settings: PricingSettings) => void;
+  userPass: UserPassInfo;
+  confirmedEvents: ConfirmedEventItem[];
+  setUserPassState: (pass: UserPassInfo, confirmed: ConfirmedEventItem[]) => void;
   calculatePricing: (participantType?: "internal" | "external" | null) => {
     baseFee: number;
     includedCount: number;
@@ -51,6 +82,7 @@ interface CartContextType {
     totalAmount: number;
     isInternal: boolean;
     isProPass: boolean;
+    isIncrementalClaim: boolean;
   };
 }
 
@@ -76,27 +108,67 @@ const CART_STORAGE_KEY = "euphoria_2026_event_cart";
 export function CartProvider({
   children,
   initialPricing = DEFAULT_PRICING,
+  initialPass,
+  initialConfirmedEvents = [],
 }: {
   children: React.ReactNode;
   initialPricing?: PricingSettings;
+  initialPass?: UserPassInfo;
+  initialConfirmedEvents?: ConfirmedEventItem[];
 }) {
   const [selectedEvents, setSelectedEvents] = useState<PublicEvent[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [pricingSettings, setPricingSettings] = useState<PricingSettings>(initialPricing);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const [userPass, setUserPass] = useState<UserPassInfo>(
+    initialPass || {
+      hasPass: initialConfirmedEvents.length > 0,
+      totalSlots: 2,
+      slotsUsed: initialConfirmedEvents.length,
+      remainingSlots: Math.max(0, 2 - initialConfirmedEvents.length),
+    }
+  );
+
+  const [confirmedEvents, setConfirmedEvents] = useState<ConfirmedEventItem[]>(
+    initialConfirmedEvents
+  );
+
+  // Sync external props if they change
+  useEffect(() => {
+    if (initialPass) {
+      setUserPass(initialPass);
+    }
+    if (initialConfirmedEvents && initialConfirmedEvents.length > 0) {
+      setConfirmedEvents(initialConfirmedEvents);
+    }
+  }, [initialPass, initialConfirmedEvents]);
+
+  const setUserPassState = useCallback(
+    (pass: UserPassInfo, confirmed: ConfirmedEventItem[]) => {
+      setUserPass(pass);
+      setConfirmedEvents(confirmed);
+    },
+    []
+  );
+
   // Load cart from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
       if (saved) {
-        setSelectedEvents(JSON.parse(saved));
+        const parsed: PublicEvent[] = JSON.parse(saved);
+        // Filter out any items that the user has already confirmed
+        const filtered = parsed.filter(
+          (p) => !confirmedEvents.some((c) => c.eventId === p.id)
+        );
+        setSelectedEvents(filtered);
       }
     } catch (e) {
       console.error("Failed to load cart from localStorage", e);
     }
     setIsLoaded(true);
-  }, []);
+  }, [confirmedEvents]);
 
   // Save cart to localStorage
   useEffect(() => {
@@ -117,61 +189,121 @@ export function CartProvider({
     [selectedEvents]
   );
 
+  const isEventConfirmed = useCallback(
+    (eventId: string) => confirmedEvents.some((e) => e.eventId === eventId),
+    [confirmedEvents]
+  );
+
   const hasProEventSelected = useMemo(() => {
-    return selectedEvents.some((e) => Boolean(e.is_pro_event));
-  }, [selectedEvents]);
+    return (
+      selectedEvents.some((e) => Boolean(e.is_pro_event)) ||
+      confirmedEvents.some((e) => Boolean(e.isProEvent))
+    );
+  }, [selectedEvents, confirmedEvents]);
 
   const firstSelectedEvent = useMemo(() => {
     return selectedEvents.length > 0 ? selectedEvents[0] : null;
   }, [selectedEvents]);
 
-  // Validation engine for Pro Event and slot limits
+  // Validation engine for Pro Event and slot limits taking confirmed passes into account
   const canSelectEvent = useCallback(
     (event: PublicEvent): SelectionValidation => {
-      // If already in cart, user can interact to toggle/remove it
+      // 1. Check if already confirmed in database
+      if (confirmedEvents.some((c) => c.eventId === event.id)) {
+        return {
+          allowed: false,
+          isConfirmed: true,
+          reason: "Already confirmed on your Festival Pass",
+        };
+      }
+
+      // 2. Check if already in cart (allow click to unselect)
       if (selectedEvents.some((e) => e.id === event.id)) {
         return { allowed: true };
       }
 
-      // Max 2 events per pass
-      if (selectedEvents.length >= MAX_EVENTS_PER_PASS) {
+      const totalConfirmed = confirmedEvents.length;
+      const totalInCart = selectedEvents.length;
+
+      // 3. User already has maximum 2 confirmed events
+      if (totalConfirmed >= MAX_EVENTS_PER_PASS) {
         return {
           allowed: false,
-          reason: "Pass full (Maximum 2 events selected)",
+          reason: "Pass complete (Maximum 2 events confirmed)",
         };
       }
 
-      // Slot 1: Empty cart - Any event (Pro or Normal) can be chosen
-      if (selectedEvents.length === 0) {
-        return { allowed: true };
+      // 4. User has reached total limit combined (confirmed + in cart)
+      if (totalConfirmed + totalInCart >= MAX_EVENTS_PER_PASS) {
+        return {
+          allowed: false,
+          reason: `Pass full (Max 2 events: ${totalConfirmed} confirmed, ${totalInCart} selected)`,
+        };
       }
 
-      // Slot 2: Exactly 1 event currently selected
-      const firstEvent = selectedEvents[0];
-      const isFirstPro = Boolean(firstEvent.is_pro_event);
       const isCandidatePro = Boolean(event.is_pro_event);
 
-      if (isFirstPro) {
-        // Case A: 1st choice is PRO -> 2nd choice MUST be NORMAL
-        if (isCandidatePro) {
-          return {
-            allowed: false,
-            reason: "Only 1 Pro event allowed (choose a normal event for slot 2)",
-          };
+      // CASE A: User has 1 CONFIRMED event in database
+      if (totalConfirmed === 1) {
+        const slot1Event = confirmedEvents[0];
+        const isSlot1Pro = Boolean(slot1Event.isProEvent);
+
+        if (isSlot1Pro) {
+          // 1st was PRO -> 2nd MUST be NORMAL
+          if (isCandidatePro) {
+            return {
+              allowed: false,
+              reason: "Only 1 Pro event allowed per Pass (choose a normal event)",
+            };
+          }
+          return { allowed: true };
+        } else {
+          // 1st was NORMAL -> 2nd CANNOT be PRO (Pro must be 1st choice)
+          if (isCandidatePro) {
+            return {
+              allowed: false,
+              reason: "Pro events must be selected as your 1st choice",
+            };
+          }
+          return { allowed: true };
         }
-        return { allowed: true };
-      } else {
-        // Case B: 1st choice is NORMAL -> 2nd choice CANNOT be PRO (Pro must be 1st choice)
-        if (isCandidatePro) {
-          return {
-            allowed: false,
-            reason: "Pro events can only be selected as your 1st choice",
-          };
-        }
-        return { allowed: true };
       }
+
+      // CASE B: User has 0 CONFIRMED events in database
+      if (totalConfirmed === 0) {
+        // Slot 1 (Cart empty)
+        if (totalInCart === 0) {
+          return { allowed: true };
+        }
+
+        // Slot 2 (1 item in cart)
+        const cartFirstEvent = selectedEvents[0];
+        const isCartFirstPro = Boolean(cartFirstEvent.is_pro_event);
+
+        if (isCartFirstPro) {
+          // 1st choice is PRO -> 2nd choice MUST be NORMAL
+          if (isCandidatePro) {
+            return {
+              allowed: false,
+              reason: "Only 1 Pro event allowed per Pass (choose a normal event for slot 2)",
+            };
+          }
+          return { allowed: true };
+        } else {
+          // 1st choice is NORMAL -> 2nd choice CANNOT be PRO
+          if (isCandidatePro) {
+            return {
+              allowed: false,
+              reason: "Pro events must be selected as your 1st choice",
+            };
+          }
+          return { allowed: true };
+        }
+      }
+
+      return { allowed: true };
     },
-    [selectedEvents]
+    [confirmedEvents, selectedEvents]
   );
 
   const addEvent = useCallback(
@@ -215,15 +347,17 @@ export function CartProvider({
   }, []);
 
   // Universal Pass Pricing Calculation:
-  // - Any pass with a Pro event (1 Pro, or 1 Pro + 1 Normal) = ₹300
-  // - Any pass with only Normal events (1 Normal, or 2 Normal) = ₹200
-  // - Common to both internal and external participants
+  // - If user has 1 confirmed event and is claiming 2nd slot -> ₹0
+  // - If initial checkout with Pro event -> ₹300
+  // - If initial checkout with only Normal events -> ₹200
   const calculatePricing = useCallback(
     (participantType?: "internal" | "external" | null) => {
-      const totalCount = selectedEvents.length;
+      const totalInCart = selectedEvents.length;
+      const totalConfirmed = confirmedEvents.length;
       const isInternal = participantType !== "external";
+      const isIncrementalClaim = totalConfirmed > 0;
 
-      if (totalCount === 0) {
+      if (totalInCart === 0) {
         return {
           baseFee: 0,
           includedCount: 0,
@@ -233,6 +367,22 @@ export function CartProvider({
           totalAmount: 0,
           isInternal,
           isProPass: false,
+          isIncrementalClaim,
+        };
+      }
+
+      // If user already paid for a pass and is adding their 2nd event:
+      if (isIncrementalClaim) {
+        return {
+          baseFee: 0,
+          includedCount: 1,
+          extraEventsCount: 0,
+          extraFee: 0,
+          proSurcharge: 0,
+          totalAmount: 0, // ₹0 additional fee
+          isInternal,
+          isProPass: false,
+          isIncrementalClaim: true,
         };
       }
 
@@ -246,16 +396,17 @@ export function CartProvider({
 
       return {
         baseFee,
-        includedCount: Math.min(totalCount, MAX_EVENTS_PER_PASS),
-        extraEventsCount: Math.max(0, totalCount - MAX_EVENTS_PER_PASS),
+        includedCount: Math.min(totalInCart, MAX_EVENTS_PER_PASS),
+        extraEventsCount: Math.max(0, totalInCart - MAX_EVENTS_PER_PASS),
         extraFee: 0,
         proSurcharge,
         totalAmount,
         isInternal,
         isProPass: hasPro,
+        isIncrementalClaim: false,
       };
     },
-    [selectedEvents, pricingSettings]
+    [selectedEvents, confirmedEvents, pricingSettings]
   );
 
   return (
@@ -271,12 +422,16 @@ export function CartProvider({
         toggleEvent,
         clearCart,
         isEventSelected,
+        isEventConfirmed,
         canSelectEvent,
         hasProEventSelected,
         firstSelectedEvent,
         maxEventsLimit: MAX_EVENTS_PER_PASS,
         pricingSettings,
         setPricingSettings,
+        userPass,
+        confirmedEvents,
+        setUserPassState,
         calculatePricing,
       }}
     >

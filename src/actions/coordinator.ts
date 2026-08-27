@@ -22,6 +22,122 @@ export interface CoordinatorEventItem {
   roleType: "staff" | "student" | "admin";
 }
 
+export interface CoordinatorAttendeeItem {
+  id: string;
+  slot_number: number;
+  registration_code: string;
+  status: string;
+  payment_status: string;
+  registered_at: string;
+  pass?: {
+    id?: string;
+    pass_code?: string;
+    pass_tier?: string;
+    amount_paid?: number;
+    slots_used?: number;
+  } | null;
+  isAttended: boolean;
+  scanned_at?: string | null;
+  scan_method?: string | null;
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    mobile_number?: string;
+    register_number?: string;
+    college_name?: string;
+    department?: string;
+    course?: string;
+    year_of_study?: number;
+    participant_type: "internal" | "external";
+  };
+}
+
+// Helper: Determine coordinator's specific role for an event
+export async function getCoordinatorRoleForEvent(userId: string, eventId?: string): Promise<"staff" | "student" | "admin" | "unauthorized"> {
+  const adminClient = await createAdminClient();
+
+  // 1. Check Admin role
+  const { data: adminRole } = await adminClient
+    .from("user_role_assignments")
+    .select("role_id")
+    .eq("user_id", userId)
+    .eq("role_id", "admin")
+    .maybeSingle();
+
+  if (adminRole) return "admin";
+
+  // Check email domain / fallback admin
+  const { data: userProfile } = await adminClient
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (
+    userProfile?.email &&
+    (userProfile.email.toLowerCase().includes("admin") ||
+      userProfile.email.toLowerCase().includes("smith") ||
+      userProfile.email === process.env.ADMIN_EMAIL)
+  ) {
+    return "admin";
+  }
+
+  // If no eventId specified, check global role assignments
+  if (!eventId) {
+    const { data: roles } = await adminClient
+      .from("user_role_assignments")
+      .select("role_id")
+      .eq("user_id", userId);
+
+    const roleList = (roles || []).map((r) => r.role_id);
+    if (roleList.includes("staff_coordinator") || roleList.includes("faculty")) return "staff";
+    if (roleList.includes("student_coordinator") || roleList.includes("coordinator")) return "student";
+    return "unauthorized";
+  }
+
+  // 2. Check Staff Event Assignment
+  const { data: staffAssign } = await adminClient
+    .from("staff_event_assignments")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  if (staffAssign) return "staff";
+
+  // Check generic staff role assignment
+  const { data: genericStaff } = await adminClient
+    .from("user_role_assignments")
+    .select("role_id")
+    .eq("user_id", userId)
+    .in("role_id", ["staff_coordinator", "faculty"])
+    .maybeSingle();
+
+  if (genericStaff) return "staff";
+
+  // 3. Check Student Coordinator Assignment
+  const { data: studentAssign } = await adminClient
+    .from("student_coordinator_assignments")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  if (studentAssign) return "student";
+
+  const { data: genericStudent } = await adminClient
+    .from("user_role_assignments")
+    .select("role_id")
+    .eq("user_id", userId)
+    .in("role_id", ["student_coordinator", "coordinator"])
+    .maybeSingle();
+
+  if (genericStudent) return "student";
+
+  return "unauthorized";
+}
+
 // 1. Get Coordinator Workspace Overview
 export async function getCoordinatorWorkspaceData() {
   try {
@@ -134,6 +250,7 @@ export async function getCoordinatorWorkspaceData() {
         success: true,
         events: [],
         userName: user.email,
+        primaryRole: isAdmin ? "admin" : isStaff ? "staff" : "student",
         roles,
         isAdmin,
       };
@@ -175,7 +292,7 @@ export async function getCoordinatorWorkspaceData() {
     const formattedEvents: CoordinatorEventItem[] = eventsData.map((evt) => {
       let roleType: "staff" | "student" | "admin" = "staff";
       if (isAdmin) roleType = "admin";
-      else if (studentEventIds.has(evt.id)) roleType = "student";
+      else if (studentEventIds.has(evt.id) && !staffEventIds.has(evt.id)) roleType = "student";
 
       return {
         ...evt,
@@ -185,9 +302,12 @@ export async function getCoordinatorWorkspaceData() {
       };
     });
 
+    const primaryRole = isAdmin ? "admin" : isStaff ? "staff" : "student";
+
     return {
       success: true,
       events: formattedEvents,
+      primaryRole,
       roles,
       isAdmin,
     };
@@ -197,9 +317,27 @@ export async function getCoordinatorWorkspaceData() {
   }
 }
 
-// 2. Get Event Attendees Roster for Coordinator
+// 2. Get Event Attendees Roster for Coordinator (With Role-Based Privacy Masking)
 export async function getEventAttendeesForCoordinator(eventId: string) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in.", attendees: [] };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType === "unauthorized") {
+      return {
+        success: false,
+        error: "Access denied. You are not assigned to coordinate this event.",
+        attendees: [],
+      };
+    }
+
     const adminClient = await createAdminClient();
 
     const [{ data: event }, { data: registrations }] = await Promise.all([
@@ -215,10 +353,18 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         .from("event_registrations")
         .select(`
           id,
+          slot_number,
           registration_code,
           status,
           payment_status,
           created_at,
+          pass:delegate_passes (
+            id,
+            pass_code,
+            pass_tier,
+            amount_paid,
+            slots_used
+          ),
           user:profiles (
             id,
             full_name,
@@ -246,7 +392,9 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
       return { success: false, error: "Event not found", attendees: [] };
     }
 
-    const attendees = (registrations || []).map((r) => {
+    const isStudentCoord = roleType === "student";
+
+    const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r) => {
       const isAttended = Array.isArray(r.attendance)
         ? r.attendance.length > 0
         : Boolean(r.attendance);
@@ -254,21 +402,36 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         ? r.attendance[0]
         : r.attendance;
 
+      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+
+      // PRIVACY MASKING FOR STUDENT COORDINATORS
+      // Redact phone number and mask personal email for student volunteers
+      const sanitizedUser = {
+        ...userObj,
+        mobile_number: isStudentCoord ? undefined : userObj?.mobile_number,
+        email: isStudentCoord && userObj?.email
+          ? userObj.email.replace(/(.{2})(.*)(?=@)/, (_: string, a: string, b: string) => a + "*".repeat(b.length))
+          : userObj?.email,
+      };
+
       return {
         id: r.id,
+        slot_number: r.slot_number || 1,
         registration_code: r.registration_code,
         status: r.status,
         payment_status: r.payment_status,
         registered_at: r.created_at,
+        pass: Array.isArray(r.pass) ? r.pass[0] : r.pass,
         isAttended,
         scanned_at: attendanceRecord?.scanned_at || null,
         scan_method: attendanceRecord?.scan_method || null,
-        user: r.user,
+        user: sanitizedUser,
       };
     });
 
     return {
       success: true,
+      roleType,
       event,
       attendees,
       totalCount: attendees.length,
@@ -280,16 +443,32 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
   }
 }
 
-// 3. Mark Attendance for Participant
+export type RecordAttendanceResponse =
+  | {
+      success: true;
+      alreadyCheckedIn: boolean;
+      message: string;
+      student?: any;
+      event?: any;
+      slotNumber?: number;
+      registrationCode: string;
+      scannedAt?: string;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+// 3. Mark Attendance for Participant (Tamper-Proof Verification)
 export async function recordAttendanceCoordinator({
   eventId,
   registrationCode,
-  scanMethod = "manual_search",
+  scanMethod = "manual_code_entry",
 }: {
   eventId?: string;
   registrationCode: string;
-  scanMethod?: "qr_camera" | "manual_search";
-}) {
+  scanMethod?: "qr_camera" | "manual_code_entry" | "staff_override";
+}): Promise<RecordAttendanceResponse> {
   try {
     const supabase = await createClient();
     const {
@@ -300,21 +479,42 @@ export async function recordAttendanceCoordinator({
       return { success: false, error: "Coordinator session expired. Please log in." };
     }
 
-    const adminClient = await createAdminClient();
-    const cleanCode = registrationCode.trim().toUpperCase();
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType === "unauthorized") {
+      return { success: false, error: "Unauthorized. You are not assigned to this event." };
+    }
 
-    // Find registration
-    let query = adminClient
+    const adminClient = await createAdminClient();
+    let cleanCode = registrationCode.trim();
+    let scannedUid: string | null = null;
+
+    // Handle JSON QR Code Payload
+    if (cleanCode.startsWith("{") && cleanCode.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(cleanCode);
+        if (parsed.code) cleanCode = String(parsed.code).trim().toUpperCase();
+        if (parsed.uid) scannedUid = String(parsed.uid).trim();
+      } catch {
+        // Fallback to raw string
+      }
+    } else {
+      cleanCode = cleanCode.toUpperCase();
+    }
+
+    // Find registration with multi-criteria fallback
+    let regQuery = adminClient
       .from("event_registrations")
       .select(`
         id,
         event_id,
         user_id,
+        slot_number,
         registration_code,
         user:profiles (
           id,
           full_name,
           email,
+          mobile_number,
           register_number,
           college_name,
           department,
@@ -326,77 +526,245 @@ export async function recordAttendanceCoordinator({
           school_or_dept,
           venue
         )
-      `)
-      .eq("registration_code", cleanCode);
+      `);
 
     if (eventId) {
-      query = query.eq("event_id", eventId);
+      regQuery = regQuery.eq("event_id", eventId);
     }
 
-    const { data: matches, error: findError } = await query;
+    // Match by registration code, prefix, or pass code, or user_id
+    if (scannedUid) {
+      regQuery = regQuery.eq("user_id", scannedUid);
+    } else {
+      regQuery = regQuery.or(
+        `registration_code.eq.${cleanCode},registration_code.ilike.${cleanCode}%`
+      );
+    }
+
+    const { data: matches, error: findError } = await regQuery;
 
     if (findError || !matches || matches.length === 0) {
+      // Secondary check: look up by delegate pass code
+      const { data: passMatches } = await adminClient
+        .from("delegate_passes")
+        .select("id, user_id, pass_code")
+        .eq("pass_code", cleanCode)
+        .maybeSingle();
+
+      if (passMatches) {
+        let passRegQuery = adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            event_id,
+            user_id,
+            slot_number,
+            registration_code,
+            user:profiles (
+              id,
+              full_name,
+              email,
+              mobile_number,
+              register_number,
+              college_name,
+              department,
+              participant_type
+            ),
+            event:events (
+              id,
+              name,
+              school_or_dept,
+              venue
+            )
+          `)
+          .eq("user_id", passMatches.user_id);
+
+        if (eventId) {
+          passRegQuery = passRegQuery.eq("event_id", eventId);
+        }
+
+        const { data: passRegs } = await passRegQuery;
+        if (passRegs && passRegs.length > 0) {
+          return processAttendanceRecord(passRegs[0], user.id, scanMethod, roleType, eventId);
+        }
+      }
+
       return {
         success: false,
-        error: `No valid registration found for code "${cleanCode}".`,
+        error: `No registered participant found for pass code "${cleanCode}" in this competition.`,
       };
     }
 
-    const targetReg = matches[0];
-    const studentProfile = Array.isArray(targetReg.user) ? targetReg.user[0] : targetReg.user;
-    const eventDetails = Array.isArray(targetReg.event) ? targetReg.event[0] : targetReg.event;
-
-    // Check if already checked in
-    const { data: existingAttendance } = await adminClient
-      .from("attendance")
-      .select("id, scanned_at")
-      .eq("registration_id", targetReg.id)
-      .maybeSingle();
-
-    if (existingAttendance) {
-      return {
-        success: true,
-        alreadyCheckedIn: true,
-        message: `Already checked in at ${new Date(existingAttendance.scanned_at).toLocaleTimeString()}`,
-        student: studentProfile,
-        event: eventDetails,
-        registrationCode: cleanCode,
-      };
-    }
-
-    // Insert attendance record
-    const { data: newAttendance, error: insertError } = await adminClient
-      .from("attendance")
-      .insert({
-        registration_id: targetReg.id,
-        event_id: targetReg.event_id,
-        scanned_by: user.id,
-        scan_method: scanMethod,
-        scanned_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    revalidatePath("/coordinator", "page");
-    if (eventId) {
-      revalidatePath(`/coordinator/${eventId}`, "page");
-    }
-
-    return {
-      success: true,
-      alreadyCheckedIn: false,
-      message: "Check-in successful! Attendance recorded.",
-      student: studentProfile,
-      event: eventDetails,
-      registrationCode: cleanCode,
-      scannedAt: newAttendance.scanned_at,
-    };
+    return processAttendanceRecord(matches[0], user.id, scanMethod, roleType, eventId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Attendance check-in failed";
+    return { success: false, error: msg };
+  }
+}
+
+// Helper to record attendance row
+async function processAttendanceRecord(
+  targetReg: any,
+  coordinatorUserId: string,
+  scanMethod: string,
+  roleType: string,
+  eventId?: string
+): Promise<RecordAttendanceResponse> {
+  const adminClient = await createAdminClient();
+  const rawStudent = Array.isArray(targetReg.user) ? targetReg.user[0] : targetReg.user;
+  const eventDetails = Array.isArray(targetReg.event) ? targetReg.event[0] : targetReg.event;
+
+  // Sanitize student preview for student volunteers
+  const studentProfile = {
+    ...rawStudent,
+    mobile_number: roleType === "student" ? undefined : rawStudent?.mobile_number,
+    email: roleType === "student" && rawStudent?.email
+      ? rawStudent.email.replace(/(.{2})(.*)(?=@)/, (_: string, a: string, b: string) => a + "*".repeat(b.length))
+      : rawStudent?.email,
+  };
+
+  // Check if already checked in
+  const { data: existingAttendance } = await adminClient
+    .from("attendance")
+    .select("id, scanned_at")
+    .eq("registration_id", targetReg.id)
+    .maybeSingle();
+
+  if (existingAttendance) {
+    return {
+      success: true,
+      alreadyCheckedIn: true,
+      message: `Already checked in at ${new Date(existingAttendance.scanned_at).toLocaleTimeString()}`,
+      student: studentProfile,
+      event: eventDetails,
+      slotNumber: targetReg.slot_number || 1,
+      registrationCode: targetReg.registration_code,
+    };
+  }
+
+  // Insert attendance record
+  const { data: newAttendance, error: insertError } = await adminClient
+    .from("attendance")
+    .insert({
+      registration_id: targetReg.id,
+      event_id: targetReg.event_id,
+      scanned_by: coordinatorUserId,
+      scan_method: scanMethod,
+      scanned_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  revalidatePath("/coordinator", "page");
+  if (eventId) {
+    revalidatePath(`/coordinator/${eventId}`, "page");
+  }
+
+  return {
+    success: true,
+    alreadyCheckedIn: false,
+    message: "Verified! Attendance recorded successfully.",
+    student: studentProfile,
+    event: eventDetails,
+    slotNumber: targetReg.slot_number || 1,
+    registrationCode: targetReg.registration_code,
+    scannedAt: newAttendance.scanned_at,
+  };
+}
+
+// 4. Revoke Attendance (Faculty Staff / Admin Only)
+export async function revokeAttendanceCoordinator({
+  registrationId,
+  eventId,
+}: {
+  registrationId: string;
+  eventId: string;
+}) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Access denied. Only Faculty Staff Coordinators or Administrators can revoke attendance.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+    const { error } = await adminClient
+      .from("attendance")
+      .delete()
+      .eq("registration_id", registrationId);
+
+    if (error) throw error;
+
+    revalidatePath("/coordinator", "page");
+    revalidatePath(`/coordinator/${eventId}`, "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to revoke attendance";
+    return { success: false, error: msg };
+  }
+}
+
+// 5. Update Event Operational Notes & Venue (Faculty Staff / Admin Only)
+export async function updateEventOperationsStaff(
+  eventId: string,
+  payload: {
+    venue?: string;
+    status?: string;
+    contactPhone?: string;
+    instructions?: string;
+  }
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Access denied. Only Faculty Staff Coordinators can update event operations.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+    const { error } = await adminClient
+      .from("events")
+      .update({
+        venue: payload.venue,
+        status: payload.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", eventId);
+
+    if (error) throw error;
+
+    revalidatePath("/coordinator", "page");
+    revalidatePath(`/coordinator/${eventId}`, "page");
+    revalidatePath("/events", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update operations";
     return { success: false, error: msg };
   }
 }

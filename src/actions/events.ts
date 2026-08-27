@@ -334,7 +334,7 @@ export async function getPublicPricingSettings() {
   }
 }
 
-// 7. Batch Register for Multiple Events (Cart Checkout)
+// 7. Batch Register / Checkout for Events (Atomic Pass Engine)
 export async function batchRegisterEvents(eventIds: string[]) {
   try {
     if (!eventIds || eventIds.length === 0) {
@@ -364,111 +364,121 @@ export async function batchRegisterEvents(eventIds: string[]) {
       };
     }
 
-    if (eventIds.length > 2) {
-      return { success: false, error: "You can register for a maximum of 2 events per pass." };
-    }
-
-    const adminClient = await createAdminClient();
-
-    // Fetch and validate event tiers
-    const { data: selectedEventsData, error: fetchEventsError } = await adminClient
-      .from("events")
-      .select("id, name, is_pro_event, status, participant_limit, registration_fee")
-      .in("id", eventIds);
-
-    if (fetchEventsError || !selectedEventsData) {
-      return { success: false, error: "Failed to validate selected events." };
-    }
-
-    const eventMap = new Map(selectedEventsData.map((e) => [e.id, e]));
-    const proEventsCount = selectedEventsData.filter((e) => Boolean(e.is_pro_event)).length;
-
-    if (proEventsCount > 1) {
-      return { success: false, error: "You can only select at most 1 Pro event per delegate pass." };
-    }
-
-    // Order constraint: If first event was normal, second cannot be pro
-    if (eventIds.length === 2) {
-      const firstEvent = eventMap.get(eventIds[0]);
-      const secondEvent = eventMap.get(eventIds[1]);
-
-      if (firstEvent && secondEvent) {
-        if (!firstEvent.is_pro_event && secondEvent.is_pro_event) {
-          return {
-            success: false,
-            error: "Pro events must be selected as your first event choice.",
-          };
-        }
-      }
-    }
-
-    // Check prior confirmed registrations
-    const { data: priorRegistrations } = await adminClient
+    // 1. Fetch user's existing confirmed registrations
+    const { data: confirmedRegs } = await supabase
       .from("event_registrations")
-      .select("id, event:events(id, is_pro_event), payment_status")
+      .select("id, event_id, status")
       .eq("user_id", user.id)
       .eq("status", "confirmed");
 
-    const priorCount = (priorRegistrations || []).length;
-    if (priorCount + eventIds.length > 2) {
-      return { success: false, error: "You can register for a maximum of 2 events per pass." };
+    const activeRegs = confirmedRegs || [];
+
+    // Rule: Total limit of 2 events
+    if (activeRegs.length >= 2) {
+      return {
+        success: false,
+        error: "You have already registered for the maximum limit of 2 events per pass.",
+      };
     }
 
-    const pricing = await getPublicPricingSettings();
-    const hasPro =
-      selectedEventsData.some((e) => Boolean(e.is_pro_event)) ||
-      (priorRegistrations || []).some((r) =>
-        Boolean((r.event as unknown as { is_pro_event?: boolean })?.is_pro_event)
+    if (activeRegs.length + eventIds.length > 2) {
+      return {
+        success: false,
+        error: `You can only register for up to ${2 - activeRegs.length} more event(s).`,
+      };
+    }
+
+    // Rule: Duplicate registration check
+    const duplicateEvent = activeRegs.find((r) => eventIds.includes(r.event_id));
+    if (duplicateEvent) {
+      return {
+        success: false,
+        error: "You are already registered and confirmed for one or more of the selected events.",
+      };
+    }
+
+    // 2. Check if user already has an active pass
+    const { data: existingPass } = await supabase
+      .from("delegate_passes")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingPass && existingPass.slots_used >= 2) {
+      return {
+        success: false,
+        error: "You have already claimed both event slots under your active Festival Pass.",
+      };
+    }
+
+    // If user already has an active pass with 1 slot used and is now submitting 1 event
+    if (existingPass && existingPass.slots_used === 1 && eventIds.length === 1) {
+      const { data: claimData, error: claimError } = await supabase.rpc(
+        "fn_claim_second_slot_atomic",
+        {
+          p_user_id: user.id,
+          p_event_id: eventIds[0],
+        }
       );
 
-    const proPassFee = Number(pricing.pro_pass_fee ?? 300);
-    const normalPassFee = Number(pricing.normal_pass_fee ?? 200);
-
-    // If user is adding a 2nd event to an existing pass, additional fee is ₹0
-    const totalPayable = priorCount > 0 ? 0 : hasPro ? proPassFee : normalPassFee;
-
-    // Generate shared master batch Pass code
-    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const masterCode = `EUPH-26-${randomHex}`;
-
-    // Register all events
-    const insertedRegistrations = [];
-    for (const eventId of eventIds) {
-      const qrNonce = Math.random().toString(36).substring(2, 12);
-      const { data: reg, error: insertError } = await adminClient
-        .from("event_registrations")
-        .insert({
-          event_id: eventId,
-          user_id: user.id,
-          registration_code: masterCode,
-          status: "confirmed",
-          payment_status: totalPayable === 0 ? "not_required" : "pending",
-          qr_secret_nonce: qrNonce,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .maybeSingle();
-
-      if (insertError) {
-        // If already registered, ignore duplicate conflict
-        if (insertError.code !== "23505") {
-          console.error("Batch reg insert error:", insertError);
-        }
-      } else if (reg) {
-        insertedRegistrations.push(reg);
+      if (claimError || !claimData?.success) {
+        return {
+          success: false,
+          error: claimData?.message || claimError?.message || "Failed to claim 2nd slot",
+        };
       }
+
+      revalidatePath("/", "layout");
+      revalidatePath("/dashboard", "page");
+      revalidatePath("/events", "page");
+      revalidatePath("/dashboard/passes", "page");
+
+      return {
+        success: true,
+        masterCode: claimData.pass_code,
+        totalRegistered: 2,
+        totalPayable: 0,
+        baseFee: 0,
+        extraFee: 0,
+        participantType: profile.participant_type,
+        isIncrementalClaim: true,
+      };
+    }
+
+    // Otherwise, perform full atomic pass checkout
+    const { data: checkoutData, error: checkoutError } = await supabase.rpc(
+      "fn_checkout_pass_atomic",
+      {
+        p_user_id: user.id,
+        p_event_ids: eventIds,
+        p_payment_provider: "mock",
+        p_order_metadata: {
+          participant_type: profile.participant_type,
+          source: "web_cart_drawer",
+        },
+      }
+    );
+
+    if (checkoutError || !checkoutData?.success) {
+      return {
+        success: false,
+        error: checkoutData?.message || checkoutError?.message || "Checkout failed",
+      };
     }
 
     revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
+    revalidatePath("/dashboard/passes", "page");
 
     return {
       success: true,
-      masterCode,
-      totalRegistered: eventIds.length,
-      totalPayable,
-      baseFee: totalPayable,
+      masterCode: checkoutData.pass_code,
+      passTier: checkoutData.pass_tier,
+      totalRegistered: checkoutData.slots_used,
+      totalPayable: checkoutData.amount_paid,
+      baseFee: checkoutData.amount_paid,
       extraFee: 0,
       participantType: profile.participant_type,
     };
@@ -477,4 +487,5 @@ export async function batchRegisterEvents(eventIds: string[]) {
     return { success: false, error: msg };
   }
 }
+
 
