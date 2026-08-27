@@ -1,0 +1,10 @@
+{
+  "internal_base_fee": 300,
+  "internal_max_events_included": 3,
+  "internal_extra_event_fee": 100,
+  "external_base_fee": 400,
+  "external_max_events_included": 3,
+  "external_extra_event_fee": 150,
+  "is_registration_active": true,
+  "updated_at": "2026-08-26T09:54:13.390Z"
+}
