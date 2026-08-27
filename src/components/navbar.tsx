@@ -38,6 +38,13 @@ export function Navbar({ user }: NavbarProps) {
     { href: "/announcements", label: "Announcements", icon: Bell },
   ];
 
+  const isCoordinator =
+    user?.role === "staff_coordinator" ||
+    user?.role === "student_coordinator" ||
+    user?.role === "coordinator" ||
+    user?.role === "faculty" ||
+    user?.role === "admin";
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-surface-border bg-white/95 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -83,6 +90,7 @@ export function Navbar({ user }: NavbarProps) {
         <div className="hidden md:flex items-center gap-2.5">
           {/* Cart Trigger */}
           <button
+            type="button"
             onClick={openCart}
             className="relative flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-xs cursor-pointer"
             title="View selected events"
@@ -107,7 +115,7 @@ export function Navbar({ user }: NavbarProps) {
                   <span>Admin Console</span>
                 </Link>
               )}
-              {(user.role === "staff_coordinator" || user.role === "student_coordinator" || user.role === "admin") && (
+              {isCoordinator && (
                 <Link
                   href="/coordinator"
                   className="flex items-center gap-1.5 rounded-md bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 text-xs font-bold text-primary hover:bg-indigo-100 transition-colors shadow-2xs"
@@ -153,21 +161,23 @@ export function Navbar({ user }: NavbarProps) {
         {/* Mobile menu toggle & Cart */}
         <div className="flex items-center gap-2 md:hidden">
           <button
+            type="button"
             onClick={openCart}
-            className="relative rounded-md p-1.5 text-slate-700 hover:bg-slate-100"
+            className="relative rounded-lg p-2 text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
             aria-label="View Cart"
           >
             <ShoppingBag className="h-5 w-5 text-primary" />
             {selectedEvents.length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-black text-white">
+              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-black text-white shadow-xs">
                 {selectedEvents.length}
               </span>
             )}
           </button>
 
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="rounded-md p-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            className="rounded-lg p-2 text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5 text-slate-700" />}
@@ -177,15 +187,20 @@ export function Navbar({ user }: NavbarProps) {
 
       {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-5 space-y-2">
+        <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-5 space-y-2 shadow-lg animate-in slide-in-from-top-2 duration-150">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className={cn(
+                "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                pathname === link.href
+                  ? "bg-indigo-50 text-primary font-bold"
+                  : "text-slate-700 hover:bg-slate-100"
+              )}
             >
-              <link.icon className="h-4 w-4 text-primary" />
+              <link.icon className={cn("h-4 w-4", pathname === link.href ? "text-primary" : "text-slate-500")} />
               {link.label}
             </Link>
           ))}
@@ -196,16 +211,26 @@ export function Navbar({ user }: NavbarProps) {
                   <Link
                     href="/admin"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center justify-center gap-2 rounded-md bg-rose-50 border border-rose-200 py-2 text-xs font-bold text-rose-700"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-rose-50 border border-rose-200 py-2.5 text-xs font-bold text-rose-700"
                   >
                     <Sparkles className="h-3.5 w-3.5 text-rose-600" />
                     Admin Console
                   </Link>
                 )}
+                {isCoordinator && (
+                  <Link
+                    href="/coordinator"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-indigo-50 border border-indigo-200 py-2.5 text-xs font-bold text-primary"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                    Coordinator Hub
+                  </Link>
+                )}
                 <Link
                   href="/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white py-2 text-xs font-medium text-slate-800"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-800"
                 >
                   <User className="h-3.5 w-3.5 text-primary" />
                   Dashboard
@@ -213,10 +238,10 @@ export function Navbar({ user }: NavbarProps) {
                 <Link
                   href="/dashboard/passes"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-md bg-primary py-2 text-xs font-semibold text-white"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-xs font-bold text-white shadow-xs"
                 >
                   <QrCode className="h-3.5 w-3.5" />
-                  My Pass
+                  My Digital Pass
                 </Link>
               </>
             ) : (
@@ -224,14 +249,14 @@ export function Navbar({ user }: NavbarProps) {
                 <Link
                   href="/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center rounded-md border border-slate-200 bg-white py-2 text-xs font-medium text-slate-700"
+                  className="flex items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/register"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-center gap-1.5 rounded-md bg-primary py-2 text-xs font-semibold text-white"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-bold text-white shadow-xs"
                 >
                   Register for Euphoria
                 </Link>

@@ -290,9 +290,10 @@ export function EventCatalogExplorer({
       ) : null}
 
       {/* 2. SEARCH & FILTER CONTROLS */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs space-y-2.5">
         {/* Mobile Filter View */}
         <div className="lg:hidden space-y-2.5">
+          {/* Search Box */}
           <div className="relative">
             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
@@ -313,90 +314,88 @@ export function EventCatalogExplorer({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 w-full">
-              <button
-                type="button"
-                onClick={() => setSelectedTier("all")}
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedTier === "all"
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "text-slate-600"
-                }`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                  selectedTier === "pro"
-                    ? "bg-amber-500 text-white shadow-xs font-bold"
-                    : "text-amber-800"
-                }`}
-              >
-                <Star className="h-2.5 w-2.5 fill-current" />
-                <span>Pro</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedTier === "normal"
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "text-slate-600"
-                }`}
-              >
-                Normal
-              </button>
-            </div>
+          {/* Horizontal Scrolling Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+            {/* Days Chips */}
+            <button
+              type="button"
+              onClick={() => setSelectedDate("all")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedDate === "all"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              All Days
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedDate === "2026-09-25"
+                  ? "bg-primary text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Day 1 ({day1Count})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedDate === "2026-09-26"
+                  ? "bg-primary text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Day 2 ({day2Count})
+            </button>
 
-            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/80 w-full">
-              <button
-                type="button"
-                onClick={() => setSelectedDate("all")}
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "all"
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "text-slate-600"
-                }`}
-              >
-                All Days
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
-                }
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "2026-09-25"
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "text-slate-600"
-                }`}
-              >
-                Day 1
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
-                }
-                className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "2026-09-26"
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "text-slate-600"
-                }`}
-              >
-                Day 2
-              </button>
-            </div>
+            <span className="text-slate-300">|</span>
+
+            {/* Tier Chips */}
+            <button
+              type="button"
+              onClick={() => setSelectedTier("all")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedTier === "all"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              All ({initialEvents.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedTier === "pro"
+                  ? "bg-amber-500 text-white shadow-xs"
+                  : "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100"
+              }`}
+            >
+              <Star className="h-3 w-3 fill-current" />
+              <span>Pro ({proCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedTier === "normal"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Standard ({normalCount})
+            </button>
           </div>
 
+          {/* School Select Pill */}
           <div className="relative">
             <select
               value={selectedSchool}
               onChange={(e) => setSelectedSchool(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate cursor-pointer shadow-2xs"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:border-slate-900 focus:outline-none appearance-none pr-8 truncate cursor-pointer shadow-2xs"
             >
               <option value="all">All 14 Schools &amp; Departments</option>
               {schoolsList.map((school) => (
@@ -964,6 +963,36 @@ export function EventCatalogExplorer({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Floating Cart Bar (Fixed at bottom on mobile < 640px) */}
+      {selectedEvents.length > 0 && (
+        <div className="fixed bottom-3 inset-x-3 z-40 sm:hidden">
+          <div className="rounded-2xl border-2 border-indigo-500 bg-slate-950 p-3 text-white shadow-2xl flex items-center justify-between gap-2.5 animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white font-black text-xs shadow-xs">
+                {selectedEvents.length}/2
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-xs text-white truncate">
+                  {selectedEvents.length === 1 ? "1 Event Selected" : "2 Events (Pass Full)"}
+                </div>
+                <div className="text-[11px] text-emerald-400 font-mono font-bold">
+                  {isIncrementalSlotClaim ? "2nd Event Claim • ₹0" : `Total: ${formatCurrency(passTotalAmount)}`}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openCart}
+              className="inline-flex items-center gap-1 rounded-xl bg-primary px-3.5 py-2 text-xs font-black text-white shadow-md hover:bg-primary-hover active:scale-95 transition-all shrink-0 cursor-pointer"
+            >
+              <span>Review Pass</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       )}

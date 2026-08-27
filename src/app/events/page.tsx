@@ -4,15 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import { EventCatalogExplorer, PublicEvent } from "@/components/events/event-catalog-explorer";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { Layers, Sparkles } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function EventsDirectoryPage({
   searchParams,
 }: {
-  searchParams?: { track?: string; q?: string };
+  searchParams?: Promise<{ track?: string; q?: string }> | { track?: string; q?: string };
 }) {
+  const resolvedSearchParams = searchParams ? await Promise.resolve(searchParams) : {};
+
   const [{ events, categories }, supabase] = await Promise.all([
     getPublicEvents(),
     createClient(),
@@ -23,22 +24,36 @@ export default async function EventsDirectoryPage({
   } = await supabase.auth.getUser();
 
   let profile = null;
+  let userRole = "participant";
+
   if (user) {
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("full_name, participant_type")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: p }, { data: roleAssignment }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("full_name, participant_type")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_role_assignments")
+        .select("role_id")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
     profile = p;
+    if (roleAssignment?.role_id) {
+      userRole = roleAssignment.role_id;
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-indigo-100 selection:text-primary">
       <Navbar
         user={
           user
             ? {
                 email: user.email || "",
+                role: userRole,
                 participantType: profile?.participant_type,
               }
             : null
@@ -46,12 +61,12 @@ export default async function EventsDirectoryPage({
       />
 
       {/* Catalog Content */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-7 flex-1">
+      <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1">
         <EventCatalogExplorer
           initialEvents={events as unknown as PublicEvent[]}
           categories={categories || []}
-          initialTrack={searchParams?.track || ""}
-          initialQuery={searchParams?.q || ""}
+          initialTrack={resolvedSearchParams?.track || ""}
+          initialQuery={resolvedSearchParams?.q || ""}
           user={
             user
               ? {

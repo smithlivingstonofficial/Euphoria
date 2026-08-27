@@ -23,6 +23,7 @@ import {
   Gift,
   Plus,
   ArrowRight,
+  Ticket,
 } from "lucide-react";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 import { UserPassSummary } from "@/actions/passes";
@@ -109,7 +110,7 @@ export function DigitalPassClient({
     });
 
     QRCode.toDataURL(qrPayload, {
-      width: 320,
+      width: 360,
       margin: 1.5,
       color: {
         dark: "#0F172A",
@@ -130,18 +131,18 @@ export function DigitalPassClient({
 
   if (registrations.length === 0) {
     return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-4 shadow-sm">
+      <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 text-center space-y-4 shadow-xs">
         <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-primary">
           <QrCode className="h-7 w-7" />
         </div>
-        <h3 className="text-lg font-bold text-slate-900">No Active Festival Pass</h3>
-        <p className="text-xs text-slate-500 max-w-md mx-auto">
-          You haven&apos;t registered for any competitions yet. Explore our 61 technical symposium events and claim your pass.
+        <h3 className="text-lg font-black text-slate-900">No Active Festival Pass</h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+          You haven&apos;t chosen any competitions yet. Browse our 61 technical symposium events and claim your delegate pass.
         </p>
         <div className="pt-2">
           <Link
             href="/events"
-            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover transition-colors"
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-6 py-3 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-95 transition-all"
           >
             <Sparkles className="h-4 w-4" />
             <span>Select &amp; Register Events</span>
@@ -153,22 +154,23 @@ export function DigitalPassClient({
 
   return (
     <div className="space-y-6">
-      {/* Action Toolbar */}
-      <div className="flex items-center justify-between gap-3 print:hidden">
+      {/* Top Action Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
         <div className="text-xs text-slate-500 font-medium">
-          Status: <strong className="text-emerald-600 font-bold">Active Pass</strong> •{" "}
+          Status: <strong className="text-emerald-700 font-bold">Active Pass</strong> •{" "}
           {slotsUsed}/2 Slots Used {remainingSlots > 0 ? `(1 Slot Open • ₹0)` : `(Complete)`}
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={handleCopy}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             {copiedCode ? (
               <>
                 <Check className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="text-emerald-700">Copied!</span>
+                <span className="text-emerald-700 font-bold">Code Copied!</span>
               </>
             ) : (
               <>
@@ -179,30 +181,31 @@ export function DigitalPassClient({
           </button>
 
           <button
+            type="button"
             onClick={handlePrint}
             className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-colors cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5" />
-            <span>Print / Save PDF</span>
+            <span>Save / Print Pass</span>
           </button>
         </div>
       </div>
 
-      {/* Main Digital Pass Card (Printable Layout) */}
+      {/* Main Digital Pass Card (Light Theme with Authentic Ticket Styling) */}
       <div className="rounded-3xl border-2 border-slate-200/90 bg-white shadow-xl overflow-hidden print:border-none print:shadow-none max-w-2xl mx-auto">
         {/* Pass Header */}
         <div
           className={`p-6 sm:p-7 text-white relative overflow-hidden ${
             hasPro
               ? "bg-gradient-to-r from-amber-600 via-slate-900 to-amber-700"
-              : "bg-gradient-to-r from-slate-900 via-indigo-950 to-primary"
+              : "bg-gradient-to-r from-slate-900 via-slate-950 to-primary"
           }`}
         >
           <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="flex items-start justify-between gap-4 relative z-10">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {hasPro ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
                     <Star className="h-3 w-3 fill-current" />
@@ -231,7 +234,7 @@ export function DigitalPassClient({
                     : "bg-purple-500/20 text-purple-200 border-purple-400/30"
                 }`}
               >
-                {profile.participant_type === "internal" ? "KARE Internal" : "External Delegate"}
+                {profile.participant_type === "internal" ? "KARE Student" : "External Delegate"}
               </span>
             </div>
           </div>
@@ -247,10 +250,10 @@ export function DigitalPassClient({
                 <img
                   src={qrDataUrl}
                   alt="Official QR Pass Code"
-                  className="h-44 w-44 rounded-xl"
+                  className="h-40 w-40 sm:h-44 sm:w-44 rounded-xl"
                 />
               ) : (
-                <div className="h-44 w-44 flex items-center justify-center text-xs text-slate-400">
+                <div className="h-40 w-40 sm:h-44 sm:w-44 flex items-center justify-center text-xs text-slate-400">
                   Generating secure QR...
                 </div>
               )}
@@ -271,17 +274,17 @@ export function DigitalPassClient({
                 <p className="text-xs text-slate-500 font-medium">{profile.email}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+              <div className="grid grid-cols-2 gap-2.5 text-xs pt-1">
                 {profile.register_number && (
-                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 text-left">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">
                       Register No.
                     </span>
-                    <span className="font-bold text-slate-900">{profile.register_number}</span>
+                    <span className="font-bold text-slate-900 font-mono">{profile.register_number}</span>
                   </div>
                 )}
 
-                <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 text-left">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">
                     College / Dept
                   </span>
@@ -291,17 +294,17 @@ export function DigitalPassClient({
                 </div>
 
                 {profile.course && (
-                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 text-left">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">
                       Course &amp; Year
                     </span>
                     <span className="font-bold text-slate-900">
-                      {profile.course} {profile.year_of_study ? `• Year ${profile.year_of_study}` : ""}
+                      {profile.course} {profile.year_of_study ? `• Yr ${profile.year_of_study}` : ""}
                     </span>
                   </div>
                 )}
 
-                <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 text-left">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">
                     Pass Allocation
                   </span>
@@ -320,7 +323,7 @@ export function DigitalPassClient({
                 Registered Event Access (Slot 1 &amp; Slot 2)
               </span>
               <span className="text-[11px] text-slate-400">
-                Valid for September 25 &amp; 26, 2026
+                September 25 &amp; 26, 2026
               </span>
             </div>
 
@@ -331,13 +334,13 @@ export function DigitalPassClient({
                   className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
                 >
                   <div className="space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-slate-100 px-1.5 py-0.2 text-[9px] font-bold text-slate-600">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 font-mono">
                         Slot #{reg.slot_number || idx + 1}
                       </span>
                       {reg.event.is_pro_event && (
-                        <span className="inline-flex items-center gap-1 rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase">
-                          <Star className="h-2.5 w-2.5 fill-current" />
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.2 text-[9px] font-black uppercase">
+                          <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
                           <span>PRO</span>
                         </span>
                       )}
@@ -378,12 +381,12 @@ export function DigitalPassClient({
                 </div>
               ))}
 
-              {/* Slot 2 open placeholder if user has only 1 registered event */}
+              {/* Slot 2 open placeholder */}
               {remainingSlots > 0 && (
-                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/50 print:hidden">
-                  <div className="space-y-1">
+                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/50 print:hidden border-t border-slate-100">
+                  <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-emerald-200 px-1.5 py-0.2 text-[9px] font-bold text-emerald-900">
+                      <span className="rounded-md bg-emerald-200 px-1.5 py-0.2 text-[9px] font-bold text-emerald-900 uppercase">
                         Slot #2 Open
                       </span>
                       <span className="text-xs font-bold text-emerald-950">

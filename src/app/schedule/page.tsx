@@ -88,7 +88,7 @@ export default async function SchedulePage() {
                     <span className="truncate">{evt.venue}</span>
                   </div>
                   <Link
-                    href={`/?search=${encodeURIComponent(evt.name)}#events`}
+                    href={`/events?q=${encodeURIComponent(evt.name)}`}
                     className="font-bold text-primary hover:underline text-[11px]"
                   >
                     View &amp; Register &rarr;
@@ -146,7 +146,7 @@ export default async function SchedulePage() {
                     <span className="truncate">{evt.venue}</span>
                   </div>
                   <Link
-                    href={`/?search=${encodeURIComponent(evt.name)}#events`}
+                    href={`/events?q=${encodeURIComponent(evt.name)}`}
                     className="font-bold text-primary hover:underline text-[11px]"
                   >
                     View &amp; Register &rarr;

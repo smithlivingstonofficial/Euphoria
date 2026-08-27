@@ -5,19 +5,7 @@ import { getUserPassSummary } from "@/actions/passes";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { DigitalPassClient } from "./digital-pass-client";
-import {
-  Sparkles,
-  QrCode,
-  Calendar,
-  Clock,
-  MapPin,
-  CheckCircle2,
-  ArrowLeft,
-  ShieldCheck,
-  Building,
-  User,
-  ExternalLink,
-} from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +80,7 @@ export default async function UserPassesPage() {
   });
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-primary">
       <Navbar
         user={{
           email: profile.email,
@@ -100,45 +88,31 @@ export default async function UserPassesPage() {
         }}
       />
 
-      <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full space-y-6">
-        {/* Navigation & Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
-          <div className="space-y-1">
+      {/* Main Container (Light Theme) */}
+      <main className="flex-1 py-6 sm:py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          {/* Back to Dashboard Navigation */}
+          <div className="flex items-center justify-between gap-3">
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors mb-1"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="h-4 w-4" />
               <span>Back to Dashboard</span>
             </Link>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                Official Digital Festival Pass
-              </h1>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200">
-                Verified
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Present this pass with QR code at competition venue entrance checkpoints for attendance verification.
-            </p>
+
+            <span className="text-[11px] font-mono text-slate-400 font-semibold">
+              EUPHORIA • 2026
+            </span>
           </div>
 
-          <Link
-            href="/events"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary-hover transition-colors shrink-0"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Browse Catalog</span>
-          </Link>
+          {/* Interactive Digital Pass Client */}
+          <DigitalPassClient
+            profile={profile}
+            registrations={userRegistrations as any}
+            passSummary={passSummaryRes.data}
+          />
         </div>
-
-        {/* Digital Pass Card Client Component */}
-        <DigitalPassClient
-          profile={profile}
-          registrations={userRegistrations as any}
-          passSummary={passSummaryRes.data}
-        />
       </main>
 
       <Footer />
