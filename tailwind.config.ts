@@ -64,6 +64,28 @@ const config: Config = {
       backgroundImage: {
         "radial-glow": "radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%)",
         "mesh-gradient": "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(6, 182, 212, 0.05) 50%, rgba(244, 63, 94, 0.05) 100%)",
+        "cyber-grid": "radial-gradient(circle, #cbd5e1 1px, transparent 1px)",
+      },
+      animation: {
+        "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "float": "float 6s ease-in-out infinite",
+        "float-delayed": "float 6s ease-in-out 3s infinite",
+        "shimmer": "shimmer 2.5s linear infinite",
+        "glow": "glow 3s ease-in-out infinite alternate",
+      },
+      keyframes: {
+        float: {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        glow: {
+          "0%": { opacity: "0.4", filter: "blur(20px)" },
+          "100%": { opacity: "0.8", filter: "blur(30px)" },
+        },
       },
     },
   },
