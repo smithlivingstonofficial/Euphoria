@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
+import { LogoutButton } from "@/components/auth/logout-button";
 
 interface NavbarProps {
   user?: {
@@ -248,6 +249,14 @@ export function Navbar({ user }: NavbarProps) {
                           <QrCode className="h-3.5 w-3.5 text-slate-500" />
                           <span>Digital Pass &amp; QR</span>
                         </Link>
+
+                        <div className="pt-1 mt-1 border-t border-slate-100">
+                          <LogoutButton
+                            variant="ghost"
+                            className="w-full justify-start px-3 py-2 text-xs text-rose-700 hover:bg-rose-50"
+                            onLogoutSuccess={() => setUserDropdownOpen(false)}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -480,6 +489,14 @@ export function Navbar({ user }: NavbarProps) {
                         <ChevronRight className="h-3.5 w-3.5 text-primary/60" />
                       </Link>
                     )}
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <LogoutButton
+                        variant="outline"
+                        className="w-full justify-center py-2.5"
+                        onLogoutSuccess={() => setMobileMenuOpen(false)}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 pt-1">

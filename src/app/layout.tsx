@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
 import { getPublicPricingSettings } from "@/actions/events";
 import { getUserPassSummary } from "@/actions/passes";
 import { createClient } from "@/lib/supabase/server";
 
-const fontSans = Inter({
+const fontSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const fontDisplay = Outfit({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800", "900"],
   display: "swap",
-  variable: "--font-sans",
+  variable: "--font-display",
 });
 
 const fontMono = JetBrains_Mono({
@@ -96,7 +103,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`light ${fontSans.variable} ${fontMono.variable}`}>
+    <html lang="en" className={`light ${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
       <body className="min-h-screen bg-background text-slate-900 font-sans antialiased selection:bg-primary selection:text-white flex flex-col">
         <AppProviders
           initialPricing={pricing}

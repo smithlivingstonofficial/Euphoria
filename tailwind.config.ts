@@ -44,11 +44,18 @@ const config: Config = {
       fontFamily: {
         sans: [
           "var(--font-sans)",
+          '"Plus Jakarta Sans"',
           "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
           '"Segoe UI"',
           "Roboto",
+          "sans-serif",
+        ],
+        display: [
+          "var(--font-display)",
+          '"Outfit"',
+          '"Plus Jakarta Sans"',
           "sans-serif",
         ],
         mono: [
