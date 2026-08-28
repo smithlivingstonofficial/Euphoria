@@ -283,24 +283,24 @@ export function EventCatalogExplorer({
       ) : null}
 
       {/* SEARCH & FILTER CONTROLS BAR */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-sm space-y-4">
-        {/* Main Search Input & Quick Controls */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
-          {/* Search Box */}
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-3 sm:p-4 shadow-xs space-y-3">
+        {/* Desktop Single-Row & Mobile Multi-Row Responsive Layout */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-3.5">
+          {/* 1. Search Input */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search competitions by title, category, department, or venue..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-11 pr-10 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition-all"
+              placeholder="Search competitions by title, department, or venue..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-3 p-1 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
+                className="absolute right-2.5 top-2.5 p-1 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
                 title="Clear search"
               >
                 <X className="h-4 w-4" />
@@ -308,31 +308,8 @@ export function EventCatalogExplorer({
             )}
           </div>
 
-          {/* School / Department Select Dropdown */}
-          <div className="relative shrink-0 min-w-[220px]">
-            <div className="pointer-events-none absolute left-3.5 top-3.5 text-slate-400">
-              <GraduationCap className="h-4 w-4" />
-            </div>
-            <select
-              value={selectedSchool}
-              onChange={(e) => setSelectedSchool(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-9 py-3 text-xs sm:text-sm font-medium text-slate-800 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 focus:outline-none appearance-none truncate cursor-pointer shadow-2xs"
-            >
-              <option value="all">All 14 Schools &amp; Depts</option>
-              {schoolsList.map((school) => (
-                <option key={school} value={school}>
-                  {school}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3.5 top-4 h-4 w-4 text-slate-400" />
-          </div>
-        </div>
-
-        {/* Filter Pills Row (Tier & Days) */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
-          {/* Horizontal Scroll Filter Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0 scrollbar-none">
+          {/* 2. Filter Segment Chips (Tier & Days) */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-none shrink-0">
             {/* Tier Filters */}
             <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
               <button
@@ -371,7 +348,7 @@ export function EventCatalogExplorer({
               </button>
             </div>
 
-            <div className="h-4 w-px bg-slate-200 shrink-0 hidden sm:block" />
+            <div className="h-4 w-px bg-slate-200 shrink-0" />
 
             {/* Date Filters */}
             <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
@@ -415,27 +392,52 @@ export function EventCatalogExplorer({
             </div>
           </div>
 
-          {/* Reset Filters Action */}
+          {/* 3. School / Department Dropdown */}
+          <div className="relative shrink-0 min-w-[190px] lg:max-w-[220px]">
+            <GraduationCap className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <select
+              value={selectedSchool}
+              onChange={(e) => setSelectedSchool(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-600 focus:bg-white focus:outline-none appearance-none truncate cursor-pointer shadow-2xs"
+            >
+              <option value="all">All 14 Schools &amp; Depts</option>
+              {schoolsList.map((school) => (
+                <option key={school} value={school}>
+                  {school}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
+          </div>
+
+          {/* Reset Action */}
           {hasActiveFilters && (
             <button
               type="button"
               onClick={clearAllFilters}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shrink-0 cursor-pointer self-end sm:self-auto"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shrink-0 cursor-pointer"
+              title="Reset all active filters"
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              <span>Reset Filters</span>
+              <span>Reset</span>
             </button>
           )}
         </div>
 
-        {/* Active Filter Result Stats */}
-        <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
+        {/* Result Stats Footer */}
+        <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
           <div>
             Showing <strong className="text-slate-900 font-bold">{filteredEvents.length}</strong> of{" "}
             {initialEvents.length} competitions
           </div>
           {hasActiveFilters && (
-            <span className="font-semibold text-indigo-600">Filtered View</span>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+            >
+              Clear filters ({filteredEvents.length} matches)
+            </button>
           )}
         </div>
       </div>
