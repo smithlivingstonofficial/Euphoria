@@ -20,6 +20,9 @@ export function Footer() {
           <Link href="/events" className="hover:text-primary transition-colors">
             Events (61)
           </Link>
+          <Link href="/campus-map" className="hover:text-primary transition-colors">
+            Campus Map
+          </Link>
           <Link href="/announcements" className="hover:text-primary transition-colors">
             Alerts
           </Link>

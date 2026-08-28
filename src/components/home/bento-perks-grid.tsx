@@ -24,8 +24,8 @@ export function BentoPerksGrid() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-slate-950 font-black shadow-md">
               <Trophy className="h-6 w-6" />
             </div>
-            <span className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-              PRIZE_POOL
+            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+              Cash Prizes
             </span>
           </div>
 
@@ -39,22 +39,22 @@ export function BentoPerksGrid() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-amber-200/60 relative z-10 text-center font-mono">
+        <div className="grid grid-cols-3 gap-2.5 pt-4 border-t border-amber-200/60 relative z-10 text-center">
           <div className="p-2.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
-            <span className="text-xs sm:text-sm font-black text-amber-900 block font-sans">
-              1st Podium
+            <span className="text-xs sm:text-sm font-black text-amber-900 block">
+              1st Winner
             </span>
             <span className="text-[10px] font-bold text-slate-500">Cash + Trophy</span>
           </div>
           <div className="p-2.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
-            <span className="text-xs sm:text-sm font-black text-slate-800 block font-sans">
-              2nd Podium
+            <span className="text-xs sm:text-sm font-black text-slate-800 block">
+              2nd Runner
             </span>
             <span className="text-[10px] font-bold text-slate-500">Cash + Medal</span>
           </div>
           <div className="p-2.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
-            <span className="text-xs sm:text-sm font-black text-slate-800 block font-sans">
-              3rd Podium
+            <span className="text-xs sm:text-sm font-black text-slate-800 block">
+              3rd Runner
             </span>
             <span className="text-[10px] font-bold text-slate-500">Cash + Citation</span>
           </div>
@@ -68,15 +68,15 @@ export function BentoPerksGrid() {
             <Award className="h-5 w-5" />
           </div>
           <h4 className="text-base font-black text-slate-900 tracking-tight">
-            Verified Credentials
+            Verified Certificates
           </h4>
           <p className="text-xs text-slate-600 leading-relaxed">
             Every participant receives an official, digitally verifiable certificate from Kalasalingam Academy of Research and Education.
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-primary pt-2">
-          <span>VERIFIED_KARE</span>
+        <div className="flex items-center gap-1.5 text-xs font-bold text-primary pt-2">
+          <span>KARE Verified</span>
           <ShieldCheck className="h-4 w-4" />
         </div>
       </div>
@@ -95,8 +95,8 @@ export function BentoPerksGrid() {
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-cyan-700 pt-2">
-          <span>SCAN_LATENCY &lt;1s</span>
+        <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-700 pt-2">
+          <span>Instant Scan Entry</span>
           <Zap className="h-4 w-4" />
         </div>
       </div>
@@ -111,12 +111,12 @@ export function BentoPerksGrid() {
             World-Class Labs
           </h4>
           <p className="text-xs text-slate-600 leading-relaxed">
-            High-speed GPU workstations, 1 Gbps low-latency network, steel robotics combat arena, and open flight grounds.
+            High-speed GPU workstations, low-latency network, steel robotics combat arena, and open flight grounds.
           </p>
         </div>
 
-        <span className="text-[11px] font-mono font-bold text-slate-500">
-          14_SCHOOL_LABS
+        <span className="text-xs font-bold text-slate-500">
+          14 Campus Labs
         </span>
       </div>
 
@@ -127,15 +127,15 @@ export function BentoPerksGrid() {
             <Users className="h-5 w-5" />
           </div>
           <h4 className="text-base font-black text-slate-900 tracking-tight">
-            Industry Networking
+            Student Community
           </h4>
           <p className="text-xs text-slate-600 leading-relaxed">
             Direct interaction with startup founders, tech evaluators, university professors, and 1,000+ ambitious student peers.
           </p>
         </div>
 
-        <span className="text-[11px] font-mono font-bold text-purple-700">
-          PEER_NETWORK_HUB
+        <span className="text-xs font-bold text-purple-700">
+          Peer Network Hub
         </span>
       </div>
 
@@ -146,8 +146,8 @@ export function BentoPerksGrid() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md">
               <Utensils className="h-5 w-5" />
             </div>
-            <span className="text-[11px] font-mono font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200">
-              FULL_HOSPITALITY
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200">
+              Food &amp; Refreshments
             </span>
           </div>
 
@@ -161,8 +161,8 @@ export function BentoPerksGrid() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-emerald-200/60 text-xs font-mono font-bold text-emerald-800">
-          <span>INCLUDED_WITH_PASS</span>
+        <div className="flex items-center justify-between pt-2 border-t border-emerald-200/60 text-xs font-bold text-emerald-800">
+          <span>Included With Your Pass</span>
           <Sparkles className="h-4 w-4 text-emerald-600" />
         </div>
       </div>

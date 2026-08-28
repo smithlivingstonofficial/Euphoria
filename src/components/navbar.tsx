@@ -18,6 +18,7 @@ import {
   ChevronRight,
   LogIn,
   Ticket,
+  Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -44,6 +45,12 @@ export function Navbar({ user }: NavbarProps) {
       label: "Events Catalog",
       badge: "61",
       icon: Layers,
+    },
+    {
+      href: "/campus-map",
+      label: "Campus Map",
+      badge: "Map",
+      icon: Compass,
     },
     {
       href: "/announcements",
