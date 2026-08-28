@@ -237,10 +237,10 @@ export function ScheduleSimulator() {
 
       <div className="pt-2 text-center">
         <Link
-          href="/schedule"
+          href="/events"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-white text-xs font-black shadow-md hover:bg-primary-hover transition-all"
         >
-          <span>View Full 61-Event Detailed Schedule</span>
+          <span>Explore All 61 Competitions</span>
           <ArrowRight className="h-4 w-4" />
         </Link>
       </div>

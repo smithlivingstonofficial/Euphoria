@@ -46,12 +46,6 @@ export function Navbar({ user }: NavbarProps) {
       icon: Layers,
     },
     {
-      href: "/schedule",
-      label: "Schedule",
-      badge: "2 Days",
-      icon: Calendar,
-    },
-    {
       href: "/announcements",
       label: "Alerts",
       badge: "Live",

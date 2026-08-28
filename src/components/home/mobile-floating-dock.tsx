@@ -21,11 +21,11 @@ export function MobileFloatingDock({ userRole, hasPass }: MobileFloatingDockProp
         </Link>
 
         <Link
-          href="/schedule"
+          href="/announcements"
           className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-slate-100 text-slate-700 transition-colors"
         >
           <Calendar className="h-4 w-4 text-indigo-600" />
-          <span className="text-[10px] font-mono font-bold">Schedule</span>
+          <span className="text-[10px] font-mono font-bold">Alerts</span>
         </Link>
 
         <Link
