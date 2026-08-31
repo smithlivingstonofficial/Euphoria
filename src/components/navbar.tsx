@@ -26,6 +26,8 @@ import { useCart } from "@/context/cart-context";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { EuphoriaLogo } from "@/components/brand/euphoria-logo";
 
+import { createClient } from "@/lib/supabase/client";
+
 interface NavbarProps {
   user?: {
     email: string;
@@ -34,13 +36,66 @@ interface NavbarProps {
   } | null;
 }
 
-export function Navbar({ user }: NavbarProps) {
+export function Navbar({ user: propUser }: NavbarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [activeUser, setActiveUser] = useState<NavbarProps["user"]>(propUser || null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const { selectedEvents, openCart } = useCart();
+
+  useEffect(() => {
+    if (propUser) {
+      setActiveUser(propUser);
+      return;
+    }
+
+    async function loadClientSession() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+
+        if (authUser) {
+          const isCoordinatorPath = pathname.startsWith("/coordinator");
+          const isAdminPath = pathname.startsWith("/admin");
+
+          const { data: roleAss } = await supabase
+            .from("user_role_assignments")
+            .select("role_id")
+            .eq("user_id", authUser.id);
+
+          const roles = (roleAss || []).map((r: any) => r.role_id);
+          const isAdminRole = roles.includes("admin") || isAdminPath;
+          const isCoordRole =
+            roles.includes("staff_coordinator") ||
+            roles.includes("student_coordinator") ||
+            roles.includes("coordinator") ||
+            roles.includes("faculty") ||
+            isCoordinatorPath;
+
+          setActiveUser({
+            email: authUser.email || "",
+            role: isAdminRole ? "admin" : isCoordRole ? "staff_coordinator" : "participant",
+          });
+        } else if (pathname.startsWith("/coordinator") || pathname.startsWith("/admin")) {
+          // If on coordinator page, fallback to path role representation
+          setActiveUser({
+            email: "coordinator@klu.ac.in",
+            role: pathname.startsWith("/admin") ? "admin" : "staff_coordinator",
+          });
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+
+    loadClientSession();
+  }, [propUser, pathname]);
+
+  const user = activeUser;
 
   const navLinks = [
     {
@@ -71,9 +126,10 @@ export function Navbar({ user }: NavbarProps) {
     user?.role === "student_coordinator" ||
     user?.role === "coordinator" ||
     user?.role === "faculty" ||
-    user?.role === "admin";
+    user?.role === "admin" ||
+    pathname.startsWith("/coordinator");
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || pathname.startsWith("/admin");
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
@@ -222,9 +278,9 @@ export function Navbar({ user }: NavbarProps) {
 
                   {/* Dropdown */}
                   {userDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-60 rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-xl p-2 shadow-xl shadow-slate-900/10 animate-in fade-in-50 zoom-in-95 duration-150 z-50">
+                    <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl shadow-slate-900/15 animate-in fade-in-50 zoom-in-95 duration-150 z-[999]">
                       {/* User info block */}
-                      <div className="px-3 py-2.5 mb-1.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <div className="px-3 py-2.5 mb-2 rounded-xl bg-slate-50 border border-slate-100">
                         <div className="flex items-center gap-2.5">
                           <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-primary flex items-center justify-center text-white font-black font-mono text-sm shrink-0">
                             {user.email.slice(0, 1).toUpperCase()}
@@ -239,35 +295,52 @@ export function Navbar({ user }: NavbarProps) {
                         </div>
                       </div>
 
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {isAdmin && (
-                          <Link href="/admin" onClick={() => setUserDropdownOpen(false)}
-                            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 transition-colors">
-                            <Sparkles className="h-3.5 w-3.5 text-rose-500" />
-                            Admin Console
+                          <Link
+                            href="/admin"
+                            onClick={() => setUserDropdownOpen(false)}
+                            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50/50 hover:bg-rose-50 transition-colors"
+                          >
+                            <Sparkles className="h-4 w-4 text-rose-500 shrink-0" />
+                            <span>Admin Console</span>
                           </Link>
                         )}
+
                         {isCoordinator && (
-                          <Link href="/coordinator" onClick={() => setUserDropdownOpen(false)}
-                            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors">
-                            <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
-                            Coordinator Hub
-                          </Link>
+                          <>
+                            <Link
+                              href="/coordinator"
+                              onClick={() => setUserDropdownOpen(false)}
+                              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-indigo-900 bg-indigo-50/60 hover:bg-indigo-100/70 transition-colors"
+                            >
+                              <ShieldCheck className="h-4 w-4 text-indigo-600 shrink-0" />
+                              <span>Coordinator Hub</span>
+                            </Link>
+                            <Link
+                              href="/coordinator/scanner"
+                              onClick={() => setUserDropdownOpen(false)}
+                              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                            >
+                              <QrCode className="h-4 w-4 text-primary shrink-0" />
+                              <span>Open QR Pass Scanner</span>
+                            </Link>
+                          </>
                         )}
-                        <Link href="/dashboard" onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
-                          <LayoutDashboard className="h-3.5 w-3.5 text-slate-400" />
-                          My Dashboard
+
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                          <LayoutDashboard className="h-4 w-4 text-slate-400 shrink-0" />
+                          <span>My Dashboard</span>
                         </Link>
-                        <Link href="/dashboard/passes" onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
-                          <QrCode className="h-3.5 w-3.5 text-slate-400" />
-                          Digital Pass &amp; QR
-                        </Link>
-                        <div className="pt-1 mt-0.5 border-t border-slate-100">
+
+                        <div className="pt-1.5 mt-1 border-t border-slate-100">
                           <LogoutButton
                             variant="ghost"
-                            className="w-full justify-start px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-xl"
+                            className="w-full justify-start px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-xl font-bold"
                             onLogoutSuccess={() => setUserDropdownOpen(false)}
                           />
                         </div>

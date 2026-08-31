@@ -74,7 +74,12 @@ export default async function CoordinatorDashboardPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-      <Navbar />
+      <Navbar
+        user={{
+          email: data.userName || "coordinator@klu.ac.in",
+          role: data.primaryRole === "admin" ? "admin" : "staff_coordinator",
+        }}
+      />
 
       <main className="flex-1 pt-20 sm:pt-24 pb-8 sm:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
         {/* Header Bar */}
