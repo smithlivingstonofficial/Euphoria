@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { EuphoriaLogo } from "@/components/brand/euphoria-logo";
 
 interface NavbarProps {
   user?: {
@@ -112,24 +113,8 @@ export function Navbar({ user }: NavbarProps) {
         <div className="mx-auto flex h-[54px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 
           {/* ════ LOGO ════ */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-            {/* Icon mark */}
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 shadow-md group-hover:shadow-indigo-500/30 group-hover:scale-105 transition-all duration-200 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/80 via-primary/60 to-cyan-500/40" />
-              <Sparkles className="relative h-4 w-4 text-white" />
-            </div>
-            {/* Wordmark */}
-            <div>
-              <p className="text-[15px] font-black tracking-[-0.04em] text-slate-900 font-display leading-none group-hover:text-primary transition-colors duration-200">
-                EUPHORIA
-              </p>
-              <div className="flex items-center gap-1.5 mt-[2px]">
-                <span className="text-[9px] font-mono font-bold text-slate-400 tracking-[0.12em] uppercase leading-none">
-                  KARE 2026
-                </span>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-            </div>
+          <Link href="/" className="flex items-center gap-2 shrink-0 group">
+            <EuphoriaLogo variant="compact" size="md" />
           </Link>
 
           {/* ════ DESKTOP CENTER NAV ════ */}
