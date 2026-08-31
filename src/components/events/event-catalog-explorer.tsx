@@ -95,6 +95,32 @@ function getCategoryTheme(catName?: string, isPro?: boolean) {
   };
 }
 
+const SCHOOL_IMAGE_MAP: Record<string, string> = {
+  "SoC": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80",
+  "SCSE": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80",
+  "SEET": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80",
+  "SLASE": "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=600&q=80",
+  "KBS": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80",
+  "SMACE": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80",
+  "SAS": "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=600&q=80",
+  "FE": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=600&q=80",
+  "SBCE": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=600&q=80",
+  "AHS": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=600&q=80",
+  "KSAH": "https://images.unsplash.com/photo-1586771107445-d3ca888129ff?auto=format&fit=crop&w=600&q=80",
+  "KSL": "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=600&q=80",
+  "KSA": "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80",
+  "KAP": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=600&q=80",
+  "PHYSICAL EDUCATION": "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=600&q=80",
+};
+
+function getSchoolCoverImage(schoolName: string): string {
+  const normalized = schoolName.toUpperCase();
+  for (const [key, url] of Object.entries(SCHOOL_IMAGE_MAP)) {
+    if (normalized.includes(key)) return url;
+  }
+  return "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80";
+}
+
 export function EventCatalogExplorer({
   initialEvents = [],
   categories = [],
@@ -112,7 +138,7 @@ export function EventCatalogExplorer({
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
-  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(false);
+  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(true);
   const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
 
   // Cart Context Hook
@@ -521,35 +547,56 @@ export function EventCatalogExplorer({
           </div>
 
           {/* School Directory Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-            {schoolsData.map((school) => (
-              <button
-                key={school.name}
-                type="button"
-                onClick={() => setSelectedSchool(school.name)}
-                className="group p-4 rounded-2xl border border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 text-left flex flex-col justify-between space-y-3 cursor-pointer relative overflow-hidden"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white border border-slate-200 text-indigo-700 group-hover:bg-primary group-hover:text-white transition-colors">
-                    <GraduationCap className="h-4 w-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {schoolsData.map((school) => {
+              const coverImg = getSchoolCoverImage(school.name);
+              return (
+                <button
+                  key={school.name}
+                  type="button"
+                  onClick={() => setSelectedSchool(school.name)}
+                  className="group rounded-3xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:shadow-xl transition-all duration-300 text-left flex flex-col justify-between cursor-pointer relative overflow-hidden"
+                >
+                  {/* Cover Image Banner */}
+                  <div className="relative h-36 sm:h-40 w-full overflow-hidden bg-slate-950">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={coverImg}
+                      alt={school.name}
+                      className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-80 group-hover:opacity-95"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                    
+                    {/* Event Count Badge */}
+                    <div className="absolute top-3 right-3 z-10">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 backdrop-blur-md text-slate-900 border border-white/40 text-xs font-black shadow-md font-mono">
+                        <Sparkles className="h-3 w-3 text-amber-500 fill-amber-400" />
+                        <span>{school.count} {school.count === 1 ? "Event" : "Events"}</span>
+                      </span>
+                    </div>
+
+                    {/* School Title Overlay */}
+                    <div className="absolute bottom-3 inset-x-3.5 z-10">
+                      <h4 className="text-sm sm:text-base font-extrabold text-white font-display leading-tight group-hover:text-cyan-200 transition-colors line-clamp-2 drop-shadow-sm">
+                        {school.name}
+                      </h4>
+                    </div>
                   </div>
 
-                  <span className="text-xs font-black uppercase px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 group-hover:bg-primary group-hover:text-white transition-colors">
-                    {school.count} {school.count === 1 ? "Event" : "Events"}
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors font-display line-clamp-2">
-                    {school.name}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1 font-semibold group-hover:text-slate-700">
-                    <span>View competitions</span>
-                    <ArrowRight className="h-3 w-3 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                  </p>
-                </div>
-              </button>
-            ))}
+                  {/* Card Action Footer */}
+                  <div className="p-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700 group-hover:bg-indigo-50/50 group-hover:text-primary transition-colors">
+                    <span className="flex items-center gap-1.5 font-semibold text-[11px] text-slate-500 group-hover:text-indigo-700">
+                      <GraduationCap className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                      <span>Browse competitions</span>
+                    </span>
+                    <div className="flex items-center gap-1 text-primary">
+                      <span>Explore</span>
+                      <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
