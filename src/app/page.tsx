@@ -111,43 +111,17 @@ export default async function HomePage() {
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center flex flex-col items-center space-y-6 sm:space-y-8">
           
-          {/* ── Co-Branding Institutional Header ── */}
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 p-2.5 sm:p-3.5 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-2xs">
-            {/* College Official Logo */}
+          {/* ── Official Kalasalingam Institutional Header (ONLY College Logo) ── */}
+          <div className="flex items-center justify-center p-3 sm:p-4 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-2xs">
             <CollegeLogo variant="full" />
-
-            {/* Subtle Divider */}
-            <div className="hidden sm:block h-8 w-px bg-slate-200" />
-
-            {/* Fest Official Logo */}
-            <EuphoriaLogo variant="compact" />
-
-            {/* Subtle Divider */}
-            <div className="hidden md:block h-8 w-px bg-slate-200" />
-
-            {/* Date & Accreditation Pill */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200/80 text-[11px] font-bold text-slate-700 font-mono">
-                <Calendar className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Sept 25–26, 2026</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                <span>Live</span>
-              </div>
-            </div>
           </div>
 
-          {/* ── Telemetry Kicker Tag ── */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50/90 border border-indigo-200/80 text-xs font-bold text-indigo-900 shadow-2xs">
-            <Sparkles className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
-            <span className="tracking-wide">National Level Inter-Collegiate Technical Symposium</span>
+          {/* ── Official Euphoria Logo (Replaces Tag) ── */}
+          <div className="pt-1">
+            <EuphoriaLogo variant="full" size="lg" />
           </div>
 
-          {/* ── Modern Inspiring Headline ── */}
+          {/* ── Headline ── */}
           <div className="space-y-1 max-w-4xl">
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 font-display leading-[1.06]">
               Where Innovation
@@ -159,24 +133,8 @@ export default async function HomePage() {
 
           {/* ── Narrative & Value Subtext ── */}
           <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-medium max-w-2xl">
-            South India&apos;s premier national technical showdown at Kalasalingam University. Compete across <strong className="text-slate-900">61 high-octane competitions</strong> in 14 academic schools for a <strong className="text-slate-900">₹15 Lakhs+ cash prize pool</strong> and verified national credentials.
+            South India&apos;s premier national technical showdown at Kalasalingam University. Compete across <strong className="text-slate-900 font-bold">61 high-octane competitions</strong> in 14 academic schools for a <strong className="text-slate-900 font-bold">₹15 Lakhs+ cash prize pool</strong> and verified national credentials.
           </p>
-
-          {/* ── Quick Highlights Bar ── */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 text-xs font-semibold text-slate-700">
-            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <Ticket className="h-4 w-4 text-indigo-600" />
-              <span>₹200 All-Access Pass</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <Zap className="h-4 w-4 text-cyan-600" />
-              <span>2 Events Included</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
-              <MapPin className="h-4 w-4 text-emerald-600" />
-              <span>KARE Campus, Krishnankoil</span>
-            </div>
-          </div>
 
           {/* ── Primary Call-to-Action Group ── */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 w-full max-w-md sm:max-w-none pt-1">
