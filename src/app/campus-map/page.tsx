@@ -1,18 +1,15 @@
 import { Metadata } from "next";
-import Link from "next/link";
 import { Navbar } from "@/components/navbar";
-import { Footer } from "@/components/footer";
-import { FreeSatelliteMap } from "@/components/home/free-satellite-map";
-import { Sparkles, ChevronRight, Home } from "lucide-react";
+import { FreeSatelliteMap, PinItem } from "@/components/home/free-satellite-map";
 
 export const metadata: Metadata = {
   title: "Campus Satellite Map | Euphoria 2026",
   description:
-    "Free Satellite campus map of Kalasalingam Academy of Research and Education (KARE) with direct Google Maps travel directions.",
+    "Interactive full-screen Satellite campus map of Kalasalingam Academy of Research and Education (KARE) with pinned campus buildings and directions.",
 };
 
 export default function CampusMapPage() {
-  const campusPins = [
+  const campusPins: PinItem[] = [
     {
       id: "central-library",
       lat: 9.574309998590286,
@@ -25,14 +22,14 @@ export default function CampusMapPage() {
       lat: 9.57488265919995,
       lng: 77.67981053782255,
       title: "TIFAC Core",
-      description: "TIFAC CORE",
+      description: "TIFAC CORE in Network Engineering",
     },
     {
       id: "admin-office",
       lat: 9.57429511588042,
       lng: 77.67631320027677,
       title: "Admin Office",
-      description: "KARE Administrative Office",
+      description: "KARE Administrative Complex",
     },
     {
       id: "krishna-auditorium",
@@ -46,7 +43,7 @@ export default function CampusMapPage() {
       lat: 9.574534061925531,
       lng: 77.6760141433337,
       title: "Computer Block",
-      description: "Computer Block",
+      description: "SCSE Advanced Computing Complex",
     },
     {
       id: "8th-block",
@@ -86,37 +83,13 @@ export default function CampusMapPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary selection:text-white">
+    <div className="h-screen w-screen overflow-hidden bg-slate-100 text-slate-900 font-sans flex flex-col">
       <Navbar />
 
-      {/* Main Page Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-16 space-y-6">
-        {/* Breadcrumb Navigation */}
-        <nav className="flex items-center gap-2 text-xs font-bold text-slate-500">
-          <Link href="/" className="hover:text-primary transition-colors flex items-center gap-1">
-            <Home className="h-3.5 w-3.5" />
-            <span>Home</span>
-          </Link>
-          <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-slate-900 font-extrabold">Campus Satellite Map</span>
-        </nav>
-
-        {/* Clean Page Header (No text description paragraph block) */}
-        <div className="space-y-1.5 border-b border-slate-200/80 pb-4">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-bold text-primary">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            <span>KARE Satellite Aerial Layout</span>
-          </span>
-          <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
-            Kalasalingam University Campus Satellite Map
-          </h1>
-        </div>
-
-        {/* Free Satellite Tile Map Container with Pinned Locations */}
-        <FreeSatelliteMap pins={campusPins} height="h-[580px] sm:h-[680px]" />
+      {/* Main Full-Screen Satellite Map Canvas (No Sidebar, No Footer) */}
+      <main className="w-full flex-1 pt-16 overflow-hidden relative">
+        <FreeSatelliteMap pins={campusPins} height="h-full" />
       </main>
-
-      <Footer />
     </div>
   );
 }

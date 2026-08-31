@@ -122,7 +122,7 @@ const DAY_2_SCHEDULE: ScheduleItem[] = [
   },
   {
     time: "03:30 PM - 05:30 PM",
-    title: "Grand Valedictory, ₹25,000+ Prize Ceremony & Certificates",
+    title: "Grand Valedictory, ₹15 Lakhs+ Prize Ceremony & Certificates",
     venue: "K.S. Krishnan Central Auditorium",
     track: "Ceremony",
     badge: "Prize Distribution",

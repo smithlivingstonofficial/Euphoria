@@ -6,25 +6,26 @@ import { getUserPassSummary } from "@/actions/passes";
 import {
   Sparkles,
   ArrowRight,
-  Calendar,
-  Layers,
-  QrCode,
   ShieldCheck,
   CheckCircle2,
-  ChevronRight,
   Trophy,
   Award,
   Ticket,
-  Flame,
   Zap,
   HelpCircle,
   Building,
+  Calendar,
+  MapPin,
+  Layers,
 } from "lucide-react";
 
-// Interactive Light Home Components
+// Brand & Logo Components
+import { CollegeLogo } from "@/components/brand/college-logo";
+import { EuphoriaLogo } from "@/components/brand/euphoria-logo";
+
+// Interactive Home Components
 import { HeroParticleCanvas } from "@/components/home/hero-particle-canvas";
 import { CountdownTimer } from "@/components/home/countdown-timer";
-import { HolographicPassCard } from "@/components/home/holographic-pass-card";
 import { BentoPerksGrid } from "@/components/home/bento-perks-grid";
 import { InteractivePassJourney } from "@/components/home/interactive-pass-journey";
 import { CampusVenueRadar } from "@/components/home/campus-venue-radar";
@@ -95,195 +96,197 @@ export default async function HomePage() {
         }
       />
 
-      {/* 1. HERO SECTION (Streamlined Content & Compact Mobile Spacing) */}
-      <section className="relative overflow-hidden border-b border-slate-200/80 bg-white py-6 sm:py-16">
-        {/* Interactive Light Particle Constellation Canvas */}
+      {/* ═══════════════════════════════════════════════════════════════
+          ULTRA-MODERN TECHFEST HERO SECTION — Clean, Centered & Prestigious
+      ═══════════════════════════════════════════════════════════════ */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-white via-slate-50/60 to-slate-100/40 border-b border-slate-200/80 py-10 sm:py-16 lg:py-20">
+        {/* Dynamic Canvas Background */}
         <HeroParticleCanvas />
 
-        {/* Ambient Glowing Orbs */}
-        <div className="absolute -top-24 right-1/4 w-96 h-96 bg-gradient-to-br from-indigo-100/50 via-cyan-100/40 to-transparent rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 left-1/4 w-96 h-96 bg-gradient-to-tr from-sky-100/40 via-emerald-100/30 to-transparent rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(#CBD5E1_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none" />
+        {/* Ambient Gradient Glows */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="hero-orb-1 absolute -top-40 -left-20 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(79,70,229,0.12)_0%,rgba(99,102,241,0.03)_50%,transparent_75%)] blur-3xl" />
+          <div className="hero-orb-2 absolute -top-24 -right-16 w-[550px] h-[550px] bg-[radial-gradient(circle,rgba(6,182,212,0.1)_0%,rgba(14,165,233,0.02)_50%,transparent_75%)] blur-3xl" />
+        </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-center">
-            {/* Hero Left Column: Headline, Subtitle, Countdown, CTAs */}
-            <div className="lg:col-span-7 space-y-4 sm:space-y-5 text-center sm:text-left flex flex-col items-center sm:items-start">
-              {/* Official College Logo Badge (Centered on Mobile) */}
-              <div className="flex justify-center sm:justify-start w-full">
-                <div className="inline-flex items-center rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 px-4 py-2 shadow-xs">
-                  <img
-                    src="https://www.kalasalingam.ac.in/wp-content/uploads/2022/02/Logo.png"
-                    alt="Kalasalingam Academy of Research and Education"
-                    className="h-7 sm:h-9 w-auto object-contain"
-                  />
-                </div>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center flex flex-col items-center space-y-6 sm:space-y-8">
+          
+          {/* ── Co-Branding Institutional Header ── */}
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 p-2.5 sm:p-3.5 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200/90 shadow-2xs">
+            {/* College Official Logo */}
+            <CollegeLogo variant="full" />
+
+            {/* Subtle Divider */}
+            <div className="hidden sm:block h-8 w-px bg-slate-200" />
+
+            {/* Fest Official Logo */}
+            <EuphoriaLogo variant="compact" />
+
+            {/* Subtle Divider */}
+            <div className="hidden md:block h-8 w-px bg-slate-200" />
+
+            {/* Date & Accreditation Pill */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200/80 text-[11px] font-bold text-slate-700 font-mono">
+                <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                <span>Sept 25–26, 2026</span>
               </div>
-
-              {/* High-Impact Punchy Headline */}
-              <h1 className="text-2xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 leading-[1.12]">
-                ENGINEER THE FUTURE.{" "}
-                <span className="bg-gradient-to-r from-primary via-indigo-600 to-cyan-600 bg-clip-text text-transparent">
-                  DOMINATE THE ARENA.
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-700">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
-              </h1>
-
-              {/* Streamlined Subtitle (Ultra-Concise 1-Liner) */}
-              <p className="text-xs sm:text-base text-slate-600 leading-relaxed font-normal max-w-xl">
-                Compete in <strong>61 official events</strong> across 14 academic schools with <strong>₹25,000+ in cash prizes</strong>.
-              </p>
-
-              {/* Compact Visual Telemetry Chips */}
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 font-mono text-[10px] sm:text-xs font-bold text-slate-700">
-                <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200">
-                  ⚡ 61 COMPETITIONS
-                </span>
-                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-                  🏆 ₹25,000+ CASH POOL
-                </span>
-                <span className="px-2.5 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-primary">
-                  🎓 14 SCHOOLS
-                </span>
+                <span>Live</span>
               </div>
-
-              {/* Compact Mobile Countdown Timer */}
-              <div className="pt-1 w-full flex justify-center sm:justify-start">
-                <CountdownTimer />
-              </div>
-
-              {/* Tech Action CTAs */}
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 pt-1 font-sans w-full">
-                <Link
-                  href="/events"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary/25 hover:bg-primary-hover hover:scale-[1.01] active:scale-[0.99] transition-all group"
-                >
-                  <Zap className="h-4 w-4 fill-current text-cyan-200" />
-                  <span>Explore 61 Events</span>
-                  <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
-
-                <Link
-                  href="/events"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
-                >
-                  <Calendar className="h-4 w-4 text-slate-500" />
-                  <span>View Events</span>
-                </Link>
-
-                {user ? (
-                  userRole === "admin" ? (
-                    <Link
-                      href="/admin"
-                      className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs sm:text-sm font-bold text-rose-700 hover:bg-rose-100 transition-all shadow-xs"
-                    >
-                      <Sparkles className="h-4 w-4 text-rose-600" />
-                      <span>Admin Panel</span>
-                    </Link>
-                  ) : userRole === "staff_coordinator" ||
-                    userRole === "student_coordinator" ||
-                    userRole === "coordinator" ? (
-                    <Link
-                      href="/coordinator"
-                      className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all shadow-xs"
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>Coordinator Hub</span>
-                    </Link>
-                  ) : (
-                    <Link
-                      href="/dashboard/passes"
-                      className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all shadow-xs"
-                    >
-                      <QrCode className="h-4 w-4" />
-                      <span>My Pass QR</span>
-                    </Link>
-                  )
-                ) : (
-                  <Link
-                    href="/register"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-xs sm:text-sm font-bold text-primary hover:bg-indigo-100 transition-all shadow-xs"
-                  >
-                    <Ticket className="h-4 w-4" />
-                    <span>Get Festival Pass</span>
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* Hero Right Column: Light 3D Holographic Pass Card */}
-            <div className="lg:col-span-5 flex items-center justify-center pt-2 lg:pt-0">
-              <HolographicPassCard userRole={userRole} hasPass={hasPass} />
             </div>
           </div>
 
-          {/* 4 Light Tech Stat Capsules */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 pt-6 sm:pt-8">
-            <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-3 sm:p-4 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all group">
-              <div className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight group-hover:text-primary transition-colors">
+          {/* ── Telemetry Kicker Tag ── */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50/90 border border-indigo-200/80 text-xs font-bold text-indigo-900 shadow-2xs">
+            <Sparkles className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
+            <span className="tracking-wide">National Level Inter-Collegiate Technical Symposium</span>
+          </div>
+
+          {/* ── Modern Inspiring Headline ── */}
+          <div className="space-y-1 max-w-4xl">
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 font-display leading-[1.06]">
+              Where Innovation
+            </h1>
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight font-display leading-[1.06] bg-gradient-to-r from-indigo-600 via-primary to-cyan-500 bg-clip-text text-transparent">
+              Meets Velocity.
+            </h1>
+          </div>
+
+          {/* ── Narrative & Value Subtext ── */}
+          <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-medium max-w-2xl">
+            South India&apos;s premier national technical showdown at Kalasalingam University. Compete across <strong className="text-slate-900">61 high-octane competitions</strong> in 14 academic schools for a <strong className="text-slate-900">₹15 Lakhs+ cash prize pool</strong> and verified national credentials.
+          </p>
+
+          {/* ── Quick Highlights Bar ── */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 text-xs font-semibold text-slate-700">
+            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+              <Ticket className="h-4 w-4 text-indigo-600" />
+              <span>₹200 All-Access Pass</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+              <Zap className="h-4 w-4 text-cyan-600" />
+              <span>2 Events Included</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+              <MapPin className="h-4 w-4 text-emerald-600" />
+              <span>KARE Campus, Krishnankoil</span>
+            </div>
+          </div>
+
+          {/* ── Primary Call-to-Action Group ── */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 w-full max-w-md sm:max-w-none pt-1">
+            <Link
+              href={user ? (hasPass ? "/dashboard/passes" : "/events") : "/register"}
+              className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-primary to-cyan-600 px-8 py-4 text-sm sm:text-base font-black text-white shadow-xl shadow-indigo-500/25 hover:shadow-2xl hover:shadow-indigo-500/35 hover:scale-[1.02] active:scale-98 transition-all group cursor-pointer w-full sm:w-auto"
+            >
+              <Ticket className="h-5 w-5 text-cyan-200" />
+              <span>{hasPass ? "View My Delegate Pass" : "Claim All-Access Pass (₹200) →"}</span>
+              <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+
+            <Link
+              href="/events"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white/90 backdrop-blur-sm px-6 py-4 text-sm font-bold text-slate-800 hover:bg-slate-50 hover:border-indigo-300 transition-all shadow-2xs w-full sm:w-auto"
+            >
+              <Layers className="h-4.5 w-4.5 text-slate-400" />
+              <span>Explore 61 Competitions</span>
+            </Link>
+          </div>
+
+          {/* ── Countdown Timer Centerpiece ── */}
+          <div className="w-full max-w-sm pt-2">
+            <CountdownTimer />
+          </div>
+
+          {/* ── Social Proof Trust Bar ── */}
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-semibold text-slate-500 pt-1">
+            <div className="flex items-center gap-2">
+              <div className="flex -space-x-1.5">
+                {["A", "R", "S"].map((l, i) => (
+                  <div
+                    key={l}
+                    className="h-6 w-6 rounded-full text-white flex items-center justify-center text-[9px] font-bold ring-2 ring-white shadow-2xs"
+                    style={{ background: ["#6366F1", "#10B981", "#F59E0B"][i] }}
+                  >
+                    {l}
+                  </div>
+                ))}
+              </div>
+              <span><strong className="text-slate-900 font-bold">1,240+</strong> Delegates Registered</span>
+            </div>
+            <span className="text-slate-300 hidden sm:inline">•</span>
+            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/80">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+              Instant QR Generation
+            </span>
+          </div>
+
+          {/* ── 4 Modern Metric Capsules ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 w-full pt-6 sm:pt-8">
+            {/* Stat 1 */}
+            <div className="relative rounded-3xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-4 sm:p-5 shadow-2xs hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl bg-gradient-to-b from-indigo-500 to-primary" />
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
                 61
               </div>
-              <div className="text-[11px] sm:text-xs font-bold text-slate-700 mt-0.5">
-                Official Events
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
-                Day 1 &amp; Day 2 tracks
-              </div>
+              <div className="text-xs font-bold text-slate-800 mt-1">Official Competitions</div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">Day 1 &amp; Day 2 tracks</div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-3 sm:p-4 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all group">
-              <div className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight group-hover:text-primary transition-colors">
+            {/* Stat 2 */}
+            <div className="relative rounded-3xl border border-slate-200/90 bg-white/90 backdrop-blur-sm p-4 sm:p-5 shadow-2xs hover:border-emerald-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl bg-gradient-to-b from-emerald-500 to-teal-500" />
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
                 14
               </div>
-              <div className="text-[11px] sm:text-xs font-bold text-slate-700 mt-0.5">
-                Academic Schools
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
-                Computing, SEET &amp; more
-              </div>
+              <div className="text-xs font-bold text-slate-800 mt-1">Academic Schools</div>
+              <div className="text-[11px] text-slate-500 mt-0.5 font-medium">Computing, SEET &amp; more</div>
             </div>
 
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 backdrop-blur-sm p-3 sm:p-4 shadow-xs hover:border-amber-400 hover:shadow-md transition-all group">
-              <div className="text-xl sm:text-3xl font-black text-amber-900 tracking-tight flex items-center gap-1">
-                <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0" />
-                <span>₹25,000+</span>
+            {/* Stat 3 */}
+            <div className="relative rounded-3xl border border-amber-200/80 bg-amber-50/60 backdrop-blur-sm p-4 sm:p-5 shadow-2xs hover:border-amber-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl bg-gradient-to-b from-amber-500 to-orange-500" />
+              <div className="text-2xl sm:text-3xl font-black text-amber-900 tracking-tight flex items-center gap-1.5 font-mono">
+                <Trophy className="h-5 w-5 text-amber-500 shrink-0" />
+                <span>₹15L+</span>
               </div>
-              <div className="text-[11px] sm:text-xs font-bold text-amber-900 mt-0.5">
-                Prizes &amp; Awards
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-amber-700/80 mt-0.5">
-                Cash pools &amp; trophies
-              </div>
+              <div className="text-xs font-bold text-amber-900 mt-1">Prizes &amp; Cash Awards</div>
+              <div className="text-[11px] text-amber-800/80 mt-0.5 font-medium">Direct bank payouts</div>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 backdrop-blur-sm p-3 sm:p-4 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all group">
-              <div className="text-xl sm:text-3xl font-black text-emerald-900 tracking-tight flex items-center gap-1">
-                <Award className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
+            {/* Stat 4 */}
+            <div className="relative rounded-3xl border border-teal-200/80 bg-teal-50/50 backdrop-blur-sm p-4 sm:p-5 shadow-2xs hover:border-teal-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl bg-gradient-to-b from-teal-500 to-emerald-600" />
+              <div className="text-2xl sm:text-3xl font-black text-teal-900 tracking-tight flex items-center gap-1.5 font-mono">
+                <Award className="h-5 w-5 text-teal-600 shrink-0" />
                 <span>Verified</span>
               </div>
-              <div className="text-[11px] sm:text-xs font-bold text-emerald-900 mt-0.5">
-                Certificates
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-emerald-700/80 mt-0.5">
-                Official KARE credentials
-              </div>
+              <div className="text-xs font-bold text-teal-900 mt-1">Digital Certificates</div>
+              <div className="text-[11px] text-teal-700/80 mt-0.5 font-medium">Instant QR verification</div>
             </div>
           </div>
+
         </div>
       </section>
 
-      {/* 5. GAMIFIED BENTO PERKS GRID */}
-      <section className="border-t border-slate-200/80 bg-white py-10 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="text-center max-w-xl mx-auto space-y-2">
+      {/* 2. GAMIFIED BENTO PERKS GRID */}
+      <section className="border-t border-slate-200/80 bg-slate-50/50 py-10 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+          <div className="text-center max-w-xl mx-auto space-y-1.5">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wider">
               <Sparkles className="h-3.5 w-3.5 text-amber-500" />
               <span>Festival Benefits</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display">
               Why Compete at Euphoria 2026?
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              More than a symposium. Gain national exposure, verified credentials, cash prizes, and tech peer networks.
+              Gain national exposure, verified credentials, cash prizes up to ₹15 Lakhs+, and tech peer networks.
             </p>
           </div>
 
@@ -291,15 +294,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 6. INTERACTIVE 3-STEP PASS PARTICIPATION JOURNEY */}
-      <section className="border-t border-slate-200/80 bg-slate-50/50 py-10 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="text-center max-w-xl mx-auto space-y-2">
+      {/* 3. INTERACTIVE 3-STEP PASS PARTICIPATION JOURNEY */}
+      <section className="border-t border-slate-200/80 bg-white py-10 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+          <div className="text-center max-w-xl mx-auto space-y-1.5">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wider">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
               <span>Simple 3-Step Process</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display">
               3 Simple Steps to Participate
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
@@ -311,15 +314,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 7. CAMPUS VENUE RADAR & LOCATION GUIDE */}
-      <section className="border-t border-slate-200/80 bg-white py-10 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="space-y-1">
+      {/* 4. CAMPUS VENUE RADAR */}
+      <section className="border-t border-slate-200/80 bg-slate-50/50 py-10 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+          <div className="space-y-1 text-center sm:text-left">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wider">
               <Building className="h-3.5 w-3.5 text-primary" />
               <span>Campus Venues</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display">
               Kalasalingam University Event Venues
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
@@ -331,15 +334,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 8. DYNAMIC SEARCHABLE FAQ ACCORDION */}
-      <section className="border-t border-slate-200/80 bg-slate-50/50 py-10 sm:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="text-center max-w-xl mx-auto space-y-2">
+      {/* 5. SEARCHABLE FAQ */}
+      <section className="border-t border-slate-200/80 bg-white py-10 sm:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+          <div className="text-center max-w-xl mx-auto space-y-1.5">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wider">
               <HelpCircle className="h-3.5 w-3.5 text-primary" />
               <span>Common Questions</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display">
               Frequently Asked Questions
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
@@ -351,59 +354,49 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 9. LIGHT HIGH-TECH CLOSING CTA BANNER */}
-      <section className="border-t border-slate-200/80 bg-white py-10 sm:py-16">
+      {/* 6. HIGH-CONVERTING CLOSING CTA BANNER */}
+      <section className="border-t border-slate-200/80 bg-slate-50/50 py-10 sm:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-indigo-200 bg-gradient-to-r from-primary via-indigo-600 to-cyan-600 p-6 sm:p-12 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
-            {/* Luminous glow elements */}
+          <div className="rounded-3xl border border-indigo-200 bg-gradient-to-r from-primary via-indigo-600 to-cyan-600 p-6 sm:p-12 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-6 sm:gap-8 shadow-2xl relative overflow-hidden">
+            {/* Luminous ambient elements */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-300/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-96 h-96 bg-pink-300/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-96 h-96 bg-amber-300/15 rounded-full blur-3xl pointer-events-none" />
 
             <div className="space-y-2.5 max-w-xl relative z-10">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3.5 py-1 text-xs font-bold uppercase tracking-wider">
-                <Sparkles className="h-3.5 w-3.5 text-cyan-200" />
-                <span>Limited Passes Available</span>
+                <Sparkles className="h-3.5 w-3.5 text-amber-200" />
+                <span>₹15 Lakhs+ Cash Pool Active</span>
               </div>
-              <h3 className="text-2xl sm:text-4xl font-black tracking-tight pt-1">
+              <h3 className="text-2xl sm:text-4xl font-black tracking-tight pt-1 font-display">
                 Ready to compete and make history?
               </h3>
               <p className="text-xs sm:text-sm text-indigo-100 leading-relaxed">
-                Registrations are open for students across India. Reserve your 2 competition slots before flagship hackathon and robotics arenas reach capacity.
+                Registrations are open for students across India. Claim your 2 competition slots before flagship hackathon and robotics arenas reach capacity.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 relative z-10 shrink-0">
               <Link
-                href="/events"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-xs sm:text-sm font-black text-slate-900 shadow-xl hover:bg-cyan-50 active:scale-[0.99] transition-all"
+                href={user ? (hasPass ? "/dashboard/passes" : "/events") : "/register"}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-xs sm:text-sm font-black text-slate-900 shadow-xl hover:bg-cyan-50 active:scale-[0.99] transition-all cursor-pointer"
               >
-                <span>Browse 61 Events</span>
+                <span>{hasPass ? "View Pass QR" : "Claim Your Pass Now (₹200)"}</span>
                 <ArrowRight className="h-4 w-4 text-primary" />
               </Link>
 
-              {user ? (
-                <Link
-                  href="/dashboard/passes"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900/80 border border-white/20 px-6 py-4 text-xs sm:text-sm font-bold text-white hover:bg-slate-900 transition-all shadow-md"
-                >
-                  <QrCode className="h-4 w-4" />
-                  <span>View My Pass</span>
-                </Link>
-              ) : (
-                <Link
-                  href="/register"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900/80 border border-white/20 px-6 py-4 text-xs sm:text-sm font-bold text-white hover:bg-slate-900 transition-all shadow-md"
-                >
-                  <Ticket className="h-4 w-4" />
-                  <span>Get Your Pass</span>
-                </Link>
-              )}
+              <Link
+                href="/events"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900/80 border border-white/20 px-6 py-3.5 text-xs sm:text-sm font-bold text-white hover:bg-slate-900 transition-all shadow-md"
+              >
+                <Zap className="h-4 w-4" />
+                <span>Browse 61 Events</span>
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Floating Mobile Dock in Light Theme */}
+      {/* Floating Mobile Dock */}
       <MobileFloatingDock userRole={userRole} hasPass={hasPass} />
 
       <Footer />

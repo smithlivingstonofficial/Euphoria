@@ -41,7 +41,7 @@ export default async function CoordinatorEventRosterPage({
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar />
 
-      <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 pt-20 sm:pt-24 pb-8 sm:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
         {/* Navigation & Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div className="space-y-1">
@@ -75,7 +75,13 @@ export default async function CoordinatorEventRosterPage({
         </div>
 
         {/* Event Specs & Stats Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          className={`grid grid-cols-1 ${
+            data.firstSlotCount !== undefined
+              ? "sm:grid-cols-2 lg:grid-cols-4"
+              : "md:grid-cols-3"
+          } gap-4`}
+        >
           <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs space-y-2">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
               Schedule &amp; Timing
@@ -103,6 +109,22 @@ export default async function CoordinatorEventRosterPage({
             </div>
             <p className="text-[11px] text-slate-500">Verified participant entries</p>
           </div>
+
+          {/* 1st Slot Preference Stat Card (Staff & Admin Only) */}
+          {data.firstSlotCount !== undefined && (
+            <div className="rounded-3xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/60 to-white p-4 shadow-xs space-y-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 block">
+                1st Slot Preference
+              </span>
+              <div className="text-2xl font-black text-indigo-950 font-mono">
+                {data.firstSlotCount}{" "}
+                <span className="text-xs font-normal text-indigo-600">
+                  {data.firstSlotCount === 1 ? "Delegate" : "Delegates"}
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-600/80">Primary choice in Delegate Pass</p>
+            </div>
+          )}
 
           <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">

@@ -1,10 +1,10 @@
 "use server";
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache, revalidateTag } from "next/cache";
 
-// 1. Fetch Public Events with Categories & Registrations
-export async function getPublicEvents() {
+// Raw query with column projection to reduce egress bandwidth
+async function fetchPublicEventsRaw() {
   try {
     const supabase = await createClient();
 
@@ -13,7 +13,20 @@ export async function getPublicEvents() {
         supabase
           .from("events")
           .select(`
-            *,
+            id,
+            name,
+            slug,
+            short_description,
+            school_or_dept,
+            venue,
+            event_date,
+            start_time,
+            end_time,
+            registration_fee,
+            participant_limit,
+            is_pro_event,
+            status,
+            category_id,
             category:event_categories (
               id,
               name,
@@ -46,8 +59,15 @@ export async function getPublicEvents() {
   }
 }
 
-// 2. Fetch Single Event by Slug
-export async function getEventBySlug(slug: string) {
+// 1. Cached Public Events with Tag-Based Revalidation & Egress Control
+export const getPublicEvents = unstable_cache(
+  fetchPublicEventsRaw,
+  ["public-events-catalog-cache"],
+  { revalidate: 60, tags: ["public-events"] }
+);
+
+// Raw query for single event detail
+async function fetchEventBySlugRaw(slug: string) {
   try {
     const supabase = await createClient();
 
@@ -82,6 +102,15 @@ export async function getEventBySlug(slug: string) {
     const msg = err instanceof Error ? err.message : "Failed to load event";
     return { success: false, error: msg, event: null };
   }
+}
+
+// 2. Fetch Single Event by Slug with Cache
+export async function getEventBySlug(slug: string) {
+  return unstable_cache(
+    () => fetchEventBySlugRaw(slug),
+    [`event-detail-${slug}`],
+    { revalidate: 60, tags: ["public-events", `event-${slug}`] }
+  )();
 }
 
 // 3. Register for an Event
@@ -214,6 +243,7 @@ export async function registerForEvent(eventId: string) {
       throw insertError;
     }
 
+    revalidateTag("public-events");
     revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
@@ -229,15 +259,24 @@ export async function registerForEvent(eventId: string) {
   }
 }
 
-// 4. Fetch Festival Schedule (Grouped by Day 1 & Day 2)
-export async function getFestivalSchedule() {
+// Raw Schedule Fetcher
+async function fetchFestivalScheduleRaw() {
   try {
     const supabase = await createClient();
 
     const { data: events, error } = await supabase
       .from("events")
       .select(`
-        *,
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        is_pro_event,
+        status,
         category:event_categories (
           id,
           name,
@@ -268,15 +307,26 @@ export async function getFestivalSchedule() {
   }
 }
 
-// 5. Fetch Public Announcements
-export async function getPublicAnnouncements() {
+// 4. Fetch Festival Schedule (Grouped by Day 1 & Day 2) with Cache
+export const getFestivalSchedule = unstable_cache(
+  fetchFestivalScheduleRaw,
+  ["festival-schedule-cache"],
+  { revalidate: 60, tags: ["public-events"] }
+);
+
+// Raw Announcements Fetcher
+async function fetchPublicAnnouncementsRaw() {
   try {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from("announcements")
       .select(`
-        *,
+        id,
+        title,
+        content,
+        urgency,
+        created_at,
         event:events (
           id,
           name
@@ -287,12 +337,24 @@ export async function getPublicAnnouncements() {
 
     if (error) throw error;
 
-    return { success: true, announcements: data || [] };
+    const mapped = (data || []).map((ann: any) => ({
+      ...ann,
+      event: Array.isArray(ann.event) ? ann.event[0] : ann.event,
+    }));
+
+    return { success: true, announcements: mapped };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load announcements";
     return { success: false, error: msg, announcements: [] };
   }
 }
+
+// 5. Fetch Public Announcements with Cache
+export const getPublicAnnouncements = unstable_cache(
+  fetchPublicAnnouncementsRaw,
+  ["public-announcements-cache"],
+  { revalidate: 60, tags: ["public-announcements"] }
+);
 
 // 6. Fetch Public Registration Pricing Settings
 export async function getPublicPricingSettings() {
@@ -429,6 +491,7 @@ export async function batchRegisterEvents(eventIds: string[]) {
         };
       }
 
+      revalidateTag("public-events");
       revalidatePath("/", "layout");
       revalidatePath("/dashboard", "page");
       revalidatePath("/events", "page");
@@ -467,6 +530,7 @@ export async function batchRegisterEvents(eventIds: string[]) {
       };
     }
 
+    revalidateTag("public-events");
     revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
@@ -487,5 +551,3 @@ export async function batchRegisterEvents(eventIds: string[]) {
     return { success: false, error: msg };
   }
 }
-
-

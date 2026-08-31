@@ -133,7 +133,8 @@ export async function getAllEventsAdmin() {
         registrations:event_registrations (
           id,
           status,
-          payment_status
+          payment_status,
+          slot_number
         )
       `)
       .order("created_at", { ascending: false });
@@ -818,6 +819,72 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Bulk upload failed";
     return { success: false, error: msg };
+  }
+}
+
+// 14. Fetch All Payment Orders for Admin Payments Dashboard
+export async function getAllOrdersAdmin() {
+  try {
+    const adminClient = await createAdminClient();
+
+    const [
+      { data: orders, error: ordersErr },
+      { data: profiles },
+      { data: passes },
+    ] = await Promise.all([
+      adminClient
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      adminClient
+        .from("profiles")
+        .select("id, full_name, email, mobile_number, participant_type"),
+      adminClient
+        .from("delegate_passes")
+        .select("id, user_id, pass_code, pass_tier, amount_paid, status"),
+    ]);
+
+    if (ordersErr) throw ordersErr;
+
+    const profileMap = new Map<string, any>();
+    (profiles || []).forEach((p) => profileMap.set(p.id, p));
+
+    const passMap = new Map<string, any>();
+    (passes || []).forEach((p) => passMap.set(p.user_id, p));
+
+    const enrichedOrders = (orders || []).map((ord) => {
+      const userProf = profileMap.get(ord.user_id);
+      const userPass = passMap.get(ord.user_id);
+
+      return {
+        id: ord.id,
+        orderNumber: ord.order_number,
+        amount: Number(ord.amount || 0),
+        status: ord.status as "paid" | "pending" | "failed" | "refunded",
+        provider: ord.provider || "razorpay",
+        createdAt: ord.created_at,
+        metadata: ord.metadata || {},
+        user: {
+          id: ord.user_id,
+          fullName: userProf?.full_name || "Participant",
+          email: userProf?.email || "",
+          mobileNumber: userProf?.mobile_number || "",
+          participantType: userProf?.participant_type || "external",
+        },
+        pass: userPass
+          ? {
+              passCode: userPass.pass_code,
+              passTier: userPass.pass_tier,
+              status: userPass.status,
+            }
+          : null,
+      };
+    });
+
+    return { success: true, orders: enrichedOrders };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch payment orders";
+    return { success: false, error: msg, orders: [] };
   }
 }
 

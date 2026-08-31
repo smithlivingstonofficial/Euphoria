@@ -21,7 +21,7 @@ export default async function AnnouncementsPage() {
       <Navbar />
 
       {/* Header */}
-      <section className="border-b border-slate-200 bg-white py-10 sm:py-14">
+      <section className="border-b border-slate-200 bg-white pt-20 sm:pt-24 pb-10 sm:pb-14">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3">
           <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50/70 px-3 py-0.5 text-xs font-bold text-primary">
             <Megaphone className="h-3.5 w-3.5" />

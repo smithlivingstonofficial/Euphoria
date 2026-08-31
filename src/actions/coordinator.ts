@@ -19,6 +19,7 @@ export interface CoordinatorEventItem {
   } | null;
   totalRegistrations: number;
   totalAttended: number;
+  firstSlotCount?: number;
   roleType: "staff" | "student" | "admin";
 }
 
@@ -259,14 +260,14 @@ export async function getCoordinatorWorkspaceData() {
     const eventIds = eventsData.map((e) => e.id);
 
     // Fetch registration and attendance counts safely
-    let registrations: { id: string; event_id: string }[] = [];
+    let registrations: { id: string; event_id: string; slot_number?: number }[] = [];
     let attendances: { id: string; event_id: string }[] = [];
 
     try {
       const [regRes, attRes] = await Promise.all([
         adminClient
           .from("event_registrations")
-          .select("id, event_id")
+          .select("id, event_id, slot_number")
           .in("event_id", eventIds),
         adminClient
           .from("attendance")
@@ -280,8 +281,12 @@ export async function getCoordinatorWorkspaceData() {
     }
 
     const regCountMap: Record<string, number> = {};
+    const firstSlotCountMap: Record<string, number> = {};
     registrations.forEach((r) => {
       regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
+      if (r.slot_number === 1) {
+        firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
+      }
     });
 
     const attendCountMap: Record<string, number> = {};
@@ -294,10 +299,13 @@ export async function getCoordinatorWorkspaceData() {
       if (isAdmin) roleType = "admin";
       else if (studentEventIds.has(evt.id) && !staffEventIds.has(evt.id)) roleType = "student";
 
+      const isStudent = roleType === "student";
+
       return {
         ...evt,
         totalRegistrations: regCountMap[evt.id] || 0,
         totalAttended: attendCountMap[evt.id] || 0,
+        firstSlotCount: isStudent ? undefined : (firstSlotCountMap[evt.id] || 0),
         roleType,
       };
     });
@@ -429,6 +437,10 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
       };
     });
 
+    const firstSlotCount = isStudentCoord
+      ? undefined
+      : attendees.filter((a) => a.slot_number === 1).length;
+
     return {
       success: true,
       roleType,
@@ -436,6 +448,7 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
       attendees,
       totalCount: attendees.length,
       attendedCount: attendees.filter((a) => a.isAttended).length,
+      firstSlotCount,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch event attendees";

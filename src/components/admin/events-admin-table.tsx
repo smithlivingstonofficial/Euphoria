@@ -42,6 +42,7 @@ interface EventItem {
     id: string;
     status: string;
     payment_status: string;
+    slot_number?: number;
   }>;
 }
 
@@ -163,6 +164,7 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredEvents.map((evt) => {
                   const regCount = (evt.registrations || []).length;
+                  const firstSlotCount = (evt.registrations || []).filter((r) => r.slot_number === 1).length;
                   const limit = evt.participant_limit || 100;
                   const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
                   const isPro = Boolean(evt.is_pro_event);
@@ -223,6 +225,10 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
                             />
                           </div>
                           <span className="text-[10px] font-mono font-semibold">{fillPct}%</span>
+                        </div>
+                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                          <span>1st Choice:</span>
+                          <span className="font-mono">{firstSlotCount}</span>
                         </div>
                       </td>
 

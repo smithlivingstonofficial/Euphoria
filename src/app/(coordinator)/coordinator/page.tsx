@@ -76,7 +76,7 @@ export default async function CoordinatorDashboardPage() {
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar />
 
-      <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 pt-20 sm:pt-24 pb-8 sm:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
         {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
           <div className="space-y-1">
@@ -231,6 +231,16 @@ export default async function CoordinatorDashboardPage() {
                           <span className="truncate">{evt.venue}</span>
                         </div>
                       </div>
+
+                      {/* 1st Slot Choice Metric (Staff & Admin Only) */}
+                      {evt.firstSlotCount !== undefined && (
+                        <div className="flex items-center justify-between text-xs font-semibold rounded-xl bg-indigo-50/80 border border-indigo-100/80 px-3 py-1.5 text-indigo-950">
+                          <span className="text-indigo-700 text-[11px] font-medium">1st Slot Preference:</span>
+                          <span className="font-bold font-mono text-indigo-900">
+                            {evt.firstSlotCount} {evt.firstSlotCount === 1 ? "delegate" : "delegates"}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Attendance Progress Meter */}
                       <div className="space-y-1.5 pt-1">

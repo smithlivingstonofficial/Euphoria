@@ -31,7 +31,7 @@ export function BentoPerksGrid() {
 
           <div>
             <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              ₹25,000+ in Cash Prizes &amp; Trophies
+              ₹15 Lakhs+ in Cash Prizes &amp; Trophies
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-2 max-w-md">
               Cash rewards and official crystal trophies for 1st, 2nd, and 3rd place podium finishers across all 61 competitions and 14 academic schools.

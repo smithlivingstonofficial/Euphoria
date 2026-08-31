@@ -28,6 +28,9 @@ import {
   Trophy,
   SlidersHorizontal,
   GraduationCap,
+  ArrowLeft,
+  BookOpen,
+  LayoutGrid,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -109,6 +112,7 @@ export function EventCatalogExplorer({
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
+  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(true);
   const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
 
   // Cart Context Hook
@@ -133,14 +137,26 @@ export function EventCatalogExplorer({
     return hasProEventSelected ? 300 : 200;
   }, [hasProEventSelected, isIncrementalSlotClaim]);
 
-  // Unique list of schools
-  const schoolsList = useMemo(() => {
-    const set = new Set<string>();
+  // Unique list of schools with event counts
+  const schoolsData = useMemo(() => {
+    const countsMap: Record<string, number> = {};
     initialEvents.forEach((e) => {
-      if (e.school_or_dept) set.add(e.school_or_dept);
+      if (e.school_or_dept) {
+        countsMap[e.school_or_dept] = (countsMap[e.school_or_dept] || 0) + 1;
+      }
     });
-    return Array.from(set).sort();
+
+    return Object.entries(countsMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count);
   }, [initialEvents]);
+
+  const schoolsList = useMemo(() => {
+    return schoolsData.map((s) => s.name).sort();
+  }, [schoolsData]);
 
   // Pro and Normal event counts
   const proCount = useMemo(
@@ -228,6 +244,9 @@ export function EventCatalogExplorer({
     setSelectedSchool("all");
     setSelectedTier("all");
   };
+
+  // Determine if we are in School Directory mode (Level 1: Cards only) or Event Grid mode (Level 2)
+  const isSchoolDirectoryLevel = showSchoolCards && selectedSchool === "all";
 
   return (
     <div className="space-y-6">
@@ -392,22 +411,56 @@ export function EventCatalogExplorer({
             </div>
           </div>
 
-          {/* 3. School / Department Dropdown */}
-          <div className="relative shrink-0 min-w-[190px] lg:max-w-[220px]">
-            <GraduationCap className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <select
-              value={selectedSchool}
-              onChange={(e) => setSelectedSchool(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-600 focus:bg-white focus:outline-none appearance-none truncate cursor-pointer shadow-2xs"
+          {/* 3. School / Department Dropdown (Only visible when School Directory mode is OFF) */}
+          {!showSchoolCards && (
+            <div className="relative shrink-0 min-w-[190px] lg:max-w-[220px]">
+              <GraduationCap className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <select
+                value={selectedSchool}
+                onChange={(e) => setSelectedSchool(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-600 focus:bg-white focus:outline-none appearance-none truncate cursor-pointer shadow-2xs"
+              >
+                <option value="all">All 14 Schools &amp; Depts</option>
+                {schoolsList.map((school) => (
+                  <option key={school} value={school}>
+                    {school}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
+            </div>
+          )}
+
+          {/* 4. Modern View Mode Segmented Slider Toggle */}
+          <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSchoolCards(true);
+                setSelectedSchool("all");
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                showSchoolCards
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
-              <option value="all">All 14 Schools &amp; Depts</option>
-              {schoolsList.map((school) => (
-                <option key={school} value={school}>
-                  {school}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
+              <Building className="h-3.5 w-3.5" />
+              <span>By School</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowSchoolCards(false)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                !showSchoolCards
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span>All Events</span>
+            </button>
           </div>
 
           {/* Reset Action */}
@@ -442,200 +495,295 @@ export function EventCatalogExplorer({
         </div>
       </div>
 
-      {/* EVENTS GRID */}
-      {filteredEvents.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-          {filteredEvents.map((evt) => {
-            const isPro = Boolean(evt.is_pro_event);
-            const theme = getCategoryTheme(evt.category?.name, isPro);
-            const regCount = (evt.registrations || []).length;
-            const limit = evt.participant_limit || 100;
-            const isSelected = isEventSelected(evt.id);
-            const isConfirmed = isEventConfirmed(evt.id);
-            const validation = canSelectEvent(evt);
-
-            return (
-              <div
-                key={evt.id}
-                className={`group relative rounded-2xl border bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
-                  isConfirmed
-                    ? "border-emerald-300 bg-gradient-to-b from-emerald-50/40 via-white to-white"
-                    : isPro
-                    ? "border-amber-300 bg-gradient-to-b from-amber-50/30 via-white to-white"
-                    : "border-slate-200/90"
-                } ${theme.cardBorder} flex flex-col justify-between overflow-hidden`}
-              >
-                {/* Top Ambient Accent Bar */}
-                <div
-                  className={`h-1.5 w-full bg-gradient-to-r ${
-                    isConfirmed
-                      ? "from-emerald-500 to-teal-500"
-                      : theme.accent
-                  }`}
-                />
-
-                <div className="p-5 space-y-3.5">
-                  {/* Card Badges Row */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {isConfirmed ? (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>ON YOUR PASS</span>
-                        </span>
-                      ) : isPro ? (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
-                          <Star className="h-3 w-3 fill-current" />
-                          <span>PRO EVENT</span>
-                        </span>
-                      ) : null}
-
-                      <span
-                        className={`rounded-lg px-2.5 py-1 text-[10px] border ${theme.badge} truncate max-w-[150px]`}
-                      >
-                        {evt.category?.name || "Technical"}
-                      </span>
-                    </div>
-
-                    <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
-                      Day {evt.event_date?.includes("2026-09-25") ? "1" : "2"}
-                    </span>
-                  </div>
-
-                  {/* Title & Department */}
-                  <div className="space-y-1.5">
-                    <h3 className="text-base sm:text-lg font-bold font-display text-slate-900 group-hover:text-primary transition-colors leading-snug line-clamp-2">
-                      {evt.name}
-                    </h3>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                      <Building className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{evt.school_or_dept}</span>
-                    </div>
-                  </div>
-
-                  {/* Date, Time & Location Card Info */}
-                  <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100/80">
-                    <div className="flex items-center gap-2 font-medium">
-                      <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                      <span>
-                        {evt.event_date ? formatDate(evt.event_date) : "Sept 25, 2026"} •{" "}
-                        {formatEventTimeRange(evt.start_time, evt.end_time)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-500 text-[11px]">
-                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{evt.venue}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Footer: Seats & Actions */}
-                <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    {/* Seats indicator */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                      <Users className="h-3.5 w-3.5 text-slate-400" />
-                      <span>
-                        <strong className="text-slate-800 font-bold">{regCount}</strong> / {limit} Seats
-                      </span>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2">
-                      {/* View Details Modal Trigger */}
-                      <button
-                        type="button"
-                        onClick={() => setActiveModalEvent(evt)}
-                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
-                        title="View event guidelines & details"
-                      >
-                        <span>Details</span>
-                        <ArrowRight className="h-3 w-3 ml-1 text-slate-400" />
-                      </button>
-
-                      {/* Select / Confirmed / Locked Button */}
-                      {isConfirmed ? (
-                        <span className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                          <span>Confirmed</span>
-                        </span>
-                      ) : isSelected ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleEvent(evt)}
-                          className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold bg-emerald-600 text-white shadow-md hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Selected</span>
-                        </button>
-                      ) : validation.allowed ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleEvent(evt)}
-                          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
-                            isIncrementalSlotClaim
-                              ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
-                              : isPro
-                              ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md"
-                              : "bg-slate-900 text-white hover:bg-slate-800 shadow-md"
-                          }`}
-                        >
-                          {isIncrementalSlotClaim ? (
-                            <Gift className="h-3.5 w-3.5" />
-                          ) : (
-                            <ShoppingBag className="h-3.5 w-3.5" />
-                          )}
-                          <span>
-                            {isIncrementalSlotClaim ? "Select (+₹0)" : "Select"}
-                          </span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled
-                          title={validation.reason}
-                          className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
-                        >
-                          <Lock className="h-3 w-3 text-slate-400" />
-                          <span>Locked</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Inline notice when locked */}
-                  {!isConfirmed && !isSelected && !validation.allowed && validation.reason && (
-                    <p className="text-[10px] text-amber-800 font-medium flex items-center gap-1 leading-tight">
-                      <Info className="h-3 w-3 shrink-0 text-amber-600" />
-                      <span>{validation.reason}</span>
-                    </p>
-                  )}
-                </div>
+      {/* ========================================================================= */}
+      {/* LEVEL 1: SCHOOL DIRECTORY CARDS VIEW (Displayed when showSchoolCards is ON & no school selected) */}
+      {/* ========================================================================= */}
+      {isSchoolDirectoryLevel && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-primary">
+                <Building className="h-5 w-5" />
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Empty State */
-        <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-4 shadow-sm">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-            <Search className="h-7 w-7" />
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 font-display leading-tight">
+                  Schools &amp; Academic Departments Directory
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select a school below to navigate into its competition events list
+                </p>
+              </div>
+            </div>
+
+            <span className="rounded-full bg-indigo-50 text-primary border border-indigo-200 px-3 py-1 text-xs font-bold font-mono">
+              14 Departments
+            </span>
           </div>
-          <div className="space-y-1">
-            <h3 className="text-lg font-bold font-display text-slate-900">No Competitions Found</h3>
-            <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
-              No technical events match your active search terms or selected department filters.
-            </p>
+
+          {/* School Directory Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+            {schoolsData.map((school) => (
+              <button
+                key={school.name}
+                type="button"
+                onClick={() => setSelectedSchool(school.name)}
+                className="group p-4 rounded-2xl border border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-md transition-all duration-200 text-left flex flex-col justify-between space-y-3 cursor-pointer relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white border border-slate-200 text-indigo-700 group-hover:bg-primary group-hover:text-white transition-colors">
+                    <GraduationCap className="h-4 w-4" />
+                  </div>
+
+                  <span className="text-xs font-black uppercase px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 group-hover:bg-primary group-hover:text-white transition-colors">
+                    {school.count} {school.count === 1 ? "Event" : "Events"}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors font-display line-clamp-2">
+                    {school.name}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1 font-semibold group-hover:text-slate-700">
+                    <span>View competitions</span>
+                    <ArrowRight className="h-3 w-3 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                  </p>
+                </div>
+              </button>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-slate-800 active:scale-95 transition-all cursor-pointer"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span>Reset All Filters</span>
-          </button>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* LEVEL 2: ACTIVE SCHOOL BREADCRUMB HEADER (Displayed when a School is selected) */}
+      {/* ========================================================================= */}
+      {showSchoolCards && selectedSchool !== "all" && (
+        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/50 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedSchool("all")}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-xs font-extrabold text-primary shadow-2xs hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0"
+              title="Return to School Directory Cards"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to All Schools</span>
+            </button>
+
+            <div className="min-w-0">
+              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                Selected Department
+              </span>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 font-display truncate leading-tight">
+                {selectedSchool}
+              </h3>
+            </div>
+          </div>
+
+          <span className="rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300 px-3 py-1 text-xs font-extrabold font-mono shrink-0 self-start sm:self-auto">
+            {filteredEvents.length} Competitions
+          </span>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EVENTS GRID (Displayed when NOT in Directory Level 1)                      */}
+      {/* ========================================================================= */}
+      {!isSchoolDirectoryLevel && (
+        filteredEvents.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 animate-in fade-in duration-300">
+            {filteredEvents.map((evt) => {
+              const isPro = Boolean(evt.is_pro_event);
+              const theme = getCategoryTheme(evt.category?.name, isPro);
+              const regCount = (evt.registrations || []).length;
+              const limit = evt.participant_limit || 100;
+              const isSelected = isEventSelected(evt.id);
+              const isConfirmed = isEventConfirmed(evt.id);
+              const validation = canSelectEvent(evt);
+
+              return (
+                <div
+                  key={evt.id}
+                  className={`group relative rounded-2xl border bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
+                    isConfirmed
+                      ? "border-emerald-300 bg-gradient-to-b from-emerald-50/40 via-white to-white"
+                      : isPro
+                      ? "border-amber-300 bg-gradient-to-b from-amber-50/30 via-white to-white"
+                      : "border-slate-200/90"
+                  } ${theme.cardBorder} flex flex-col justify-between overflow-hidden`}
+                >
+                  {/* Top Ambient Accent Bar */}
+                  <div
+                    className={`h-1.5 w-full bg-gradient-to-r ${
+                      isConfirmed
+                        ? "from-emerald-500 to-teal-500"
+                        : theme.accent
+                    }`}
+                  />
+
+                  <div className="p-5 space-y-3.5">
+                    {/* Card Badges Row */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isConfirmed ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>ON YOUR PASS</span>
+                          </span>
+                        ) : isPro ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                            <Star className="h-3 w-3 fill-current" />
+                            <span>PRO EVENT</span>
+                          </span>
+                        ) : null}
+
+                        <span
+                          className={`rounded-lg px-2.5 py-1 text-[10px] border ${theme.badge} truncate max-w-[150px]`}
+                        >
+                          {evt.category?.name || "Technical"}
+                        </span>
+                      </div>
+
+                      <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
+                        Day {evt.event_date?.includes("2026-09-25") ? "1" : "2"}
+                      </span>
+                    </div>
+
+                    {/* Title & Department */}
+                    <div className="space-y-1.5">
+                      <h3 className="text-base sm:text-lg font-bold font-display text-slate-900 group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                        {evt.name}
+                      </h3>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                        <Building className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{evt.school_or_dept}</span>
+                      </div>
+                    </div>
+
+                    {/* Date, Time & Location Card Info */}
+                    <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100/80">
+                      <div className="flex items-center gap-2 font-medium">
+                        <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                        <span>
+                          {evt.event_date ? formatDate(evt.event_date) : "Sept 25, 2026"} •{" "}
+                          {formatEventTimeRange(evt.start_time, evt.end_time)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500 text-[11px]">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{evt.venue}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Footer: Seats & Actions */}
+                  <div className="px-5 py-3.5 bg-slate-50/60 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      {/* Seats indicator */}
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                        <Users className="h-3.5 w-3.5 text-slate-400" />
+                        <span>
+                          <strong className="text-slate-800 font-bold">{regCount}</strong> / {limit} Seats
+                        </span>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2">
+                        {/* View Details Modal Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => setActiveModalEvent(evt)}
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
+                          title="View event guidelines & details"
+                        >
+                          <span>Details</span>
+                          <ArrowRight className="h-3 w-3 ml-1 text-slate-400" />
+                        </button>
+
+                        {/* Select / Confirmed / Locked Button */}
+                        {isConfirmed ? (
+                          <span className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Confirmed</span>
+                          </span>
+                        ) : isSelected ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleEvent(evt)}
+                            className="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold bg-emerald-600 text-white shadow-md hover:bg-emerald-700 active:scale-95 transition-all cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Selected</span>
+                          </button>
+                        ) : validation.allowed ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleEvent(evt)}
+                            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                              isIncrementalSlotClaim
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
+                                : isPro
+                                ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md"
+                                : "bg-slate-900 text-white hover:bg-slate-800 shadow-md"
+                            }`}
+                          >
+                            {isIncrementalSlotClaim ? (
+                              <Gift className="h-3.5 w-3.5" />
+                            ) : (
+                              <ShoppingBag className="h-3.5 w-3.5" />
+                            )}
+                            <span>
+                              {isIncrementalSlotClaim ? "Select (+₹0)" : "Select"}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            title={validation.reason}
+                            className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
+                          >
+                            <Lock className="h-3 w-3 text-slate-400" />
+                            <span>Locked</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inline notice when locked */}
+                    {!isConfirmed && !isSelected && !validation.allowed && validation.reason && (
+                      <p className="text-[10px] text-amber-800 font-medium flex items-center gap-1 leading-tight">
+                        <Info className="h-3 w-3 shrink-0 text-amber-600" />
+                        <span>{validation.reason}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Empty State */
+          <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-4 shadow-sm">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+              <Search className="h-7 w-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold font-display text-slate-900">No Competitions Found</h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
+                No technical events match your active search terms or selected department filters.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-slate-800 active:scale-95 transition-all cursor-pointer"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Reset All Filters</span>
+            </button>
+          </div>
+        )
       )}
 
       {/* EVENT DETAILS MODAL */}
@@ -801,42 +949,6 @@ export function EventCatalogExplorer({
                 Close
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MOBILE STICKY PASS BAR (Fixed at bottom on screens < 640px) */}
-      {selectedEvents.length > 0 && (
-        <div className="fixed bottom-4 inset-x-4 z-40 sm:hidden">
-          <div className="rounded-2xl border-2 border-indigo-500/90 bg-slate-950/95 backdrop-blur-xl p-3.5 text-white shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-300">
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-extrabold text-xs shadow-md ${
-                  isIncrementalSlotClaim ? "bg-emerald-600 text-white" : "bg-primary text-white"
-                }`}
-              >
-                {selectedEvents.length}/2
-              </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-xs text-white truncate font-display">
-                  {selectedEvents.length === 1 ? "1 Event Selected" : "2 Events Selected"}
-                </div>
-                <div className="text-[11px] font-mono font-bold text-emerald-400">
-                  {isIncrementalSlotClaim
-                    ? "2nd Slot Claim • ₹0"
-                    : `Total: ${formatCurrency(passTotalAmount)}`}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={openCart}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-extrabold text-slate-950 shadow-md hover:bg-slate-100 active:scale-95 transition-all shrink-0 cursor-pointer"
-            >
-              <span>Review Pass</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
           </div>
         </div>
       )}

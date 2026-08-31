@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number): string {
-  if (amount === 0) return "Free";
+  if (isNaN(amount) || amount === null || amount === undefined) return "₹0";
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
@@ -45,4 +45,3 @@ export function formatEventTimeRange(startTime?: string, endTime?: string): stri
   }
   return `${start} - ${end}`;
 }
-

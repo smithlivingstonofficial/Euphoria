@@ -5,7 +5,7 @@ import { EventCatalogExplorer, PublicEvent } from "@/components/events/event-cat
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function EventsDirectoryPage({
   searchParams,

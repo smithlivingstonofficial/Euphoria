@@ -148,3 +148,236 @@ body {
   opacity: 1;
 }
 
+/* ============================================
+   EUPHORIA 2026 — CUSTOM ANIMATION KEYFRAMES
+   ============================================ */
+
+/* Slowly orbiting ambient glow orbs */
+@keyframes orbit-cw {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(6%, -4%) scale(1.08); }
+  50%  { transform: translate(10%, 6%) scale(0.96); }
+  75%  { transform: translate(-4%, 8%) scale(1.04); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes orbit-ccw {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-5%, 5%) scale(1.06); }
+  50%  { transform: translate(-9%, -3%) scale(0.98); }
+  75%  { transform: translate(3%, -7%) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+/* Holographic card scan-line sweep */
+@keyframes scan-sweep {
+  0%   { top: -4px; opacity: 0; }
+  5%   { opacity: 1; }
+  90%  { opacity: 0.7; }
+  100% { top: calc(100% + 4px); opacity: 0; }
+}
+
+/* Gentle float for ambient elements */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
+@keyframes float-y-slow {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-14px); }
+}
+
+/* Glow pulse for badges and live indicators */
+@keyframes glow-pulse-indigo {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  50%       { box-shadow: 0 0 20px 6px rgba(99, 102, 241, 0.2); }
+}
+
+@keyframes glow-pulse-emerald {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  50%       { box-shadow: 0 0 16px 5px rgba(52, 211, 153, 0.25); }
+}
+
+@keyframes glow-pulse-cyan {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+  50%       { box-shadow: 0 0 20px 6px rgba(6, 182, 212, 0.22); }
+}
+
+/* Pulsing ring expand for QR glow */
+@keyframes ring-expand {
+  0%   { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Circuit grid fade */
+@keyframes circuit-fade {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.55; }
+}
+
+/* Number/digit flip feel */
+@keyframes digit-enter {
+  0%   { transform: translateY(-8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Dot travel along step track */
+@keyframes track-travel {
+  0%   { left: 0%; }
+  100% { left: 100%; }
+}
+
+/* Progress bar fill */
+@keyframes progress-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+/* Step connector shimmer */
+@keyframes connector-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Ambient hero background orbs */
+.hero-orb-1 {
+  animation: orbit-cw 18s ease-in-out infinite;
+}
+.hero-orb-2 {
+  animation: orbit-ccw 22s ease-in-out infinite;
+}
+.hero-orb-3 {
+  animation: orbit-cw 26s ease-in-out infinite reverse;
+}
+
+/* Scan line on holographic card */
+.scan-line-active {
+  animation: scan-sweep 2.5s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+
+/* Float animations */
+.float-element {
+  animation: float-y 4s ease-in-out infinite;
+}
+.float-element-slow {
+  animation: float-y-slow 6s ease-in-out infinite;
+}
+
+/* QR pulsing ring */
+.qr-ring {
+  animation: ring-expand 2s ease-out infinite;
+}
+.qr-ring-2 {
+  animation: ring-expand 2s ease-out infinite;
+  animation-delay: 0.8s;
+}
+
+/* Circuit fade animation */
+.circuit-grid {
+  animation: circuit-fade 5s ease-in-out infinite;
+}
+
+/* Glow pulse utilities */
+.glow-indigo { animation: glow-pulse-indigo 3s ease-in-out infinite; }
+.glow-emerald { animation: glow-pulse-emerald 3s ease-in-out infinite; }
+.glow-cyan { animation: glow-pulse-cyan 3s ease-in-out infinite; }
+
+/* Digit animation */
+.digit-animate {
+  animation: digit-enter 0.3s ease-out forwards;
+}
+
+/* ============================================
+   STEP SECTION STYLING
+   ============================================ */
+
+/* Step progress bar fill animation */
+.step-progress-bar {
+  animation: progress-fill linear forwards;
+}
+
+/* Connector track shimmer */
+.connector-shimmer {
+  background: linear-gradient(90deg, #e2e8f0 0%, #c7d2fe 50%, #e2e8f0 100%);
+  background-size: 200% 100%;
+  animation: connector-shimmer 2s linear infinite;
+}
+
+/* Dedicated Professional Print Stylesheet for Ink-Friendly Single-Page A4 Fit */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 4mm 6mm 4mm 6mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 9.5pt;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide all web layout chrome during printing */
+  header,
+  footer,
+  nav,
+  .print\:hidden,
+  button,
+  [role="banner"],
+  [role="contentinfo"] {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Force background colors, gradients, and borders in print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:flex {
+    display: flex !important;
+  }
+
+  .print\:grid {
+    display: grid !important;
+  }
+
+  .print\:w-full {
+    width: 100% !important;
+  }
+
+  .print\:max-w-none {
+    max-width: none !important;
+  }
+
+  .print\:m-0 {
+    margin: 0 !important;
+  }
+
+  .print\:border-none {
+    border: none !important;
+  }
+}
