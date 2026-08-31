@@ -5,7 +5,6 @@ import {
   getEventStaffDetails,
 } from "@/actions/coordinator";
 import { Navbar } from "@/components/navbar";
-import { Footer } from "@/components/footer";
 import { EventRosterClient } from "./roster-client";
 import { StaffControlsClient } from "./staff-controls-client";
 import {
@@ -67,9 +66,9 @@ export default async function CoordinatorEventRosterPage({
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar />
 
-      <main className="flex-1 pt-20 sm:pt-24 pb-8 sm:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 pt-16 sm:pt-24 pb-8 sm:pb-12 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-5 sm:space-y-6">
         {/* Navigation & Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
           <div className="space-y-1">
             <Link
               href="/coordinator"
@@ -101,10 +100,10 @@ export default async function CoordinatorEventRosterPage({
             <p className="text-xs text-slate-500">{event.school_or_dept}</p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <Link
               href={`/coordinator/scanner?event=${event.id}`}
-              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all shrink-0"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all w-full sm:w-auto shrink-0 text-center"
             >
               <QrCode className="h-4 w-4" />
               <span>Open Event Scanner</span>
@@ -114,64 +113,61 @@ export default async function CoordinatorEventRosterPage({
 
         {/* Event Specs & Stats Summary */}
         <div
-          className={`grid grid-cols-1 ${
+          className={`grid grid-cols-2 ${
             data.firstSlotCount !== undefined
-              ? "sm:grid-cols-2 lg:grid-cols-4"
-              : "md:grid-cols-3"
-          } gap-4`}
+              ? "lg:grid-cols-4"
+              : "sm:grid-cols-3"
+          } gap-3 sm:gap-4`}
         >
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs space-y-2">
+          <div className="col-span-2 sm:col-span-1 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-1.5">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
-              Schedule &amp; Timing
+              Schedule &amp; Venue
             </span>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-              <Clock className="h-4 w-4 text-primary shrink-0" />
-              <span>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+              <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="truncate">
                 {event.event_date ? formatDate(event.event_date) : "TBA"} •{" "}
-                {event.start_time ? formatTime(event.start_time) : ""} -{" "}
-                {event.end_time ? formatTime(event.end_time) : ""}
+                {event.start_time ? formatTime(event.start_time) : ""}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
               <span className="truncate">{event.venue}</span>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs space-y-1">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
-              Total Registrations
+              Registrations
             </span>
-            <div className="text-2xl font-black text-slate-900 font-mono">
-              {totalCount} <span className="text-xs font-normal text-slate-400">/ {event.participant_limit || 100} Capacity</span>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
+              {totalCount} <span className="text-xs font-normal text-slate-400">/ {event.participant_limit || 100}</span>
             </div>
-            <p className="text-[11px] text-slate-500">Verified participant entries</p>
           </div>
 
           {/* 1st Slot Preference Stat Card (Staff & Admin Only) */}
           {data.firstSlotCount !== undefined && (
-            <div className="rounded-3xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/60 to-white p-4 shadow-xs space-y-1">
+            <div className="rounded-2xl sm:rounded-3xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/60 to-white p-3.5 sm:p-4 shadow-xs space-y-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 block">
-                1st Slot Preference
+                1st Preference
               </span>
-              <div className="text-2xl font-black text-indigo-950 font-mono">
+              <div className="text-xl sm:text-2xl font-black text-indigo-950 font-mono">
                 {data.firstSlotCount}{" "}
                 <span className="text-xs font-normal text-indigo-600">
                   {data.firstSlotCount === 1 ? "Delegate" : "Delegates"}
                 </span>
               </div>
-              <p className="text-[11px] text-indigo-600/80">Primary choice in Delegate Pass</p>
             </div>
           )}
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs space-y-1">
+          <div className={`rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-1 ${data.firstSlotCount !== undefined ? "col-span-2 sm:col-span-1" : ""}`}>
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
               Attendance Progress
             </span>
-            <div className="text-2xl font-black text-emerald-700 font-mono">
-              {attendedCount} <span className="text-xs font-normal text-slate-400">({fillPct}%) Checked In</span>
+            <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+              {attendedCount} <span className="text-xs font-normal text-slate-400">({fillPct}%)</span>
             </div>
-            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden mt-1">
+            <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden mt-1">
               <div
                 className="h-full bg-emerald-500 rounded-full transition-all"
                 style={{ width: `${fillPct}%` }}
@@ -180,18 +176,7 @@ export default async function CoordinatorEventRosterPage({
           </div>
         </div>
 
-        {/* Faculty Staff Management Controls Panel (Visible ONLY to Faculty Staff / Admin) */}
-        {staffDetails && (
-          <StaffControlsClient
-            eventId={event.id}
-            initialWhatsappLink={staffDetails.whatsappLink}
-            initialBrochureUrl={staffDetails.brochureUrl}
-            initialStudentCoordinators={staffDetails.studentCoordinators}
-            allProfiles={staffDetails.allProfiles}
-          />
-        )}
-
-        {/* Interactive Attendee Roster Table */}
+        {/* Unified Tabbed Coordinator Workspace */}
         <EventRosterClient
           eventId={event.id}
           eventName={event.name}
@@ -199,10 +184,9 @@ export default async function CoordinatorEventRosterPage({
           eventStatus={event.status}
           roleType={roleType}
           initialAttendees={attendees as any}
+          staffDetails={staffDetails}
         />
       </main>
-
-      <Footer />
     </div>
   );
 }

@@ -81,11 +81,11 @@ export default async function CoordinatorDashboardPage() {
         }}
       />
 
-      <main className="flex-1 pt-20 sm:pt-24 pb-8 sm:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 pt-16 sm:pt-24 pb-8 sm:pb-12 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-5 sm:space-y-6">
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {data.primaryRole === "staff" ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-0.5 text-xs font-bold text-purple-900 shadow-2xs">
                   <ShieldCheck className="h-3.5 w-3.5 text-purple-700" />
@@ -99,24 +99,19 @@ export default async function CoordinatorDashboardPage() {
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-0.5 text-xs font-bold text-amber-900 shadow-2xs">
                   <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-                  <span>Student Coordinator (Field &amp; Entry)</span>
+                  <span>Student Coordinator</span>
                 </span>
               )}
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Event Management &amp; Check-In Hub
             </h1>
-            <p className="text-xs text-slate-500">
-              {data.primaryRole === "staff"
-                ? "Oversee competition logistics, manage participant rosters, venue updates, and check-in audit records."
-                : "Verify participant entry passes, scan QR codes, and record verified gate attendance."}
-            </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <Link
               href="/coordinator/scanner"
-              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-xs font-bold text-white shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all cursor-pointer w-full sm:w-auto text-center"
             >
               <QrCode className="h-4 w-4" />
               <span>Launch Live QR Scanner</span>
@@ -125,49 +120,46 @@ export default async function CoordinatorDashboardPage() {
         </div>
 
         {/* Metrics Overview Ribbon */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-1">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-bold uppercase tracking-wider">Assigned Events</span>
-              <Calendar className="h-4 w-4 text-primary" />
+              <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Assigned Events</span>
+              <Calendar className="h-4 w-4 text-primary shrink-0" />
             </div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
               {events.length}
             </div>
-            <p className="text-[11px] text-slate-500">Competitions under your oversight</p>
           </div>
 
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-1">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-bold uppercase tracking-wider">Registered Delegates</span>
-              <Users className="h-4 w-4 text-indigo-600" />
+              <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Delegates</span>
+              <Users className="h-4 w-4 text-indigo-600 shrink-0" />
             </div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
               {totalRegistrations}
             </div>
-            <p className="text-[11px] text-slate-500">Total verified participant registrations</p>
           </div>
 
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-1">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-bold uppercase tracking-wider">Checked-In</span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Checked-In</span>
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
             </div>
-            <div className="text-2xl font-black text-emerald-700 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
               {totalAttended}
             </div>
-            <p className="text-[11px] text-slate-500">Scanned &amp; marked present</p>
           </div>
 
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-1">
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-5 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-bold uppercase tracking-wider">Attendance Rate</span>
-              <UserCheck className="h-4 w-4 text-amber-600" />
+              <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Attendance Rate</span>
+              <UserCheck className="h-4 w-4 text-amber-600 shrink-0" />
             </div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
               {avgAttendancePct}%
             </div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1.5">
               <div
                 className="bg-emerald-500 h-full rounded-full transition-all"
                 style={{ width: `${avgAttendancePct}%` }}
@@ -177,18 +169,15 @@ export default async function CoordinatorDashboardPage() {
         </div>
 
         {/* Assigned Competitions Directory */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4 pt-1">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-extrabold text-slate-900">
               Your Assigned Competitions ({events.length})
             </h2>
-            <span className="text-xs text-slate-500">
-              Click &quot;View Roster&quot; to manage participant check-ins
-            </span>
           </div>
 
           {events.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {events.map((evt) => {
                 const fillPct =
                   evt.totalRegistrations > 0
@@ -198,11 +187,11 @@ export default async function CoordinatorDashboardPage() {
                 return (
                   <div
                     key={evt.id}
-                    className="group relative rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                    className="group relative rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                   >
                     <div className="space-y-3">
                       {/* Top Badges */}
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-primary">
                           {evt.category?.name || "Track"}
                         </span>
@@ -216,13 +205,13 @@ export default async function CoordinatorDashboardPage() {
                         <h3 className="text-base font-extrabold text-slate-900 group-hover:text-primary transition-colors leading-snug line-clamp-2">
                           {evt.name}
                         </h3>
-                        <p className="text-xs font-semibold text-slate-500 mt-1 line-clamp-1">
+                        <p className="text-xs font-semibold text-slate-500 mt-0.5 line-clamp-1">
                           {evt.school_or_dept}
                         </p>
                       </div>
 
                       {/* Schedule & Venue Specs */}
-                      <div className="space-y-1 rounded-2xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100">
+                      <div className="space-y-1 rounded-xl bg-slate-50 p-2.5 text-xs text-slate-700 border border-slate-100">
                         <div className="flex items-center gap-2 font-semibold">
                           <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span>
@@ -240,7 +229,7 @@ export default async function CoordinatorDashboardPage() {
                       {/* 1st Slot Choice Metric (Staff & Admin Only) */}
                       {evt.firstSlotCount !== undefined && (
                         <div className="flex items-center justify-between text-xs font-semibold rounded-xl bg-indigo-50/80 border border-indigo-100/80 px-3 py-1.5 text-indigo-950">
-                          <span className="text-indigo-700 text-[11px] font-medium">1st Slot Preference:</span>
+                          <span className="text-indigo-700 text-[11px] font-medium">1st Preference:</span>
                           <span className="font-bold font-mono text-indigo-900">
                             {evt.firstSlotCount} {evt.firstSlotCount === 1 ? "delegate" : "delegates"}
                           </span>
@@ -248,9 +237,9 @@ export default async function CoordinatorDashboardPage() {
                       )}
 
                       {/* Attendance Progress Meter */}
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1 pt-0.5">
                         <div className="flex items-center justify-between text-xs font-semibold">
-                          <span className="text-slate-500">Check-in Attendance:</span>
+                          <span className="text-slate-500">Attendance:</span>
                           <span className="text-slate-900">
                             <strong>{evt.totalAttended}</strong> / {evt.totalRegistrations} Checked In
                           </span>
@@ -265,10 +254,10 @@ export default async function CoordinatorDashboardPage() {
                     </div>
 
                     {/* Action Link Footer */}
-                    <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <Link
                         href={`/coordinator/${evt.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline py-1"
                       >
                         <span>Manage Roster &amp; Attendance</span>
                         <ArrowRight className="h-3.5 w-3.5" />
@@ -277,7 +266,7 @@ export default async function CoordinatorDashboardPage() {
                       <Link
                         href={`/coordinator/scanner?event=${evt.id}`}
                         title="Open Scanner for this event"
-                        className="rounded-xl bg-slate-100 p-2 text-slate-700 hover:bg-primary hover:text-white transition-colors"
+                        className="rounded-xl bg-slate-100 p-2.5 text-slate-700 hover:bg-primary hover:text-white transition-colors shrink-0"
                       >
                         <QrCode className="h-4 w-4" />
                       </Link>
@@ -287,7 +276,7 @@ export default async function CoordinatorDashboardPage() {
               })}
             </div>
           ) : (
-            <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-3">
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 text-center space-y-3">
               <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                 <AlertCircle className="h-6 w-6" />
               </div>

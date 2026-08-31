@@ -143,33 +143,30 @@ export function StaffControlsClient({
   });
 
   return (
-    <div className="space-y-6 pt-4 border-t border-slate-200">
+    <div className="space-y-4 pt-4 border-t border-slate-200">
       <div className="flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-100 text-indigo-800">
+        <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-100 text-indigo-800 shrink-0">
           <ShieldCheck className="h-4 w-4" />
         </div>
         <div>
-          <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-            Faculty Staff Operations &amp; Management Panel
+          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+            Faculty Staff Operations Panel
           </h3>
-          <p className="text-xs text-slate-500">
-            Exclusive controls for assigned Faculty Staff Coordinators. Student Coordinators are restricted from modifying these parameters.
-          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* 1. EDIT EVENT COMMUNICATION LINKS (6 Cols) */}
-        <div className="lg:col-span-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="lg:col-span-6 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
               <LinkIcon className="h-4 w-4 text-primary" />
-              <h4 className="text-sm font-extrabold text-slate-900">
+              <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
                 Official Event Links
               </h4>
             </div>
             <span className="rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-0.5 text-[10px] font-bold border border-indigo-100">
-              Faculty Access Only
+              Faculty Staff
             </span>
           </div>
 
@@ -187,44 +184,38 @@ export function StaffControlsClient({
             </div>
           )}
 
-          <form onSubmit={handleSaveLinks} className="space-y-4">
+          <form onSubmit={handleSaveLinks} className="space-y-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                💬 WhatsApp Participant Group Link
+                WhatsApp Participant Group Link
               </label>
               <input
                 type="url"
                 value={whatsappLink}
                 onChange={(e) => setWhatsappLink(e.target.value)}
-                placeholder="https://chat.whatsapp.com/FS7Tt2M2FGaB..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
+                placeholder="https://chat.whatsapp.com/..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Displayed to registered delegates on their active event pass and public page.
-              </p>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                📄 Event Brochure PDF Link
+                Event Brochure PDF Link
               </label>
               <input
                 type="url"
                 value={brochureUrl}
                 onChange={(e) => setBrochureUrl(e.target.value)}
-                placeholder="https://drive.google.com/... or https://domain.com/brochure.pdf"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
+                placeholder="https://domain.com/brochure.pdf"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Official PDF guide link displayed on public modal &amp; participant dashboard.
-              </p>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-1 flex justify-end">
               <button
                 type="submit"
                 disabled={isSavingLinks}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary transition-all disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-all disabled:opacity-50 cursor-pointer w-full sm:w-auto"
               >
                 <Sparkles className="h-3.5 w-3.5 text-amber-300" />
                 <span>{isSavingLinks ? "Saving Links..." : "Save Communication Links"}</span>
@@ -234,11 +225,11 @@ export function StaffControlsClient({
         </div>
 
         {/* 2. MANAGE STUDENT COORDINATORS ROSTER (6 Cols) */}
-        <div className="lg:col-span-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="lg:col-span-6 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-emerald-600" />
-              <h4 className="text-sm font-extrabold text-slate-900">
+              <GraduationCap className="h-4 w-4 text-emerald-600 shrink-0" />
+              <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
                 Student Coordinators ({studentCoordinators.length})
               </h4>
             </div>
@@ -249,7 +240,7 @@ export function StaffControlsClient({
                 setSearchQuery("");
                 setIsAddModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors cursor-pointer w-full sm:w-auto shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Student Coordinator</span>
@@ -307,12 +298,9 @@ export function StaffControlsClient({
               ))}
             </div>
           ) : (
-            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-2">
-              <Users className="h-8 w-8 text-slate-300 mx-auto" />
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 text-center space-y-1.5">
+              <Users className="h-7 w-7 text-slate-300 mx-auto" />
               <p className="text-xs font-semibold text-slate-600">No Student Coordinators Assigned Yet</p>
-              <p className="text-[11px] text-slate-400">
-                Click <strong>+ Add Student Coordinator</strong> above to grant gate entry QR scanner access to student volunteers for this event.
-              </p>
             </div>
           )}
         </div>
