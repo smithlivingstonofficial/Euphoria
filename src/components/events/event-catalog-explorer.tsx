@@ -31,6 +31,9 @@ import {
   ArrowLeft,
   BookOpen,
   LayoutGrid,
+  Phone,
+  Mail,
+  ExternalLink,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -51,8 +54,9 @@ export interface PublicEvent {
   participant_limit: number;
   min_team_size?: number;
   max_team_size?: number;
-  is_pro_event?: boolean;
+  is_pro_event: boolean;
   status: string;
+  category_id?: string;
   category?: {
     id: string;
     name: string;
@@ -62,6 +66,66 @@ export interface PublicEvent {
     id: string;
     status: string;
   }>;
+}
+
+export function parseEventMetadata(event: PublicEvent) {
+  const description = event?.description || "";
+
+  const whatsappMatch = description.match(/\[WHATSAPP_LINK:\s*([^\]]+)\]/);
+  const namesMatch = description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
+  const mobilesMatch = description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
+  const emailsMatch = description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+  const brochureMatch = description.match(/\[BROCHURE_URL:\s*([^\]]+)\]/);
+
+  let cleanDescription = description.replace(/\[[A-Z_]+:\s*[^\]]+\]/g, "").trim();
+
+  if (!cleanDescription || cleanDescription.length < 15) {
+    cleanDescription = `${event.name} is an official technical competition organized by ${event.school_or_dept} during Euphoria 2026 at Kalasalingam Academy of Research and Education. Registered participants will compete for cash prizes, institutional trophies, and verified national digital credentials.`;
+  }
+
+  const namesList = namesMatch
+    ? namesMatch[1]
+        .split(/,|&|\//)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+  const mobilesList = mobilesMatch
+    ? mobilesMatch[1]
+        .split(/,|&|\//)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+  const emailsList = emailsMatch
+    ? emailsMatch[1]
+        .split(/,|&|\//)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const coordinators: Array<{ name: string; mobile?: string; email?: string }> = [];
+  const maxLen = Math.max(namesList.length, mobilesList.length, emailsList.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (namesList[i] || mobilesList[i] || emailsList[i]) {
+      coordinators.push({
+        name: namesList[i] || `Staff Coordinator ${i + 1}`,
+        mobile: mobilesList[i] || undefined,
+        email: emailsList[i] || undefined,
+      });
+    }
+  }
+
+  return {
+    whatsappLink: whatsappMatch ? whatsappMatch[1].trim() : null,
+    names: namesMatch ? namesMatch[1].trim() : null,
+    mobiles: mobilesMatch ? mobilesMatch[1].trim() : null,
+    emails: emailsMatch ? emailsMatch[1].trim() : null,
+    brochureUrl: brochureMatch ? brochureMatch[1].trim() : null,
+    cleanDescription,
+    namesList,
+    mobilesList,
+    emailsList,
+    coordinators,
+  };
 }
 
 // Normalizes text for forgiving search (strips punctuation, lowercases)
@@ -378,7 +442,7 @@ export function EventCatalogExplorer({
                 }`}
               >
                 <Star className="h-3 w-3 fill-current" />
-                <span>Pro ({proCount})</span>
+                <span>Flagship ({proCount})</span>
               </button>
               <button
                 type="button"
@@ -389,7 +453,7 @@ export function EventCatalogExplorer({
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Standard ({normalCount})
+                Regular ({normalCount})
               </button>
             </div>
 
@@ -680,7 +744,7 @@ export function EventCatalogExplorer({
                         ) : isPro ? (
                           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                             <Star className="h-3 w-3 fill-current" />
-                            <span>PRO EVENT</span>
+                            <span>FLAGSHIP EVENT</span>
                           </span>
                         ) : null}
 
@@ -835,166 +899,375 @@ export function EventCatalogExplorer({
 
       {/* EVENT DETAILS MODAL */}
       {activeModalEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-2xl space-y-5 my-8">
-            {/* Close Modal Button */}
-            <button
-              type="button"
-              onClick={() => setActiveModalEvent(null)}
-              className="absolute right-5 top-5 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 pt-16 sm:pt-20 pb-4 overflow-hidden animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl max-h-[calc(100vh-5.5rem)] sm:max-h-[calc(100vh-6rem)] rounded-3xl border border-slate-200/90 bg-white shadow-2xl overflow-hidden flex flex-col my-auto">
+            {/* 1. FIXED TOP HEADER */}
+            <div className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-6 text-white shrink-0 overflow-hidden border-b border-slate-800">
+              {/* Background Ambient Glow Orbs */}
+              <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-indigo-500/20 blur-2xl pointer-events-none" />
+              <div className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-amber-500/10 blur-2xl pointer-events-none" />
 
-            {/* Modal Header */}
-            <div className="space-y-2 pr-8">
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Top Badges Row */}
+              <div className="flex items-center gap-2 flex-wrap pr-10 mb-2.5 z-10 relative">
                 {isEventConfirmed(activeModalEvent.id) && (
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
-                    <CheckCircle2 className="h-3 w-3" />
-                    <span>CONFIRMED ON PASS</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600/90 text-white px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs backdrop-blur-md">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>ON YOUR PASS</span>
                   </span>
                 )}
-                {activeModalEvent.is_pro_event && (
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
-                    <Star className="h-3 w-3 fill-current" />
-                    <span>PRO EVENT</span>
+                {activeModalEvent.is_pro_event ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs">
+                    <Star className="h-3.5 w-3.5 fill-current" />
+                    <span>FLAGSHIP COMPETITION</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600/90 text-white px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs backdrop-blur-md">
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>REGULAR COMPETITION</span>
                   </span>
                 )}
-                <span className="rounded-lg bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
-                  {activeModalEvent.category?.name || "Track"}
+                <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-semibold">
+                  {activeModalEvent.category?.name || "Technical Track"}
                 </span>
-                <span className="rounded-lg bg-slate-100 px-2.5 py-0.5 text-[10px] font-mono font-semibold text-slate-600 border border-slate-200">
+                <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-mono font-semibold">
                   Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Sept 25)" : "2 (Sept 26)"}
                 </span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold font-display text-slate-900 leading-snug">
-                {activeModalEvent.name}
-              </h2>
-              <p className="text-xs sm:text-sm font-medium text-slate-500">
-                {activeModalEvent.school_or_dept}
-              </p>
-            </div>
 
-            {/* Schedule & Venue Metadata Grid */}
-            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200 text-xs">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Date &amp; Schedule
-                </span>
-                <span className="font-bold text-slate-900 mt-1 block text-xs sm:text-sm">
-                  {formatDate(activeModalEvent.event_date)}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {formatEventTimeRange(activeModalEvent.start_time, activeModalEvent.end_time)}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Venue Location
-                </span>
-                <span className="font-bold text-slate-900 mt-1 block text-xs sm:text-sm truncate">
-                  {activeModalEvent.venue}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  KARE Main Campus
-                </span>
-              </div>
-            </div>
-
-            {/* Description */}
-            {activeModalEvent.description && (
-              <div className="space-y-1.5 text-xs sm:text-sm">
-                <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px]">
-                  Event Description
-                </span>
-                <p className="text-slate-600 leading-relaxed">
-                  {activeModalEvent.description}
-                </p>
-              </div>
-            )}
-
-            {/* Rules & Guidelines List */}
-            {activeModalEvent.rules && (
-              <div className="space-y-2 text-xs sm:text-sm border-t border-slate-100 pt-4">
-                <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px]">
-                  Rules &amp; Competition Format
-                </span>
-                <ul className="space-y-1.5 text-slate-600 list-disc list-inside">
-                  {(typeof activeModalEvent.rules === "string"
-                    ? activeModalEvent.rules.split(";")
-                    : Array.isArray(activeModalEvent.rules)
-                    ? activeModalEvent.rules
-                    : []
-                  ).map((r, i) => (
-                    <li key={i} className="leading-relaxed">
-                      {r.trim()}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Modal Action Bar */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-              {isEventConfirmed(activeModalEvent.id) ? (
-                <span className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>On Active Pass</span>
-                </span>
-              ) : isEventSelected(activeModalEvent.id) ? (
-                <button
-                  type="button"
-                  onClick={() => toggleEvent(activeModalEvent)}
-                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>Selected (Remove)</span>
-                </button>
-              ) : canSelectEvent(activeModalEvent).allowed ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleEvent(activeModalEvent);
-                    setActiveModalEvent(null);
-                    openCart();
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md transition-all active:scale-95 cursor-pointer ${
-                    isIncrementalSlotClaim
-                      ? "bg-emerald-600 hover:bg-emerald-700"
-                      : "bg-slate-900 hover:bg-slate-800"
-                  }`}
-                >
-                  {isIncrementalSlotClaim ? (
-                    <Gift className="h-4 w-4" />
-                  ) : (
-                    <ShoppingBag className="h-4 w-4" />
-                  )}
-                  <span>
-                    {isIncrementalSlotClaim
-                      ? "Claim 2nd Event (+₹0)"
-                      : "Add to Pass"}
-                  </span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
-                >
-                  <Lock className="h-4 w-4 text-slate-400" />
-                  <span>Selection Locked</span>
-                </button>
-              )}
-
+              {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setActiveModalEvent(null)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-slate-300 hover:bg-white/20 hover:text-white transition-colors cursor-pointer"
+                title="Close modal"
               >
-                Close
+                <X className="h-5 w-5" />
               </button>
+
+              {/* Title & Department Subtitle */}
+              <div className="space-y-1 z-10 relative">
+                <h2 className="text-xl sm:text-2xl font-extrabold font-display text-white tracking-tight leading-tight">
+                  {activeModalEvent.name}
+                </h2>
+                <div className="flex items-center gap-2 text-xs font-semibold text-indigo-200/90">
+                  <Building className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                  <span className="leading-normal">Organized by: {activeModalEvent.school_or_dept}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. INNER SCROLLABLE CONTENT BODY */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
+              {/* Grid of 4 Key Information Metric Cards (2 Columns for Full Legibility, No Ellipsis Cutoff) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+                {/* Metric 1: Date & Day */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    Date &amp; Schedule
+                  </span>
+                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
+                    {formatDate(activeModalEvent.event_date)}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500 block">
+                    Festival Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Friday)" : "2 (Saturday)"}
+                  </span>
+                </div>
+
+                {/* Metric 2: Timings */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    Time Window
+                  </span>
+                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
+                    {formatEventTimeRange(activeModalEvent.start_time, activeModalEvent.end_time)}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500 block">
+                    Competition Duration
+                  </span>
+                </div>
+
+                {/* Metric 3: Venue */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    Venue Location
+                  </span>
+                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
+                    {activeModalEvent.venue || "Campus Labs & Spec Centers"}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500 block">
+                    KARE Main Campus, Krishnankoil
+                  </span>
+                </div>
+
+                {/* Metric 4: Capacity */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    Target Capacity
+                  </span>
+                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
+                    {activeModalEvent.participant_limit || 100} Seats
+                  </span>
+                  <span className="text-[11px] font-semibold text-emerald-600 block font-mono font-bold">
+                    Registration Open
+                  </span>
+                </div>
+              </div>
+
+              {/* Extended Metadata: WhatsApp Group & Coordinator Info */}
+              {(() => {
+                const meta = parseEventMetadata(activeModalEvent);
+                return (
+                  <div className="space-y-4">
+                    {/* Official WhatsApp Participant Group Banner */}
+                    {meta.whatsappLink ? (
+                      <div className="rounded-2xl border border-emerald-300 bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md text-white font-bold text-xl shrink-0 border border-white/30">
+                            💬
+                          </div>
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-extrabold font-display tracking-wide">
+                              Official Event WhatsApp Group
+                            </h4>
+                            <p className="text-[11px] text-emerald-100 font-medium">
+                              Get real-time announcements, lab room numbers &amp; coordinator updates
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={meta.whatsappLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-bold text-emerald-900 shadow-sm hover:bg-emerald-50 transition-all shrink-0 cursor-pointer self-end sm:self-center"
+                        >
+                          <span>Join Group</span>
+                          <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 flex items-center gap-3 text-xs text-slate-600">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shrink-0 font-bold">
+                          💬
+                        </div>
+                        <p className="text-[11px] leading-snug">
+                          <strong>Official WhatsApp Group:</strong> Access link will be shared with all registered delegates on their active pass.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Official Event Brochure PDF Card */}
+                    {meta.brochureUrl && (
+                      <div className="rounded-2xl border border-indigo-200/90 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-indigo-300 font-bold text-xl shrink-0 border border-white/20">
+                            📄
+                          </div>
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-extrabold font-display tracking-wide text-white">
+                              Official Event Brochure PDF
+                            </h4>
+                            <p className="text-[11px] text-indigo-200/80 font-medium">
+                              Download full problem statements, rules, rubrics &amp; schedule
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={meta.brochureUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-bold text-indigo-950 shadow-sm hover:bg-indigo-50 transition-all shrink-0 cursor-pointer self-end sm:self-center"
+                        >
+                          <span>View Brochure PDF</span>
+                          <ExternalLink className="h-3.5 w-3.5 text-indigo-700" />
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Detailed Description */}
+                    <div className="rounded-2xl bg-slate-50/90 border border-slate-200/80 p-4 space-y-2 text-xs sm:text-sm">
+                      <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px] block">
+                        Competition Overview &amp; Details
+                      </span>
+                      <p className="text-slate-700 leading-relaxed text-xs sm:text-sm">
+                        {meta.cleanDescription}
+                      </p>
+                    </div>
+
+                    {/* Event Coordinators Contact Grid */}
+                    {meta.coordinators && meta.coordinators.length > 0 && (
+                      <div className="space-y-2 border-t border-slate-100 pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px]">
+                            Event Coordinators &amp; Contact
+                          </span>
+                          <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                            {meta.coordinators.length} Staff Assigned
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {meta.coordinators.map((c, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-2xl bg-slate-50/90 p-3.5 border border-slate-200/80 space-y-2.5 flex flex-col justify-between shadow-2xs hover:border-indigo-200 transition-all"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100/80 text-indigo-700 font-extrabold text-xs shrink-0 border border-indigo-200/60">
+                                  👤
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h5 className="font-bold text-slate-900 text-xs sm:text-sm leading-snug truncate">
+                                    {c.name}
+                                  </h5>
+                                  <span className="text-[10px] text-slate-500 font-semibold block">
+                                    Staff Coordinator
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200/60">
+                                {c.mobile && (
+                                  <a
+                                    href={`tel:${c.mobile}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 border border-slate-200 font-mono font-bold text-[11px] text-slate-800 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-2xs"
+                                    title={`Call ${c.name}`}
+                                  >
+                                    <Phone className="h-3 w-3 text-indigo-600 shrink-0" />
+                                    <span>{c.mobile}</span>
+                                  </a>
+                                )}
+                                {c.email && (
+                                  <a
+                                    href={`mailto:${c.email}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 border border-slate-200 text-[11px] font-medium text-indigo-600 hover:underline hover:bg-indigo-50/50 transition-all shadow-2xs max-w-full truncate"
+                                    title={`Email ${c.name}`}
+                                  >
+                                    <Mail className="h-3 w-3 text-indigo-600 shrink-0" />
+                                    <span className="truncate">{c.email}</span>
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Competition Rules & Format */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px] block">
+                  Rules &amp; Competition Format
+                </span>
+                <div className="rounded-2xl bg-slate-50/70 p-4 border border-slate-200/70">
+                  <ul className="space-y-2 text-xs text-slate-700">
+                    {activeModalEvent.rules ? (
+                      (typeof activeModalEvent.rules === "string"
+                        ? activeModalEvent.rules.split(";")
+                        : Array.isArray(activeModalEvent.rules)
+                        ? activeModalEvent.rules
+                        : []
+                      ).map((r, i) => (
+                        <li key={i} className="flex items-start gap-2 leading-relaxed">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>{r.trim()}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <>
+                        <li className="flex items-start gap-2 leading-relaxed">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Participants must bring valid college ID cards for campus entry at Kalasalingam University.</span>
+                        </li>
+                        <li className="flex items-start gap-2 leading-relaxed">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Reporting time is 15 minutes before the competition start time at the designated venue.</span>
+                        </li>
+                        <li className="flex items-start gap-2 leading-relaxed">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Verified digital credentials and cash awards will be presented during the valedictory ceremony.</span>
+                        </li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. MODAL ACTION FOOTER BAR */}
+            <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/90 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider hidden sm:inline">
+                  Pass Tier:
+                </span>
+                <span className="rounded-xl bg-white border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-2xs">
+                  {activeModalEvent.is_pro_event ? "Flagship (Included in ₹300 Pass)" : "Regular (Included in ₹200 Pass)"}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isEventConfirmed(activeModalEvent.id) ? (
+                  <span className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>On Active Pass</span>
+                  </span>
+                ) : isEventSelected(activeModalEvent.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleEvent(activeModalEvent)}
+                    className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Selected (Remove)</span>
+                  </button>
+                ) : canSelectEvent(activeModalEvent).allowed ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleEvent(activeModalEvent);
+                      setActiveModalEvent(null);
+                      openCart();
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md transition-all active:scale-95 cursor-pointer ${
+                      isIncrementalSlotClaim
+                        ? "bg-emerald-600 hover:bg-emerald-700"
+                        : "bg-slate-900 hover:bg-slate-800"
+                    }`}
+                  >
+                    {isIncrementalSlotClaim ? (
+                      <Gift className="h-4 w-4" />
+                    ) : (
+                      <ShoppingBag className="h-4 w-4" />
+                    )}
+                    <span>
+                      {isIncrementalSlotClaim
+                        ? "Claim 2nd Event (+₹0)"
+                        : "Add to Pass"}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
+                  >
+                    <Lock className="h-4 w-4 text-slate-400" />
+                    <span>Selection Locked</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setActiveModalEvent(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

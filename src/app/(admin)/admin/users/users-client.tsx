@@ -354,7 +354,7 @@ export function UsersAdminClient({
         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-xs">
           <div className="text-xs font-bold text-amber-900 flex items-center gap-1">
             <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
-            <span>Pro Pass Holders</span>
+            <span>Flagship Pass Holders</span>
           </div>
           <div className="text-2xl font-black text-amber-950 font-mono mt-0.5">
             {proPassCount}
@@ -971,60 +971,6 @@ export function UsersAdminClient({
                 )}
               </div>
 
-              {/* Role Management */}
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
-                  User Role Permissions
-                </span>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleToggleRole(
-                        "staff_coordinator",
-                        selectedUser.roles.includes("staff_coordinator") ? "revoke" : "assign"
-                      )
-                    }
-                    disabled={isSubmitting}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition-colors cursor-pointer ${
-                      selectedUser.roles.includes("staff_coordinator")
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    <span>
-                      {selectedUser.roles.includes("staff_coordinator")
-                        ? "✓ Staff Coordinator (Revoke)"
-                        : "+ Grant Staff Coordinator"}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleToggleRole(
-                        "student_coordinator",
-                        selectedUser.roles.includes("student_coordinator") ? "revoke" : "assign"
-                      )
-                    }
-                    disabled={isSubmitting}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold border transition-colors cursor-pointer ${
-                      selectedUser.roles.includes("student_coordinator")
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    <span>
-                      {selectedUser.roles.includes("student_coordinator")
-                        ? "✓ Student Coordinator (Revoke)"
-                        : "+ Grant Student Coordinator"}
-                    </span>
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Modal Footer */}

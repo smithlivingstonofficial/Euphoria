@@ -43,6 +43,28 @@ interface EventFormData {
   status: string;
 }
 
+function parseFormInitialMetadata(rawDesc?: string) {
+  const desc = rawDesc || "";
+  const whatsappMatch = desc.match(/\[WHATSAPP_LINK:\s*([^\]]+)\]/);
+  const namesMatch = desc.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
+  const mobilesMatch = desc.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
+  const emailsMatch = desc.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+  const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
+
+  const cleanDescription = desc
+    .replace(/\[[A-Z_]+:\s*[^\]]+\]/g, "")
+    .trim();
+
+  return {
+    cleanDescription,
+    whatsappLink: whatsappMatch ? whatsappMatch[1].trim() : "",
+    coordinatorNames: namesMatch ? namesMatch[1].trim() : "",
+    coordinatorMobiles: mobilesMatch ? mobilesMatch[1].trim() : "",
+    coordinatorEmails: emailsMatch ? emailsMatch[1].trim() : "",
+    brochureUrl: brochureMatch ? brochureMatch[2].trim() : "",
+  };
+}
+
 export function EventForm({
   categories,
   initialData,
@@ -56,6 +78,8 @@ export function EventForm({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const initialMeta = parseFormInitialMetadata(initialData?.description);
+
   const [categoryId, setCategoryId] = useState(
     initialData?.categoryId || (categories[0]?.id || "")
   );
@@ -64,8 +88,14 @@ export function EventForm({
     initialData?.shortDescription || ""
   );
   const [description, setDescription] = useState(
-    initialData?.description || ""
+    initialMeta.cleanDescription || initialData?.description || ""
   );
+  const [whatsappLink, setWhatsappLink] = useState(initialMeta.whatsappLink);
+  const [coordinatorNames, setCoordinatorNames] = useState(initialMeta.coordinatorNames);
+  const [coordinatorMobiles, setCoordinatorMobiles] = useState(initialMeta.coordinatorMobiles);
+  const [coordinatorEmails, setCoordinatorEmails] = useState(initialMeta.coordinatorEmails);
+  const [brochureUrl, setBrochureUrl] = useState(initialMeta.brochureUrl);
+
   const [rulesText, setRulesText] = useState(
     initialData?.rules || "1. Individual participation.\n2. Bring your own laptop.\n3. Decision of judges is final."
   );
@@ -105,11 +135,28 @@ export function EventForm({
       .map((r) => r.trim())
       .filter((r) => r.length > 0);
 
+    let finalDescription = description.trim();
+    if (whatsappLink.trim()) {
+      finalDescription += `\n[WHATSAPP_LINK: ${whatsappLink.trim()}]`;
+    }
+    if (coordinatorNames.trim()) {
+      finalDescription += `\n[COORDINATOR_NAMES: ${coordinatorNames.trim()}]`;
+    }
+    if (coordinatorMobiles.trim()) {
+      finalDescription += `\n[COORDINATOR_MOBILES: ${coordinatorMobiles.trim()}]`;
+    }
+    if (coordinatorEmails.trim()) {
+      finalDescription += `\n[COORDINATOR_EMAILS: ${coordinatorEmails.trim()}]`;
+    }
+    if (brochureUrl.trim()) {
+      finalDescription += `\n[BROCHURE_URL: ${brochureUrl.trim()}]`;
+    }
+
     const payload = {
       categoryId,
       name,
       shortDescription,
-      description,
+      description: finalDescription,
       rules: rulesArray,
       schoolOrDept,
       venue,
@@ -248,10 +295,10 @@ export function EventForm({
           <label htmlFor="isProEvent" className="cursor-pointer select-none">
             <div className="flex items-center gap-1.5 font-bold text-xs text-amber-950">
               <Star className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
-              <span>Mark as ⭐ PRO EVENT</span>
+              <span>Mark as ⭐ FLAGSHIP EVENT</span>
             </div>
             <p className="text-[11px] text-amber-800/90 mt-0.5 leading-snug">
-              Pro Events are flagship competitions. Participants can select at most 1 Pro Event per pass, and it MUST be selected as their first event choice.
+              Flagship Events are premium competitions. Participants can select at most 1 Flagship Event per pass, and it MUST be selected as their first event choice.
             </p>
           </label>
         </div>
@@ -383,6 +430,98 @@ export function EventForm({
             placeholder="1. Each team must have 1-3 members.&#10;2. Plagiarism leads to disqualification.&#10;3. Internet access provided."
             className="w-full rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-900 font-mono focus:border-primary focus:outline-none"
           />
+        </div>
+      </div>
+
+      {/* WhatsApp Community & Staff Coordinators */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+        <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center justify-between">
+          <span>4. WhatsApp Community &amp; Staff Coordinators</span>
+          <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">
+            Staff Access Control
+          </span>
+        </h2>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">
+            Official WhatsApp Group Join Link
+          </label>
+          <input
+            type="url"
+            value={whatsappLink}
+            onChange={(e) => setWhatsappLink(e.target.value)}
+            placeholder="https://chat.whatsapp.com/FS7Tt2M2FGaB..."
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-primary focus:outline-none"
+          />
+          <p className="text-[11px] text-slate-500 mt-1">
+            Link displayed on public event page, participant cards, and confirmed event passes.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">
+            Event PDF Brochure Link
+          </label>
+          <input
+            type="url"
+            value={brochureUrl}
+            onChange={(e) => setBrochureUrl(e.target.value)}
+            placeholder="https://drive.google.com/... or https://domain.com/brochure.pdf"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-primary focus:outline-none"
+          />
+          <p className="text-[11px] text-slate-500 mt-1">
+            Official PDF brochure link displayed on public event details modal and participant dashboard.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Staff Coordinator Name(s)
+            </label>
+            <input
+              type="text"
+              value={coordinatorNames}
+              onChange={(e) => setCoordinatorNames(e.target.value)}
+              placeholder="Dr. K. Jeyaprakash, Dr. M. Ramesh"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-primary focus:outline-none"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Separate multiple coordinator names with commas.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Staff Mobile Number(s)
+            </label>
+            <input
+              type="text"
+              value={coordinatorMobiles}
+              onChange={(e) => setCoordinatorMobiles(e.target.value)}
+              placeholder="9788962100, 9894119714"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 font-mono focus:border-primary focus:outline-none"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Enables direct phone call button on event details modal.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Staff Official Email ID(s)
+            </label>
+            <input
+              type="text"
+              value={coordinatorEmails}
+              onChange={(e) => setCoordinatorEmails(e.target.value)}
+              placeholder="k.jeyaprakash@klu.ac.in, m.ramesh@klu.ac.in"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-primary focus:outline-none"
+            />
+            <p className="text-[11px] text-indigo-600 font-semibold mt-1">
+              ⭐ Used to verify staff login &amp; assign event management access.
+            </p>
+          </div>
         </div>
       </div>
 

@@ -253,7 +253,7 @@ export function CartProvider({
           if (isCandidatePro) {
             return {
               allowed: false,
-              reason: "Only 1 Pro event allowed per Pass (choose a normal event)",
+              reason: "Only 1 Flagship event allowed per Pass (choose a regular event)",
             };
           }
           return { allowed: true };
@@ -262,7 +262,7 @@ export function CartProvider({
           if (isCandidatePro) {
             return {
               allowed: false,
-              reason: "Pro events must be selected as your 1st choice",
+              reason: "Flagship events must be selected as your 1st choice",
             };
           }
           return { allowed: true };
@@ -285,7 +285,7 @@ export function CartProvider({
           if (isCandidatePro) {
             return {
               allowed: false,
-              reason: "Only 1 Pro event allowed per Pass (choose a normal event for slot 2)",
+              reason: "Only 1 Flagship event allowed per Pass (choose a regular event for slot 2)",
             };
           }
           return { allowed: true };
@@ -294,7 +294,7 @@ export function CartProvider({
           if (isCandidatePro) {
             return {
               allowed: false,
-              reason: "Pro events must be selected as your 1st choice",
+              reason: "Flagship events must be selected as your 1st choice",
             };
           }
           return { allowed: true };

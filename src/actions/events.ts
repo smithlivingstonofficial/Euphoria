@@ -22,6 +22,8 @@ async function fetchPublicEventsRaw() {
             name,
             slug,
             short_description,
+            description,
+            rules,
             school_or_dept,
             venue,
             event_date,

@@ -31,10 +31,10 @@ export function BentoPerksGrid() {
 
           <div>
             <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              ₹15 Lakhs+ in Cash Prizes &amp; Trophies
+              ₹15 Lakhs+ in Cash Prizes &amp; Certificates
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-2 max-w-md">
-              Cash rewards and official crystal trophies for 1st, 2nd, and 3rd place podium finishers across all 61 competitions and 14 academic schools.
+              Cash rewards and official certificates for 1st, 2nd, and 3rd place podium finishers across all 61 competitions and 14 academic schools.
             </p>
           </div>
         </div>
@@ -44,19 +44,19 @@ export function BentoPerksGrid() {
             <span className="text-xs sm:text-sm font-black text-amber-900 block">
               1st Winner
             </span>
-            <span className="text-[10px] font-bold text-slate-500">Cash + Trophy</span>
+            <span className="text-[10px] font-bold text-slate-500">Cash + Certificate</span>
           </div>
           <div className="p-2.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
             <span className="text-xs sm:text-sm font-black text-slate-800 block">
               2nd Runner
             </span>
-            <span className="text-[10px] font-bold text-slate-500">Cash + Medal</span>
+            <span className="text-[10px] font-bold text-slate-500">Cash + Certificate</span>
           </div>
           <div className="p-2.5 rounded-2xl bg-white border border-amber-200/80 shadow-2xs">
             <span className="text-xs sm:text-sm font-black text-slate-800 block">
               3rd Runner
             </span>
-            <span className="text-[10px] font-bold text-slate-500">Cash + Citation</span>
+            <span className="text-[10px] font-bold text-slate-500">Cash + Certificate</span>
           </div>
         </div>
       </div>

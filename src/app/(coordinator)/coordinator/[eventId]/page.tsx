@@ -1,9 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { getEventAttendeesForCoordinator } from "@/actions/coordinator";
+import {
+  getEventAttendeesForCoordinator,
+  getEventStaffDetails,
+} from "@/actions/coordinator";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { EventRosterClient } from "./roster-client";
+import { StaffControlsClient } from "./staff-controls-client";
 import {
   ArrowLeft,
   Calendar,
@@ -15,6 +19,8 @@ import {
   FileSpreadsheet,
   Sparkles,
   Building,
+  ShieldCheck,
+  GraduationCap,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 
@@ -36,6 +42,26 @@ export default async function CoordinatorEventRosterPage({
   const totalCount = data.totalCount ?? attendees.length;
   const attendedCount = data.attendedCount ?? 0;
   const fillPct = totalCount > 0 ? Math.round((attendedCount / totalCount) * 100) : 0;
+  const roleType = data.roleType || "student";
+
+  let staffDetails: {
+    whatsappLink: string;
+    brochureUrl: string;
+    studentCoordinators: Array<any>;
+    allProfiles: Array<any>;
+  } | null = null;
+
+  if (roleType === "staff" || roleType === "admin") {
+    const staffRes = await getEventStaffDetails(params.eventId);
+    if (staffRes.success) {
+      staffDetails = {
+        whatsappLink: staffRes.whatsappLink || "",
+        brochureUrl: staffRes.brochureUrl || "",
+        studentCoordinators: staffRes.studentCoordinators || [],
+        allProfiles: staffRes.allProfiles || [],
+      };
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
@@ -52,21 +78,33 @@ export default async function CoordinatorEventRosterPage({
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Back to Coordinator Hub</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-primary">
                 {event.category?.name || "Track"}
               </span>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                {event.name}
-              </h1>
+
+              {roleType === "staff" || roleType === "admin" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-900 text-white border border-indigo-800 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider">
+                  <ShieldCheck className="h-3 w-3 text-cyan-300" />
+                  <span>Faculty Staff Coordinator</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider">
+                  <GraduationCap className="h-3 w-3 text-emerald-600" />
+                  <span>Student Coordinator</span>
+                </span>
+              )}
             </div>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              {event.name}
+            </h1>
             <p className="text-xs text-slate-500">{event.school_or_dept}</p>
           </div>
 
           <div className="flex items-center gap-2.5">
             <Link
               href={`/coordinator/scanner?event=${event.id}`}
-              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all shrink-0"
+              className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all shrink-0"
             >
               <QrCode className="h-4 w-4" />
               <span>Open Event Scanner</span>
@@ -142,13 +180,24 @@ export default async function CoordinatorEventRosterPage({
           </div>
         </div>
 
+        {/* Faculty Staff Management Controls Panel (Visible ONLY to Faculty Staff / Admin) */}
+        {staffDetails && (
+          <StaffControlsClient
+            eventId={event.id}
+            initialWhatsappLink={staffDetails.whatsappLink}
+            initialBrochureUrl={staffDetails.brochureUrl}
+            initialStudentCoordinators={staffDetails.studentCoordinators}
+            allProfiles={staffDetails.allProfiles}
+          />
+        )}
+
         {/* Interactive Attendee Roster Table */}
         <EventRosterClient
           eventId={event.id}
           eventName={event.name}
           eventVenue={event.venue}
           eventStatus={event.status}
-          roleType={data.roleType || "student"}
+          roleType={roleType}
           initialAttendees={attendees as any}
         />
       </main>

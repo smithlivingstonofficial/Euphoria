@@ -75,13 +75,35 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
     .eq("id", userId)
     .maybeSingle();
 
+  const userEmail = (userProfile?.email || "").toLowerCase().trim();
+
   if (
-    userProfile?.email &&
-    (userProfile.email.toLowerCase().includes("admin") ||
-      userProfile.email.toLowerCase().includes("smith") ||
-      userProfile.email === process.env.ADMIN_EMAIL)
+    userEmail &&
+    (userEmail.includes("admin") ||
+      userEmail.includes("smith") ||
+      userEmail === process.env.ADMIN_EMAIL)
   ) {
     return "admin";
+  }
+
+  // Check if user's email is listed in any event's [COORDINATOR_EMAILS:] tag
+  if (userEmail) {
+    const { data: eventsData } = await adminClient.from("events").select("id, description");
+    if (eventsData) {
+      for (const evt of eventsData) {
+        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+          if (match) {
+            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+            if (emails.includes(userEmail)) {
+              if (!eventId || eventId === evt.id) {
+                return "staff";
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   // If no eventId specified, check global role assignments
@@ -778,6 +800,235 @@ export async function updateEventOperationsStaff(
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update operations";
+    return { success: false, error: msg };
+  }
+}
+
+// 6. Update WhatsApp & Brochure Links (Faculty Staff Coordinator & Admin Only)
+export async function updateEventLinksStaff(
+  eventId: string,
+  whatsappLink: string,
+  brochureUrl: string
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Forbidden: Only Faculty Staff Coordinators or Administrators can edit event communication links.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Fetch existing description
+    const { data: eventData, error: fetchErr } = await adminClient
+      .from("events")
+      .select("description")
+      .eq("id", eventId)
+      .single();
+
+    if (fetchErr || !eventData) throw new Error("Event not found");
+
+    let cleanDesc = (eventData.description || "")
+      .replace(/\[WHATSAPP_LINK:\s*[^\]]+\]/g, "")
+      .replace(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/g, "")
+      .trim();
+
+    if (whatsappLink.trim()) {
+      cleanDesc += `\n[WHATSAPP_LINK: ${whatsappLink.trim()}]`;
+    }
+    if (brochureUrl.trim()) {
+      cleanDesc += `\n[BROCHURE_URL: ${brochureUrl.trim()}]`;
+    }
+
+    const { error: updateErr } = await adminClient
+      .from("events")
+      .update({
+        description: cleanDesc,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", eventId);
+
+    if (updateErr) throw updateErr;
+
+    revalidatePath(`/coordinator/${eventId}`, "page");
+    revalidatePath("/events", "page");
+    revalidatePath("/dashboard", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update links";
+    return { success: false, error: msg };
+  }
+}
+
+// 7. Assign Student Coordinator for an Event (Faculty Staff & Admin Only)
+export async function assignStudentCoordinatorStaff(
+  eventId: string,
+  targetUserId: string
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Forbidden: Only Faculty Staff Coordinators or Administrators can add Student Coordinators.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // 1. Insert assignment into student_coordinator_assignments
+    const { error: assignErr } = await adminClient
+      .from("student_coordinator_assignments")
+      .upsert(
+        {
+          event_id: eventId,
+          user_id: targetUserId,
+          assigned_by: user.id,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "event_id,user_id" }
+      );
+
+    if (assignErr) throw assignErr;
+
+    // 2. Grant student_coordinator role
+    await adminClient.from("user_role_assignments").upsert(
+      {
+        user_id: targetUserId,
+        role_id: "student_coordinator",
+        assigned_by: user.id,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,role_id" }
+    );
+
+    revalidatePath(`/coordinator/${eventId}`, "page");
+    revalidatePath("/admin/coordinators", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to assign student coordinator";
+    return { success: false, error: msg };
+  }
+}
+
+// 8. Revoke Student Coordinator for an Event (Faculty Staff & Admin Only)
+export async function revokeStudentCoordinatorStaff(
+  eventId: string,
+  targetUserId: string
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Forbidden: Only Faculty Staff Coordinators or Administrators can remove Student Coordinators.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    const { error } = await adminClient
+      .from("student_coordinator_assignments")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("user_id", targetUserId);
+
+    if (error) throw error;
+
+    revalidatePath(`/coordinator/${eventId}`, "page");
+    revalidatePath("/admin/coordinators", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to revoke student coordinator";
+    return { success: false, error: msg };
+  }
+}
+
+// 9. Fetch Event Staff Control Details (Links & Assigned Student Coordinators)
+export async function getEventStaffDetails(eventId: string) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return { success: false, error: "Forbidden" };
+    }
+
+    const adminClient = await createAdminClient();
+
+    const [
+      { data: eventData },
+      { data: studentAssigns },
+      { data: profilesData }
+    ] = await Promise.all([
+      adminClient.from("events").select("id, name, description").eq("id", eventId).single(),
+      adminClient.from("student_coordinator_assignments").select(`
+        id,
+        user_id,
+        created_at,
+        user:profiles!student_coordinator_assignments_user_id_fkey (id, full_name, email, mobile_number, register_number, department)
+      `).eq("event_id", eventId),
+      adminClient.from("profiles").select("id, full_name, email, mobile_number, register_number, department").order("full_name"),
+    ]);
+
+    const desc = eventData?.description || "";
+    const whatsappMatch = desc.match(/\[WHATSAPP_LINK:\s*([^\]]+)\]/);
+    const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
+
+    const studentCoordinators = (studentAssigns || []).map((s: any) => {
+      const u = Array.isArray(s.user) ? s.user[0] : s.user;
+      return {
+        id: s.id,
+        userId: s.user_id,
+        fullName: u?.full_name || "Volunteer",
+        email: u?.email || "",
+        mobileNumber: u?.mobile_number || "",
+        registerNumber: u?.register_number || "",
+        department: u?.department || "",
+      };
+    });
+
+    return {
+      success: true,
+      roleType,
+      whatsappLink: whatsappMatch ? whatsappMatch[1].trim() : "",
+      brochureUrl: brochureMatch ? brochureMatch[2].trim() : "",
+      studentCoordinators,
+      allProfiles: profilesData || [],
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch event staff details";
     return { success: false, error: msg };
   }
 }

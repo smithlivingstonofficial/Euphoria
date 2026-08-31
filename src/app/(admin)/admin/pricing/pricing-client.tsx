@@ -158,6 +158,7 @@ export function AdminPricingClient({
             className="rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:text-primary hover:border-indigo-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
           >
             👑 Flagship Tier (₹400 Pro / ₹250 Normal)
+            👑 Flagship Tier (₹400 Flagship / ₹250 Regular)
           </button>
         </div>
       </div>
@@ -165,35 +166,35 @@ export function AdminPricingClient({
       <form onSubmit={handleSave} className="space-y-6">
         {/* Universal Pricing Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Card 1: Pro Event Pass Tier */}
-          <div className="rounded-3xl border border-amber-200 bg-amber-50/20 p-6 shadow-xs space-y-5 relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600" />
+          {/* Card 1: Flagship Events Pass Tier */}
+          <div className="rounded-3xl border border-amber-200/80 bg-amber-50/30 p-6 shadow-xs space-y-5 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 to-yellow-500" />
 
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 border border-amber-200">
-                  <Star className="h-5 w-5 fill-amber-500 text-amber-700" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-xs">
+                  <Star className="h-5 w-5 fill-current" />
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
-                    ⭐ Pro Event Pass
+                    ⭐ Flagship Events Pass
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Covers 1 Pro Event + 1 Normal Event (or 1 Pro solo)
+                    Covers 1 Flagship Event + 1 Regular Event choice
                   </p>
                 </div>
               </div>
 
-              <span className="rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 text-xs font-black">
-                Common for All
+              <span className="rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-bold text-amber-900">
+                Premium Tier
               </span>
             </div>
 
             <div className="space-y-4 pt-2">
-              {/* Pro Pass Fee */}
+              {/* Flagship Pass Fee */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
-                  Pro Pass Total Fee (₹)
+                  Flagship Pass Total Fee (₹)
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">
@@ -215,7 +216,7 @@ export function AdminPricingClient({
                   />
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Price applied whenever a pass includes a <strong>Pro Event</strong> (both 1 Pro or 1 Pro + 1 Normal).
+                  Price applied whenever a pass includes a <strong>Flagship Event</strong> (both 1 Flagship or 1 Flagship + 1 Regular).
                 </p>
               </div>
 
@@ -225,13 +226,13 @@ export function AdminPricingClient({
                   <span>Includes 2nd Event for FREE (₹0 Extra)</span>
                 </div>
                 <p className="text-[11px] text-amber-800/90 leading-snug">
-                  If a user registers 1 Pro event now (pays ₹{settings.pro_pass_fee ?? 300}), they can return later to select their 2nd slot (1 Normal event) at ₹0 additional charge.
+                  If a user registers 1 Flagship event now (pays ₹{settings.pro_pass_fee ?? 300}), they can return later to select their 2nd slot (1 Regular event) at ₹0 additional charge.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Card 2: Normal Events Pass Tier */}
+          {/* Card 2: Regular Events Pass Tier */}
           <div className="rounded-3xl border border-indigo-100 bg-indigo-50/20 p-6 shadow-xs space-y-5 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
@@ -242,10 +243,10 @@ export function AdminPricingClient({
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
-                    📌 Normal Events Pass
+                    📌 Regular Events Pass
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Covers up to 2 Normal Events (or 1 Normal solo)
+                    Covers up to 2 Regular Events (or 1 Regular solo)
                   </p>
                 </div>
               </div>

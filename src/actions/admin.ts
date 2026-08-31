@@ -493,6 +493,7 @@ export async function getAllCoordinatorsAdmin() {
     const [
       { data: staffAssignments },
       { data: studentAssignments },
+      { data: userRoles },
       { data: profiles },
       { data: events },
     ] = await Promise.all([
@@ -501,7 +502,7 @@ export async function getAllCoordinatorsAdmin() {
         event_id,
         user_id,
         created_at,
-        user:profiles (id, full_name, email, mobile_number, department),
+        user:profiles!staff_event_assignments_user_id_fkey (id, full_name, email, mobile_number, department),
         event:events (id, name, school_or_dept)
       `),
       adminClient.from("student_coordinator_assignments").select(`
@@ -509,17 +510,119 @@ export async function getAllCoordinatorsAdmin() {
         event_id,
         user_id,
         created_at,
-        user:profiles (id, full_name, email, mobile_number, register_number, department),
+        user:profiles!student_coordinator_assignments_user_id_fkey (id, full_name, email, mobile_number, register_number, department),
         event:events (id, name, school_or_dept)
       `),
+      adminClient.from("user_role_assignments").select(`
+        id,
+        role_id,
+        user_id,
+        created_at,
+        user:profiles!user_role_assignments_user_id_fkey (id, full_name, email, mobile_number, department)
+      `),
       adminClient.from("profiles").select("id, full_name, email, mobile_number, participant_type"),
-      adminClient.from("events").select("id, name, school_or_dept"),
+      adminClient.from("events").select("id, name, description, school_or_dept"),
     ]);
+
+    const profileMapByEmail = new Map();
+    (profiles || []).forEach((p: any) => {
+      if (p.email) profileMapByEmail.set(p.email.toLowerCase(), p);
+    });
+
+    const staffMap = new Map<string, any>();
+    const studentMap = new Map<string, any>();
+
+    // 1. Explicit DB staff assignments
+    (staffAssignments || []).forEach((s: any) => {
+      const u = Array.isArray(s.user) ? s.user[0] : s.user;
+      const e = Array.isArray(s.event) ? s.event[0] : s.event;
+      if (u && e) {
+        staffMap.set(`${s.user_id}_${s.event_id}`, { ...s, user: u, event: e });
+      }
+    });
+
+    // 2. Explicit DB student assignments
+    (studentAssignments || []).forEach((s: any) => {
+      const u = Array.isArray(s.user) ? s.user[0] : s.user;
+      const e = Array.isArray(s.event) ? s.event[0] : s.event;
+      if (u && e) {
+        studentMap.set(`${s.user_id}_${s.event_id}`, { ...s, user: u, event: e });
+      }
+    });
+
+    // 3. User role assignments (staff_coordinator / student_coordinator)
+    (userRoles || []).forEach((r: any) => {
+      const u = Array.isArray(r.user) ? r.user[0] : r.user;
+      if (u) {
+        if (r.role_id === "staff_coordinator") {
+          const key = `${r.user_id}_global`;
+          if (!staffMap.has(key)) {
+            staffMap.set(key, {
+              id: r.id,
+              event_id: "global",
+              user_id: r.user_id,
+              created_at: r.created_at || new Date().toISOString(),
+              user: u,
+              event: { id: "global", name: "All Competitions", school_or_dept: "University-Wide" },
+            });
+          }
+        } else if (r.role_id === "student_coordinator") {
+          const key = `${r.user_id}_global`;
+          if (!studentMap.has(key)) {
+            studentMap.set(key, {
+              id: r.id,
+              event_id: "global",
+              user_id: r.user_id,
+              created_at: r.created_at || new Date().toISOString(),
+              user: u,
+              event: { id: "global", name: "All Competitions", school_or_dept: "University-Wide" },
+            });
+          }
+        }
+      }
+    });
+
+    // 4. Event description metadata assignments
+    (events || []).forEach((evt: any) => {
+      if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+        const emailMatch = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+        const nameMatch = evt.description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
+        const mobileMatch = evt.description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
+
+        if (emailMatch) {
+          const emails = emailMatch[1].split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+          const names = nameMatch ? nameMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
+          const mobiles = mobileMatch ? mobileMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
+
+          emails.forEach((email: string, idx: number) => {
+            const userProf = profileMapByEmail.get(email);
+            const userId = userProf ? userProf.id : `email_${email}`;
+            const key = `${userId}_${evt.id}`;
+            if (!staffMap.has(key)) {
+              staffMap.set(key, {
+                id: `sheet_${evt.id}_${email}`,
+                event_id: evt.id,
+                user_id: userId,
+                created_at: new Date().toISOString(),
+                user: userProf || {
+                  id: userId,
+                  full_name: names[idx] || email.split("@")[0],
+                  email,
+                  mobile_number: mobiles[idx] || undefined,
+                  department: evt.school_or_dept,
+                },
+                event: { id: evt.id, name: evt.name, school_or_dept: evt.school_or_dept },
+              });
+            }
+          });
+        }
+      }
+    });
 
     return {
       success: true,
-      staffAssignments: staffAssignments || [],
-      studentAssignments: studentAssignments || [],
+      staffAssignments: Array.from(staffMap.values()),
+      studentAssignments: Array.from(studentMap.values()),
       allProfiles: profiles || [],
       allEvents: events || [],
     };

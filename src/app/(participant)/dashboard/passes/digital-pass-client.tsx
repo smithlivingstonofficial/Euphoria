@@ -47,6 +47,7 @@ interface RegistrationItem {
     event_date: string;
     start_time: string;
     end_time: string;
+    description?: string;
     category?: {
       id: string;
       name: string;
@@ -550,63 +551,98 @@ export function DigitalPassClient({
 
             {/* List of Registered Events */}
             <div className="space-y-3">
-              {registrations.map((reg, idx) => (
-                <div
-                  key={reg.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-2.5 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-slate-900 text-white px-2 py-0.5 text-[10px] font-bold font-mono">
-                        Slot #{reg.slot_number || idx + 1}
-                      </span>
-                      {reg.event?.is_pro_event && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-black uppercase">
-                          <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
-                          <span>PRO</span>
+              {registrations.map((reg, idx) => {
+                const desc = reg.event?.description || "";
+                const whatsappMatch = desc.match(/\[WHATSAPP_LINK:\s*([^\]]+)\]/);
+                const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
+                const whatsappLink = whatsappMatch ? whatsappMatch[1].trim() : null;
+                const brochureUrl = brochureMatch ? brochureMatch[2].trim() : null;
+
+                return (
+                  <div
+                    key={reg.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-slate-900 text-white px-2 py-0.5 text-[10px] font-bold font-mono">
+                          Slot #{reg.slot_number || idx + 1}
+                        </span>
+                        {reg.event?.is_pro_event && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-black uppercase">
+                            <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                            <span>FLAGSHIP</span>
+                          </span>
+                        )}
+                        <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-primary">
+                          {reg.event?.school_or_dept || reg.event?.category?.name || "Technical"}
+                        </span>
+                      </div>
+
+                      {reg.isAttended ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <span>Attended</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-primary border border-indigo-200">
+                          <span>Confirmed Entry</span>
                         </span>
                       )}
-                      <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-primary">
-                        {reg.event?.school_or_dept || reg.event?.category?.name || "Technical"}
-                      </span>
                     </div>
 
-                    {reg.isAttended ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        <span>Attended</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-primary border border-indigo-200">
-                        <span>Confirmed Entry</span>
-                      </span>
+                    <h4 className="text-base font-black text-slate-900">
+                      {reg.event?.name}
+                    </h4>
+
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>{reg.event?.event_date ? formatDate(reg.event.event_date) : "Sept 25-26, 2026"}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>
+                          {reg.event?.start_time
+                            ? `${formatTime(reg.event.start_time)} - ${formatTime(reg.event.end_time)}`
+                            : "Full Day"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{reg.event?.venue || "KARE Campus"}</span>
+                      </div>
+                    </div>
+
+                    {(whatsappLink || brochureUrl) && (
+                      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200/70">
+                        {whatsappLink && (
+                          <a
+                            href={whatsappLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors"
+                          >
+                            <span>💬 Join WhatsApp Group</span>
+                            <ArrowRight className="h-3.5 w-3.5 text-white" />
+                          </a>
+                        )}
+                        {brochureUrl && (
+                          <a
+                            href={brochureUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-indigo-600 transition-colors"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-cyan-300" />
+                            <span>View Brochure PDF</span>
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
-
-                  <h4 className="text-base font-black text-slate-900">
-                    {reg.event?.name}
-                  </h4>
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{reg.event?.event_date ? formatDate(reg.event.event_date) : "Sept 25-26, 2026"}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>
-                        {reg.event?.start_time
-                          ? `${formatTime(reg.event.start_time)} - ${formatTime(reg.event.end_time)}`
-                          : "Full Day"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{reg.event?.venue || "KARE Campus"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               {/* Slot 2 Open Banner */}
               {remainingSlots > 0 && (

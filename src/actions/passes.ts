@@ -89,7 +89,8 @@ export async function getUserPassSummary(): Promise<{
             venue,
             event_date,
             start_time,
-            end_time
+            end_time,
+            description
           )
         `)
         .eq("user_id", user.id)

@@ -13,26 +13,71 @@ export async function getCurrentUser() {
 
     if (userError || !user) return null;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+    const adminClient = await createAdminClient();
 
-    const { data: roleAssignments } = await supabase
-      .from("user_role_assignments")
-      .select("role_id")
-      .eq("user_id", user.id);
+    const [
+      { data: profile },
+      { data: roleAssignments },
+      { data: staffAssignments },
+      { data: studentAssignments },
+      { data: eventsData },
+    ] = await Promise.all([
+      adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
+      adminClient.from("staff_event_assignments").select("id").eq("user_id", user.id).limit(1),
+      adminClient.from("student_coordinator_assignments").select("id").eq("user_id", user.id).limit(1),
+      adminClient.from("events").select("id, description"),
+    ]);
 
     const roles = (roleAssignments || []).map((r) => r.role_id);
+    const userEmail = (user.email || "").toLowerCase().trim();
+
+    // Check if user is listed in any event's [COORDINATOR_EMAILS:] tag
+    let isEventEmailStaff = false;
+    if (userEmail && eventsData) {
+      for (const evt of eventsData) {
+        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+          if (match) {
+            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+            if (emails.includes(userEmail)) {
+              isEventEmailStaff = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0) || isEventEmailStaff;
+    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
+
+    if (hasStaffAssignment && !roles.includes("staff_coordinator")) {
+      roles.push("staff_coordinator");
+    }
+    if (hasStudentAssignment && !roles.includes("student_coordinator")) {
+      roles.push("student_coordinator");
+    }
+
+    const isAdmin =
+      roles.includes("admin") ||
+      Boolean(
+        userEmail &&
+          (userEmail.includes("admin") ||
+            userEmail.includes("smith") ||
+            userEmail === process.env.ADMIN_EMAIL)
+      );
+
+    const isStaff = roles.includes("staff_coordinator") || hasStaffAssignment;
+    const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment;
 
     return {
       user,
       profile,
       roles,
-      isAdmin: roles.includes("admin"),
-      isStaff: roles.includes("staff_coordinator"),
-      isCoordinator: roles.includes("student_coordinator"),
+      isAdmin,
+      isStaff,
+      isCoordinator,
     };
   } catch {
     return null;

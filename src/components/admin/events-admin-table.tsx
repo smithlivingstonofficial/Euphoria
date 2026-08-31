@@ -125,8 +125,8 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:border-primary focus:outline-none shadow-xs"
           >
             <option value="all">All Tiers</option>
-            <option value="pro">⭐ Pro Events Only</option>
-            <option value="normal">Normal Events Only</option>
+            <option value="pro">⭐ Flagship Events Only</option>
+            <option value="normal">⚡ Regular Events Only</option>
           </select>
 
           {/* Status Filter */}
@@ -178,7 +178,7 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
                           {isPro && (
                             <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider">
                               <Star className="h-2.5 w-2.5 fill-current" />
-                              <span>PRO</span>
+                              <span>FLAGSHIP</span>
                             </span>
                           )}
                         </div>

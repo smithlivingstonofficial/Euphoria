@@ -24,7 +24,7 @@ import { signOutUser } from "@/actions/auth";
 
 const NAV_SECTIONS = [
   {
-    title: "MAIN",
+    title: "CORE CONTROL",
     items: [
       {
         href: "/admin",
@@ -34,37 +34,17 @@ const NAV_SECTIONS = [
       },
       {
         href: "/admin/events",
-        label: "Events",
+        label: "Events & Staff",
         icon: Calendar,
       },
       {
-        href: "/admin/events/bulk",
-        label: "Bulk Upload",
-        icon: UploadCloud,
-      },
-      {
-        href: "/admin/pricing",
-        label: "Pass Pricing",
-        icon: DollarSign,
-      },
-    ],
-  },
-  {
-    title: "MANAGEMENT",
-    items: [
-      {
         href: "/admin/users",
-        label: "Users & Passes",
+        label: "Participants & Passes",
         icon: UserCheck,
       },
       {
-        href: "/admin/registrations",
-        label: "Registrations",
-        icon: Users,
-      },
-      {
         href: "/admin/coordinators",
-        label: "Coordinators",
+        label: "Coordinators & Roles",
         icon: ShieldCheck,
       },
       {
@@ -72,20 +52,10 @@ const NAV_SECTIONS = [
         label: "Announcements",
         icon: Megaphone,
       },
-    ],
-  },
-  {
-    title: "FINANCIALS & AUDIT",
-    items: [
       {
-        href: "/admin/payments",
-        label: "Payments Audit",
-        icon: CreditCard,
-      },
-      {
-        href: "/admin/reports",
-        label: "Export Reports",
-        icon: FileSpreadsheet,
+        href: "/admin/pricing",
+        label: "Finance & Pricing",
+        icon: DollarSign,
       },
     ],
   },

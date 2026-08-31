@@ -305,7 +305,7 @@ export function CartDrawer({
               </div>
               <h3 className="text-base font-bold text-slate-900 font-display">Your Cart is Empty</h3>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Explore our technical competitions. You can select up to 2 events per pass (Standard Pass ₹200 or Pro Pass ₹300).
+                Explore our technical competitions. You can select up to 2 events per pass (Regular Pass ₹200 or Flagship Pass ₹300).
               </p>
               <button
                 onClick={closeCart}
@@ -331,12 +331,12 @@ export function CartDrawer({
                 {hasProEventSelected ? (
                   <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs pt-1">
                     <Star className="h-4 w-4 text-amber-500 fill-amber-500 shrink-0" />
-                    <span>Pro Delegate Pass (Includes 1 Pro Event choice)</span>
+                    <span>Flagship Delegate Pass (Includes 1 Flagship Event choice)</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-indigo-900 font-bold text-xs pt-1">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <span>Standard Delegate Pass (Includes Standard Events)</span>
+                    <span>Regular Delegate Pass (Includes Regular Events)</span>
                   </div>
                 )}
               </div>
