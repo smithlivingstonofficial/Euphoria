@@ -112,7 +112,7 @@ export function EventCatalogExplorer({
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
-  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(true);
+  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(false);
   const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
 
   // Cart Context Hook

@@ -6,7 +6,12 @@ import { revalidatePath, unstable_cache, revalidateTag } from "next/cache";
 // Raw query with column projection to reduce egress bandwidth
 async function fetchPublicEventsRaw() {
   try {
-    const supabase = await createClient();
+    let supabase;
+    try {
+      supabase = await createAdminClient();
+    } catch {
+      supabase = await createClient();
+    }
 
     const [{ data: events, error: eventsError }, { data: categories }] =
       await Promise.all([
@@ -37,7 +42,6 @@ async function fetchPublicEventsRaw() {
               status
             )
           `)
-          .in("status", ["registration_open", "published", "ongoing", "registration_closed"])
           .order("event_date", { ascending: true })
           .order("start_time", { ascending: true }),
         supabase
