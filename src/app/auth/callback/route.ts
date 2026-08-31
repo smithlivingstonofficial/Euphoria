@@ -5,10 +5,10 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "/dashboard";
+  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "/events";
 
   // Sanitize next path to prevent open redirect vulnerabilities
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/events";
 
   if (code) {
     const cookieStore = cookies();
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(`${origin}/coordinator`);
         }
 
-        return NextResponse.redirect(`${origin}/dashboard`);
+        return NextResponse.redirect(`${origin}/events`);
       }
 
       return NextResponse.redirect(`${origin}${next}`);

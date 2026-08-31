@@ -345,7 +345,7 @@ export function CompleteProfileForm({
       const result = await saveParticipantProfile(payload);
 
       if (result?.success) {
-        window.location.href = "/dashboard";
+        window.location.href = "/events";
         return;
       }
 
@@ -357,7 +357,7 @@ export function CompleteProfileForm({
       });
 
       if (apiRes.ok) {
-        window.location.href = "/dashboard";
+        window.location.href = "/events";
         return;
       }
 

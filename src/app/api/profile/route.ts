@@ -133,12 +133,12 @@ export async function POST(request: NextRequest) {
     revalidatePath("/complete-profile", "page");
 
     if (contentType.includes("application/json")) {
-      return NextResponse.json({ success: true, redirect: "/dashboard" });
+      return NextResponse.json({ success: true, redirect: "/events" });
     }
 
-    // Redirect natively to /dashboard for HTML form submissions
+    // Redirect natively to /events for HTML form submissions
     const origin = request.nextUrl.origin;
-    return NextResponse.redirect(new URL("/dashboard", origin), 303);
+    return NextResponse.redirect(new URL("/events", origin), 303);
   } catch (err) {
     console.error("Profile API error:", err);
     if (request.headers.get("content-type")?.includes("application/json")) {

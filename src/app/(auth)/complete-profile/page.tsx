@@ -22,9 +22,9 @@ export default async function CompleteProfilePage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // If already complete, redirect directly to dashboard
+  // If already complete, redirect directly to events
   if (profile && profile.is_profile_completed) {
-    redirect("/dashboard");
+    redirect("/events");
   }
 
   const userEmail = user.email || "";
