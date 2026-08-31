@@ -206,3 +206,108 @@ export async function signOutUser() {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
 }
+
+export async function ensureStaffAccountAndRole(user: any) {
+  try {
+    if (!user || !user.email) {
+      return { isStaff: false, isAdmin: false, isCoordinator: false };
+    }
+
+    const adminClient = await createAdminClient();
+    const userEmail = (user.email || "").toLowerCase().trim();
+
+    // 1. Fetch user roles & assignments
+    const [
+      { data: roleAssignments },
+      { data: staffAssignments },
+      { data: studentAssignments },
+      { data: eventsData },
+      { data: existingProfile },
+    ] = await Promise.all([
+      adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
+      adminClient.from("staff_event_assignments").select("id").eq("user_id", user.id).limit(1),
+      adminClient.from("student_coordinator_assignments").select("id").eq("user_id", user.id).limit(1),
+      adminClient.from("events").select("id, description"),
+      adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+    ]);
+
+    const roles = (roleAssignments || []).map((r) => r.role_id);
+
+    // 2. Check if listed in any event's [COORDINATOR_EMAILS:] tag
+    let isEventEmailStaff = false;
+    if (userEmail && eventsData) {
+      for (const evt of eventsData) {
+        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+          if (match) {
+            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+            if (emails.includes(userEmail)) {
+              isEventEmailStaff = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const isAdmin =
+      roles.includes("admin") ||
+      Boolean(
+        userEmail &&
+          (userEmail.includes("admin") ||
+            userEmail.includes("smith") ||
+            userEmail === process.env.ADMIN_EMAIL)
+      );
+
+    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0) || isEventEmailStaff;
+    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
+    const isStaff = roles.includes("staff_coordinator") || roles.includes("faculty") || hasStaffAssignment;
+    const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment || isAdmin;
+
+    if (isCoordinator) {
+      // Auto-provision or update profile as completed in DB
+      const fullName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        existingProfile?.full_name ||
+        userEmail.split("@")[0];
+
+      const isInternal = userEmail.endsWith("@klu.ac.in");
+
+      const profilePayload = {
+        id: user.id,
+        email: userEmail,
+        full_name: fullName,
+        avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        participant_type: isInternal ? "internal" : "external",
+        college_name: isInternal
+          ? "Kalasalingam Academy of Research and Education"
+          : existingProfile?.college_name || "Partner University",
+        is_profile_completed: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (!existingProfile) {
+        await adminClient.from("profiles").insert(profilePayload);
+      } else if (!existingProfile.is_profile_completed) {
+        await adminClient.from("profiles").update({ is_profile_completed: true }).eq("id", user.id);
+      }
+
+      // Ensure staff role assignment exists in DB
+      if (isAdmin && !roles.includes("admin")) {
+        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "admin" });
+      }
+      if (isStaff && !roles.includes("staff_coordinator")) {
+        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "staff_coordinator" });
+      }
+      if (hasStudentAssignment && !roles.includes("student_coordinator")) {
+        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "student_coordinator" });
+      }
+    }
+
+    return { isStaff, isAdmin, isCoordinator };
+  } catch (err) {
+    console.error("ensureStaffAccountAndRole error:", err);
+    return { isStaff: false, isAdmin: false, isCoordinator: false };
+  }
+}

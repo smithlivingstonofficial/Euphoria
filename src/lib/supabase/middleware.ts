@@ -44,6 +44,16 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
+  // Allow public access to dedicated login pages
+  if (path === "/coordinator/login" || path === "/admin/login") {
+    if (user) {
+      const url = request.nextUrl.clone();
+      url.pathname = path.startsWith("/admin") ? "/admin" : "/coordinator";
+      return NextResponse.redirect(url);
+    }
+    return response;
+  }
+
   // Protected authenticated routes
   const isProtectedPath =
     path.startsWith("/dashboard") ||
@@ -54,8 +64,14 @@ export async function updateSession(request: NextRequest) {
 
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("redirect", path);
+    if (path.startsWith("/coordinator")) {
+      url.pathname = "/coordinator/login";
+    } else if (path.startsWith("/admin")) {
+      url.pathname = "/admin/login";
+    } else {
+      url.pathname = "/login";
+      url.searchParams.set("redirect", path);
+    }
     return NextResponse.redirect(url);
   }
 

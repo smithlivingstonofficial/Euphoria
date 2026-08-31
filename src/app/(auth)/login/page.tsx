@@ -63,8 +63,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Register Link */}
-          <div className="pt-2 border-t border-slate-100 text-center">
+          {/* Register & Staff Links */}
+          <div className="pt-2 border-t border-slate-100 text-center space-y-1.5">
             <p className="text-xs text-slate-500">
               Don&apos;t have a pass?{" "}
               <Link
@@ -74,6 +74,22 @@ export default function LoginPage() {
                 Register Pass
               </Link>
             </p>
+
+            <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-100/80 flex items-center justify-center gap-2">
+              <Link
+                href="/coordinator/login"
+                className="font-semibold text-slate-600 hover:text-primary transition-colors"
+              >
+                🎓 Coordinator Portal
+              </Link>
+              <span>•</span>
+              <Link
+                href="/admin/login"
+                className="font-semibold text-slate-600 hover:text-indigo-900 transition-colors"
+              >
+                ⚙️ Admin OS Portal
+              </Link>
+            </div>
           </div>
         </div>
 
