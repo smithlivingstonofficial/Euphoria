@@ -53,8 +53,13 @@ const NAV_SECTIONS = [
         icon: Megaphone,
       },
       {
+        href: "/admin/payments",
+        label: "Payment Transactions",
+        icon: CreditCard,
+      },
+      {
         href: "/admin/pricing",
-        label: "Finance & Pricing",
+        label: "Pass Tier Pricing",
         icon: DollarSign,
       },
     ],

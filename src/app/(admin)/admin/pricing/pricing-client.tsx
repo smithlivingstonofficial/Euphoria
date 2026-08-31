@@ -157,7 +157,6 @@ export function AdminPricingClient({
             onClick={() => applyPreset("flagship_400_250")}
             className="rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:text-primary hover:border-indigo-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
           >
-            👑 Flagship Tier (₹400 Pro / ₹250 Normal)
             👑 Flagship Tier (₹400 Flagship / ₹250 Regular)
           </button>
         </div>
