@@ -211,11 +211,11 @@ export function CartDrawer({
   if (!isCartOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] overflow-hidden flex flex-col justify-end sm:justify-stretch">
+    <div className="fixed inset-0 z-[99990] overflow-hidden flex flex-col justify-end sm:justify-stretch">
       {/* Backdrop */}
       <div
         onClick={closeCart}
-        className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
       />
 
       {/* Sheet Container: Bottom Sheet on Mobile (<640px), Slide-Over Drawer on Desktop (>=640px) */}

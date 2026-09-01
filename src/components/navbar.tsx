@@ -399,26 +399,27 @@ export function Navbar({ user: propUser }: NavbarProps) {
       </header>
 
       {/* ════════════════════════════════════════════
-          MOBILE SLIDE-OVER DRAWER
+          MOBILE SLIDE-OVER DRAWER (TOP-MOST Z-INDEX & FULLY CLICKABLE)
       ════════════════════════════════════════════ */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[10000] md:hidden">
+        <div className="fixed inset-0 z-[99999] md:hidden">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm animate-in fade-in duration-200"
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200 cursor-pointer"
             onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
           />
 
           {/* Drawer */}
-          <div className="fixed inset-y-0 right-0 w-[82vw] max-w-[320px] flex flex-col bg-white shadow-2xl animate-in slide-in-from-right duration-200 z-[10001]">
+          <div className="absolute inset-y-0 right-0 w-[85vw] max-w-[340px] flex flex-col bg-white shadow-2xl animate-in slide-in-from-right duration-200 z-10 pointer-events-auto">
 
             {/* Gradient top stripe */}
-            <div className="h-[3px] w-full bg-gradient-to-r from-indigo-600 via-primary to-cyan-500" />
+            <div className="h-[3px] w-full bg-gradient-to-r from-indigo-600 via-primary to-cyan-500 shrink-0" />
 
             {/* Drawer header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 overflow-hidden">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 overflow-hidden relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/70 to-cyan-500/40" />
                   <Sparkles className="h-4 w-4 text-white relative" />
                 </div>
@@ -430,7 +431,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
                 aria-label="Close menu"
               >
                 <X className="h-4 w-4" />
@@ -483,10 +484,10 @@ export function Navbar({ user: propUser }: NavbarProps) {
                       href={link.href}
                       onClick={() => setMobileMenuOpen(false)}
                       className={cn(
-                        "flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-all border",
+                        "flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-all border cursor-pointer select-none",
                         isActive
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
+                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                          : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50 active:scale-[0.99]"
                       )}
                     >
                       <div className="flex items-center gap-2.5">
@@ -513,7 +514,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
                   <p className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-widest px-1 mb-2">Actions</p>
 
                   <Link href="/dashboard/passes" onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center justify-between rounded-xl bg-gradient-to-r from-indigo-600 to-primary px-3 py-2.5 text-sm font-bold text-white shadow-xs">
+                    className="flex items-center justify-between rounded-xl bg-gradient-to-r from-indigo-600 to-primary px-3 py-2.5 text-sm font-bold text-white shadow-xs cursor-pointer active:scale-[0.99] transition-all">
                     <div className="flex items-center gap-2.5">
                       <QrCode className="h-4 w-4 text-cyan-200" />
                       <span>Digital Pass &amp; QR</span>
@@ -522,7 +523,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
                   </Link>
 
                   <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700">
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-all">
                     <div className="flex items-center gap-2.5">
                       <LayoutDashboard className="h-4 w-4 text-slate-400" />
                       <span>Dashboard</span>
@@ -532,7 +533,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
 
                   {isAdmin && (
                     <Link href="/admin" onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center justify-between rounded-xl bg-rose-50 border border-rose-200 px-3 py-2.5 text-sm font-bold text-rose-700">
+                      className="flex items-center justify-between rounded-xl bg-rose-50 border border-rose-200 px-3 py-2.5 text-sm font-bold text-rose-700 cursor-pointer hover:bg-rose-100/70 active:scale-[0.99] transition-all">
                       <div className="flex items-center gap-2.5">
                         <Sparkles className="h-4 w-4 text-rose-500" />
                         <span>Admin Console</span>
@@ -543,7 +544,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
 
                   {isCoordinator && (
                     <Link href="/coordinator" onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center justify-between rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2.5 text-sm font-bold text-indigo-700">
+                      className="flex items-center justify-between rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2.5 text-sm font-bold text-indigo-700 cursor-pointer hover:bg-indigo-100/70 active:scale-[0.99] transition-all">
                       <div className="flex items-center gap-2.5">
                         <ShieldCheck className="h-4 w-4 text-indigo-500" />
                         <span>Coordinator Hub</span>
@@ -556,12 +557,12 @@ export function Navbar({ user: propUser }: NavbarProps) {
             </div>
 
             {/* Drawer footer */}
-            <div className="border-t border-slate-100 px-4 py-3 space-y-2">
+            <div className="border-t border-slate-100 px-4 py-3 space-y-2 shrink-0 bg-white">
               {/* Cart */}
               <button
                 type="button"
                 onClick={() => { setMobileMenuOpen(false); openCart(); }}
-                className="w-full flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs"
+                className="w-full flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-[0.99] transition-all shadow-2xs cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-4 w-4 text-primary" />
@@ -576,7 +577,7 @@ export function Navbar({ user: propUser }: NavbarProps) {
               {user && (
                 <LogoutButton
                   variant="outline"
-                  className="w-full justify-center py-2 text-xs rounded-xl"
+                  className="w-full justify-center py-2 text-xs rounded-xl cursor-pointer"
                   onLogoutSuccess={() => setMobileMenuOpen(false)}
                 />
               )}
