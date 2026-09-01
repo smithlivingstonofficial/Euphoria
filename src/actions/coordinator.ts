@@ -14,6 +14,7 @@ export interface CoordinatorEventItem {
   end_time: string;
   participant_limit: number;
   status: string;
+  is_pro_event?: boolean;
   category?: {
     name: string;
   } | null;
@@ -58,17 +59,6 @@ export interface CoordinatorAttendeeItem {
 export async function getCoordinatorRoleForEvent(userId: string, eventId?: string): Promise<"staff" | "student" | "admin" | "unauthorized"> {
   const adminClient = await createAdminClient();
 
-  // 1. Check Admin role
-  const { data: adminRole } = await adminClient
-    .from("user_role_assignments")
-    .select("role_id")
-    .eq("user_id", userId)
-    .eq("role_id", "admin")
-    .maybeSingle();
-
-  if (adminRole) return "admin";
-
-  // Check email domain / fallback admin
   const { data: userProfile } = await adminClient
     .from("profiles")
     .select("email")
@@ -77,86 +67,73 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
 
   const userEmail = (userProfile?.email || "").toLowerCase().trim();
 
-  if (
-    userEmail &&
-    (userEmail.includes("admin") ||
-      userEmail.includes("smith") ||
-      userEmail === process.env.ADMIN_EMAIL)
-  ) {
-    return "admin";
-  }
+  // If specific eventId is provided, check event-specific DB assignments FIRST
+  if (eventId) {
+    // 1. Check Staff Event Assignment table
+    const { data: staffAssign } = await adminClient
+      .from("staff_event_assignments")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("event_id", eventId)
+      .maybeSingle();
 
-  // Check if user's email is listed in any event's [COORDINATOR_EMAILS:] tag
-  if (userEmail) {
-    const { data: eventsData } = await adminClient.from("events").select("id, description");
-    if (eventsData) {
-      for (const evt of eventsData) {
-        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-          if (match) {
-            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-            if (emails.includes(userEmail)) {
-              if (!eventId || eventId === evt.id) {
-                return "staff";
-              }
-            }
-          }
+    if (staffAssign) return "staff";
+
+    // 2. Check Student Coordinator Assignment table
+    const { data: studentAssign } = await adminClient
+      .from("student_coordinator_assignments")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (studentAssign) return "student";
+
+    // 3. Check event description tag for coordinator emails
+    if (userEmail) {
+      const { data: evt } = await adminClient
+        .from("events")
+        .select("description")
+        .eq("id", eventId)
+        .maybeSingle();
+
+      if (evt?.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+        const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+        if (match) {
+          const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+          if (emails.includes(userEmail)) return "staff";
         }
       }
     }
   }
 
-  // If no eventId specified, check global role assignments
-  if (!eventId) {
-    const { data: roles } = await adminClient
-      .from("user_role_assignments")
-      .select("role_id")
-      .eq("user_id", userId);
+  // 4. Check global Admin role or admin email
+  const { data: adminRole } = await adminClient
+    .from("user_role_assignments")
+    .select("role_id")
+    .eq("user_id", userId)
+    .eq("role_id", "admin")
+    .maybeSingle();
 
-    const roleList = (roles || []).map((r) => r.role_id);
-    if (roleList.includes("staff_coordinator") || roleList.includes("faculty")) return "staff";
-    if (roleList.includes("student_coordinator") || roleList.includes("coordinator")) return "student";
-    return "unauthorized";
+  if (
+    adminRole ||
+    (userEmail &&
+      (userEmail.includes("admin") ||
+        userEmail.includes("smith") ||
+        userEmail === process.env.ADMIN_EMAIL))
+  ) {
+    return "admin";
   }
 
-  // 2. Check Staff Event Assignment
-  const { data: staffAssign } = await adminClient
-    .from("staff_event_assignments")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("event_id", eventId)
-    .maybeSingle();
-
-  if (staffAssign) return "staff";
-
-  // Check generic staff role assignment
-  const { data: genericStaff } = await adminClient
+  // 5. Check global role assignments in user_role_assignments
+  const { data: roles } = await adminClient
     .from("user_role_assignments")
     .select("role_id")
-    .eq("user_id", userId)
-    .in("role_id", ["staff_coordinator", "faculty"])
-    .maybeSingle();
+    .eq("user_id", userId);
 
-  if (genericStaff) return "staff";
-
-  // 3. Check Student Coordinator Assignment
-  const { data: studentAssign } = await adminClient
-    .from("student_coordinator_assignments")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("event_id", eventId)
-    .maybeSingle();
-
-  if (studentAssign) return "student";
-
-  const { data: genericStudent } = await adminClient
-    .from("user_role_assignments")
-    .select("role_id")
-    .eq("user_id", userId)
-    .in("role_id", ["student_coordinator", "coordinator"])
-    .maybeSingle();
-
-  if (genericStudent) return "student";
+  const roleList = (roles || []).map((r) => r.role_id);
+  if (roleList.includes("staff_coordinator") || roleList.includes("faculty")) return "staff";
+  if (roleList.includes("student_coordinator") || roleList.includes("coordinator")) return "student";
 
   return "unauthorized";
 }
@@ -220,6 +197,7 @@ export async function getCoordinatorWorkspaceData() {
               end_time,
               participant_limit,
               status,
+              is_pro_event,
               category:event_categories (name)
             `).order("event_date", { ascending: true })
           : Promise.resolve({ data: [] }),
@@ -262,6 +240,7 @@ export async function getCoordinatorWorkspaceData() {
           end_time,
           participant_limit,
           status,
+          is_pro_event,
           category:event_categories (name)
         `)
         .in("id", allAssignedIds);
@@ -318,8 +297,17 @@ export async function getCoordinatorWorkspaceData() {
 
     const formattedEvents: CoordinatorEventItem[] = eventsData.map((evt) => {
       let roleType: "staff" | "student" | "admin" = "staff";
-      if (isAdmin) roleType = "admin";
-      else if (studentEventIds.has(evt.id) && !staffEventIds.has(evt.id)) roleType = "student";
+      if (staffEventIds.has(evt.id)) {
+        roleType = "staff";
+      } else if (studentEventIds.has(evt.id)) {
+        roleType = "student";
+      } else if (isAdmin) {
+        roleType = "admin";
+      } else if (isStaff) {
+        roleType = "staff";
+      } else {
+        roleType = "student";
+      }
 
       const isStudent = roleType === "student";
 

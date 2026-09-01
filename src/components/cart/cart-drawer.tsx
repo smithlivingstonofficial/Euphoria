@@ -373,19 +373,12 @@ export function CartDrawer({
                           <span className="rounded-md bg-slate-900 text-white px-1.5 py-0.2 text-[9px] font-bold font-mono">
                             Choice #{index + 1}
                           </span>
-                          {isPro ? (
+                          {isPro && (
                             <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider">
                               <Star className="h-2.5 w-2.5 fill-current" />
                               <span>PRO EVENT</span>
                             </span>
-                          ) : (
-                            <span className="rounded-md bg-slate-100 text-slate-600 px-1.5 py-0.2 text-[9px] font-semibold">
-                              Standard Event
-                            </span>
                           )}
-                          <span className="rounded-md bg-indigo-50 px-1.5 py-0.2 text-[9px] font-bold text-primary">
-                            {evt.category?.name || "Track"}
-                          </span>
                         </div>
                         <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
                           {evt.name}

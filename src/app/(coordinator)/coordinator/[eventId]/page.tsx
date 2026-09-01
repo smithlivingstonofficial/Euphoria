@@ -78,11 +78,12 @@ export default async function CoordinatorEventRosterPage({
               <span>Back to Coordinator Hub</span>
             </Link>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-primary">
-                {event.category?.name || "Track"}
-              </span>
-
-              {roleType === "staff" || roleType === "admin" ? (
+              {roleType === "admin" ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 text-white border border-slate-800 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider">
+                  <ShieldCheck className="h-3 w-3 text-amber-400" />
+                  <span>Super Administrator</span>
+                </span>
+              ) : roleType === "staff" ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-900 text-white border border-indigo-800 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider">
                   <ShieldCheck className="h-3 w-3 text-cyan-300" />
                   <span>Faculty Staff Coordinator</span>

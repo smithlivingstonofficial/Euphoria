@@ -34,6 +34,8 @@ import {
   Phone,
   Mail,
   ExternalLink,
+  FileText,
+  MessageSquare,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -55,6 +57,7 @@ export interface PublicEvent {
   min_team_size?: number;
   max_team_size?: number;
   is_pro_event: boolean;
+  brochure_url?: string;
   status: string;
   category_id?: string;
   category?: {
@@ -75,7 +78,7 @@ export function parseEventMetadata(event: PublicEvent) {
   const namesMatch = description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
   const mobilesMatch = description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
   const emailsMatch = description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-  const brochureMatch = description.match(/\[BROCHURE_URL:\s*([^\]]+)\]/);
+  const brochureMatch = description.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
 
   let cleanDescription = description.replace(/\[[A-Z_]+:\s*[^\]]+\]/g, "").trim();
 
@@ -119,7 +122,7 @@ export function parseEventMetadata(event: PublicEvent) {
     names: namesMatch ? namesMatch[1].trim() : null,
     mobiles: mobilesMatch ? mobilesMatch[1].trim() : null,
     emails: emailsMatch ? emailsMatch[1].trim() : null,
-    brochureUrl: brochureMatch ? brochureMatch[1].trim() : null,
+    brochureUrl: event.brochure_url || (brochureMatch ? brochureMatch[2].trim() : null),
     cleanDescription,
     namesList,
     mobilesList,
@@ -746,13 +749,12 @@ export function EventCatalogExplorer({
                             <Star className="h-3 w-3 fill-current" />
                             <span>FLAGSHIP EVENT</span>
                           </span>
-                        ) : null}
-
-                        <span
-                          className={`rounded-lg px-2.5 py-1 text-[10px] border ${theme.badge} truncate max-w-[150px]`}
-                        >
-                          {evt.category?.name || "Technical"}
-                        </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100/90 text-slate-600 border border-slate-200/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                            <Zap className="h-3 w-3 text-indigo-500" />
+                            <span>REGULAR EVENT</span>
+                          </span>
+                        )}
                       </div>
 
                       <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
@@ -926,9 +928,6 @@ export function EventCatalogExplorer({
                     <span>REGULAR COMPETITION</span>
                   </span>
                 )}
-                <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-semibold">
-                  {activeModalEvent.category?.name || "Technical Track"}
-                </span>
                 <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-mono font-semibold">
                   Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Sept 25)" : "2 (Sept 26)"}
                 </span>
@@ -1022,70 +1021,74 @@ export function EventCatalogExplorer({
                 const meta = parseEventMetadata(activeModalEvent);
                 return (
                   <div className="space-y-4">
-                    {/* Official WhatsApp Participant Group Banner */}
-                    {meta.whatsappLink ? (
-                      <div className="rounded-2xl border border-emerald-300 bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md text-white font-bold text-xl shrink-0 border border-white/30">
-                            💬
+                    {/* Official Event Brochure PDF Card - Premium Redesign */}
+                    {meta.brochureUrl && (
+                      <div className="relative overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-slate-950 via-indigo-950/95 to-slate-900 p-4 text-white shadow-xl shadow-indigo-950/20 backdrop-blur-xl group hover:border-indigo-400/50 transition-all duration-300">
+                        {/* Decorative Background Accent */}
+                        <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-indigo-500/10 blur-2xl group-hover:bg-indigo-500/20 transition-all pointer-events-none" />
+                        
+                        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3.5">
+                            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white font-bold shrink-0 shadow-lg shadow-indigo-500/25 border border-white/20">
+                              <FileText className="h-5 w-5 text-white" />
+                              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                              </span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-xs sm:text-sm font-extrabold font-display tracking-wide text-white">
+                                  Official Event Brochure PDF
+                                </h4>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 uppercase tracking-widest">
+                                  OFFICIAL PDF
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-indigo-200/90 font-medium leading-relaxed">
+                                Complete problem statement, rules, rubrics, judge guidelines &amp; schedule
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-extrabold font-display tracking-wide">
-                              Official Event WhatsApp Group
-                            </h4>
-                            <p className="text-[11px] text-emerald-100 font-medium">
-                              Get real-time announcements, lab room numbers &amp; coordinator updates
-                            </p>
-                          </div>
+
+                          <a
+                            href={meta.brochureUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0 cursor-pointer self-end sm:self-center border border-white/20"
+                          >
+                            <span>View Brochure PDF</span>
+                            <ExternalLink className="h-3.5 w-3.5 text-white/90" />
+                          </a>
                         </div>
-                        <a
-                          href={meta.whatsappLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-bold text-emerald-900 shadow-sm hover:bg-emerald-50 transition-all shrink-0 cursor-pointer self-end sm:self-center"
-                        >
-                          <span>Join Group</span>
-                          <ArrowRight className="h-3.5 w-3.5 text-emerald-700" />
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 flex items-center gap-3 text-xs text-slate-600">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 shrink-0 font-bold">
-                          💬
-                        </div>
-                        <p className="text-[11px] leading-snug">
-                          <strong>Official WhatsApp Group:</strong> Access link will be shared with all registered delegates on their active pass.
-                        </p>
                       </div>
                     )}
 
-                    {/* Official Event Brochure PDF Card */}
-                    {meta.brochureUrl && (
-                      <div className="rounded-2xl border border-indigo-200/90 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    {/* Official WhatsApp Participant Group Notice - Premium Redesign */}
+                    <div className="relative overflow-hidden rounded-2xl border border-emerald-200/90 bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-emerald-50/90 p-4 text-emerald-950 shadow-sm shadow-emerald-500/5 backdrop-blur-md">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-indigo-300 font-bold text-xl shrink-0 border border-white/20">
-                            📄
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/20 shrink-0 font-bold">
+                            <MessageSquare className="h-5 w-5" />
                           </div>
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-extrabold font-display tracking-wide text-white">
-                              Official Event Brochure PDF
-                            </h4>
-                            <p className="text-[11px] text-indigo-200/80 font-medium">
-                              Download full problem statements, rules, rubrics &amp; schedule
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <h5 className="text-xs font-extrabold text-emerald-950 font-display tracking-wide uppercase">
+                                Official WhatsApp Group Link
+                              </h5>
+                            </div>
+                            <p className="text-[11px] text-emerald-800/90 font-medium leading-normal">
+                              Direct WhatsApp invitation link unlocks automatically on your <strong className="text-emerald-950 font-bold">Digital Festival Pass</strong> in your dashboard after registration confirmation.
                             </p>
                           </div>
                         </div>
-                        <a
-                          href={meta.brochureUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-bold text-indigo-950 shadow-sm hover:bg-indigo-50 transition-all shrink-0 cursor-pointer self-end sm:self-center"
-                        >
-                          <span>View Brochure PDF</span>
-                          <ExternalLink className="h-3.5 w-3.5 text-indigo-700" />
-                        </a>
+
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 text-[10px] font-extrabold text-emerald-800 shrink-0 self-end sm:self-center tracking-wide uppercase shadow-2xs">
+                          <Lock className="h-3 w-3 text-emerald-700" />
+                          <span>Unlocks Post-Registration</span>
+                        </span>
                       </div>
-                    )}
+                    </div>
 
                     {/* Detailed Description */}
                     <div className="rounded-2xl bg-slate-50/90 border border-slate-200/80 p-4 space-y-2 text-xs sm:text-sm">

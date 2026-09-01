@@ -32,6 +32,7 @@ async function fetchPublicEventsRaw() {
             registration_fee,
             participant_limit,
             is_pro_event,
+            brochure_url,
             status,
             category_id,
             category:event_categories (

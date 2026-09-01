@@ -27,8 +27,8 @@ if (!url || !serviceKey) {
 }
 
 const SCHOOL_MAP = {
-  "SoC": "SoC (School of Computing / SCSE)",
-  "SCSE": "SoC (School of Computing / SCSE)",
+  "SoC": "SoC (School of Computing)",
+  "SCSE": "SoC (School of Computing)",
   "SEET": "SEET (School of Electrical & Electronics)",
   "SMACE": "SMACE (Mechanical, Aero & Civil Engineering)",
   "KBS": "KBS (Kalasalingam Business School)",
@@ -143,17 +143,27 @@ function parseCSV(text) {
 }
 
 async function runIngestion() {
-  console.log("Fetching Google Sheet CSV...");
-  const csvUrl = "https://docs.google.com/spreadsheets/d/1-cwST2mPp6Khh4A45jLySg5kKqUbkXeMt2vlqylLR6Y/export?format=csv";
-  const resp = await fetch(csvUrl);
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch CSV: ${resp.statusText}`);
+  const localCsvPath = path.resolve(process.cwd(), "data/euphoria_2026_events_master.csv");
+  let csvText = "";
+
+  if (fs.existsSync(localCsvPath)) {
+    console.log("Reading local master CSV file data/euphoria_2026_events_master.csv...");
+    csvText = fs.readFileSync(localCsvPath, "utf8");
+  } else {
+    console.log("Fetching Google Sheet CSV...");
+    const csvUrl = "https://docs.google.com/spreadsheets/d/1-cwST2mPp6Khh4A45jLySg5kKqUbkXeMt2vlqylLR6Y/export?format=csv";
+    const resp = await fetch(csvUrl);
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch CSV: ${resp.statusText}`);
+    }
+    csvText = await resp.text();
   }
 
-  const csvText = await resp.text();
   const rows = parseCSV(csvText);
-
   console.log(`Parsed ${rows.length} total rows from CSV.`);
+
+  const header = rows[0] || [];
+  const brochureColIndex = header.findIndex((h) => h.toLowerCase().includes("brochure"));
 
   const catRes = await fetch(`${url}/rest/v1/event_categories?select=id,name,slug`, {
     headers: {
@@ -182,6 +192,7 @@ async function runIngestion() {
     const coordMobiles = row[8] || "";
     const coordEmails = row[9] || "";
     const whatsappLink = row[10] || "";
+    const brochureLink = brochureColIndex !== -1 ? row[brochureColIndex] || "" : "";
 
     if (!eventName || eventName.trim() === "") continue;
 
@@ -201,6 +212,9 @@ async function runIngestion() {
 
     if (whatsappLink && whatsappLink.trim().startsWith("http")) {
       descriptionText += `\n[WHATSAPP_LINK: ${whatsappLink.trim()}]`;
+    }
+    if (brochureLink && brochureLink.trim().startsWith("http")) {
+      descriptionText += `\n[BROCHURE_URL: ${brochureLink.trim()}]`;
     }
     if (coordNames && coordNames.trim()) {
       descriptionText += `\n[COORDINATOR_NAMES: ${coordNames.trim()}]`;
@@ -239,6 +253,7 @@ async function runIngestion() {
       allow_internal: true,
       allow_external: true,
       category_id: matchedCat?.id || null,
+      brochure_url: brochureLink.trim() || null,
     };
 
     if (Array.isArray(existing) && existing.length > 0) {

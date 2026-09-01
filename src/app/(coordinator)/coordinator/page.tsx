@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   AlertCircle,
   Building,
+  Zap,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 
@@ -192,11 +193,23 @@ export default async function CoordinatorDashboardPage() {
                     <div className="space-y-3">
                       {/* Top Badges */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-primary">
-                          {evt.category?.name || "Track"}
-                        </span>
+                        {evt.is_pro_event ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                            <Sparkles className="h-3 w-3 fill-current" />
+                            <span>Flagship</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100/90 text-slate-600 border border-slate-200/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                            <Zap className="h-3 w-3 text-indigo-500" />
+                            <span>Regular</span>
+                          </span>
+                        )}
                         <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
-                          {evt.roleType === "staff" ? "Staff Coordinator" : "Student Coordinator"}
+                          {evt.roleType === "staff"
+                            ? "Staff Coordinator"
+                            : evt.roleType === "admin"
+                            ? "Super Administrator"
+                            : "Student Coordinator"}
                         </span>
                       </div>
 
