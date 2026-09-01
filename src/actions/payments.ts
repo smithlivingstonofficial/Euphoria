@@ -35,7 +35,8 @@ export interface CreateRazorpayOrderResult {
 
 // 1. Create Razorpay Order Server Action
 export async function createRazorpayOrderAction(
-  eventIds: string[]
+  eventIds: string[],
+  needsAccommodation?: boolean
 ): Promise<CreateRazorpayOrderResult> {
   try {
     if (!eventIds || eventIds.length === 0) {
@@ -131,6 +132,7 @@ export async function createRazorpayOrderAction(
           user_name: profile.full_name,
           event_ids: eventIds.join(","),
           pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
+          needs_accommodation: Boolean(needsAccommodation) ? "true" : "false",
         },
       }),
     });
@@ -161,6 +163,8 @@ export async function createRazorpayOrderAction(
         metadata: {
           event_ids: eventIds,
           pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
+          needs_accommodation: Boolean(needsAccommodation),
+          accommodation_status: needsAccommodation ? "requested" : "none",
           razorpay_order_id: rzpData.id,
           created_at: new Date().toISOString(),
         },
@@ -191,6 +195,7 @@ export interface VerifyRazorpayPaymentPayload {
   razorpay_payment_id: string;
   razorpay_signature: string;
   eventIds: string[];
+  needsAccommodation?: boolean;
 }
 
 // 2. Verify Razorpay Payment & Confirm Pass Atomic Action
@@ -255,6 +260,9 @@ export async function verifyRazorpayPaymentAction(
           razorpay_payment_id: razorpay_payment_id || `pay_${Date.now()}`,
           razorpay_order_id: razorpay_order_id || `order_${Date.now()}`,
           participant_type: profile.participant_type,
+          needs_accommodation: Boolean(payload.needsAccommodation),
+          accommodation_status: payload.needsAccommodation ? "requested" : "none",
+          accommodation_payment: "in_person_on_campus",
           source: "razorpay_web_checkout",
           timestamp: new Date().toISOString(),
         },
@@ -266,6 +274,29 @@ export async function verifyRazorpayPaymentAction(
         success: false,
         error: checkoutData?.message || checkoutError?.message || "Pass registration failed",
       };
+    }
+
+    // Persist accommodation requirement directly on profiles and order
+    try {
+      const adminClient = await createAdminClient();
+      if (checkoutData.order_id) {
+        await adminClient.from("orders").update({
+          metadata: {
+            razorpay_payment_id: razorpay_payment_id || `pay_${Date.now()}`,
+            razorpay_order_id: razorpay_order_id || `order_${Date.now()}`,
+            participant_type: profile.participant_type,
+            needs_accommodation: Boolean(payload.needsAccommodation),
+            accommodation_status: payload.needsAccommodation ? "requested" : "none",
+            accommodation_payment: "in_person_on_campus",
+            timestamp: new Date().toISOString(),
+          },
+        }).eq("id", checkoutData.order_id);
+      }
+      await adminClient.from("profiles").update({
+        needs_accommodation: Boolean(payload.needsAccommodation),
+      }).eq("id", user.id);
+    } catch (profErr) {
+      console.warn("Notice: Accommodation profile/order sync:", profErr);
     }
 
     revalidateTag("public-events");

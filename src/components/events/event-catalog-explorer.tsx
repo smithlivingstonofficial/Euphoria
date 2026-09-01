@@ -162,30 +162,102 @@ function getCategoryTheme(catName?: string, isPro?: boolean) {
   };
 }
 
-const SCHOOL_IMAGE_MAP: Record<string, string> = {
-  "SoC": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80",
-  "SCSE": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80",
-  "SEET": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80",
-  "SLASE": "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=600&q=80",
-  "KBS": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80",
-  "SMACE": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80",
-  "SAS": "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=600&q=80",
-  "FE": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=600&q=80",
-  "SBCE": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=600&q=80",
-  "AHS": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=600&q=80",
-  "KSAH": "https://images.unsplash.com/photo-1586771107445-d3ca888129ff?auto=format&fit=crop&w=600&q=80",
-  "KSL": "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=600&q=80",
-  "KSA": "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80",
-  "KAP": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=600&q=80",
-  "PHYSICAL EDUCATION": "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=600&q=80",
+const EXACT_SCHOOL_COVERS: Record<string, string> = {
+  // 1. Architecture
+  "Kalasalingam School of Architecture (KSoA)":
+    "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80",
+  // 2. Law
+  "Kalasalingam School of Law (KSoL)":
+    "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80",
+  // 3. Bio, Chemical & Processing
+  "School of Bio, Chemical and Processing Engineering":
+    "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?auto=format&fit=crop&w=800&q=80",
+  // 4. Mechanical, Aero, Auto & Civil
+  "School of Mechanical, Aero, Auto and Civil Engineering":
+    "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80",
+  // 5. Computing
+  "School of Computing (SoC)":
+    "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+  // 6. Electronics, Electrical & Biomedical
+  "School of Electronics, Electrical and Biomedical Technology (SEET)":
+    "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
+  // 7. Business School
+  "Kalasalingam Business School (KBS)":
+    "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=800&q=80",
+  // 8. Advanced Sciences
+  "School of Advanced Sciences (SAS)":
+    "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=800&q=80",
+  // 9. Liberal Arts & Special Education
+  "School of Liberal Arts and Special Education (SLASE)":
+    "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&w=800&q=80",
+  // 10. Allied & Health Sciences
+  "Kalasalingam School of Allied And Health Sciences":
+    "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80",
+  // 11. Agriculture & Horticulture
+  "Kalasalingam School of Agriculture and Horticulture (KSAH)":
+    "https://images.unsplash.com/photo-1586771107445-d3ca888129ff?auto=format&fit=crop&w=800&q=80",
+  // 12. First Year Engineering & Foundation
+  "First Year Engineering & Foundation (FE)":
+    "https://images.unsplash.com/photo-1581092162384-8987c1d64718?auto=format&fit=crop&w=800&q=80",
+  // 13. Research Programmes
+  "Research Programmes":
+    "https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&w=800&q=80",
 };
 
 function getSchoolCoverImage(schoolName: string): string {
-  const normalized = schoolName.toUpperCase();
-  for (const [key, url] of Object.entries(SCHOOL_IMAGE_MAP)) {
-    if (normalized.includes(key)) return url;
+  if (!schoolName) {
+    return "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80";
   }
-  return "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80";
+
+  // 1. Direct exact match
+  if (EXACT_SCHOOL_COVERS[schoolName]) {
+    return EXACT_SCHOOL_COVERS[schoolName];
+  }
+
+  const upper = schoolName.toUpperCase();
+
+  // 2. Exact token keyword checks
+  if (upper.includes("LAW") || upper.includes("KSOL") || upper.includes("KSL")) {
+    return EXACT_SCHOOL_COVERS["Kalasalingam School of Law (KSoL)"];
+  }
+  if (upper.includes("ARCHITECT") || upper.includes("KSOA") || upper.includes("KSA")) {
+    return EXACT_SCHOOL_COVERS["Kalasalingam School of Architecture (KSoA)"];
+  }
+  if (upper.includes("BIO") || upper.includes("CHEM") || upper.includes("PROCESS") || upper.includes("SBCE")) {
+    return EXACT_SCHOOL_COVERS["School of Bio, Chemical and Processing Engineering"];
+  }
+  if (upper.includes("MECH") || upper.includes("AERO") || upper.includes("AUTO") || upper.includes("CIVIL") || upper.includes("SMACE")) {
+    return EXACT_SCHOOL_COVERS["School of Mechanical, Aero, Auto and Civil Engineering"];
+  }
+  if (upper.includes("COMPUT") || upper.includes("SOC") || upper.includes("SCSE") || upper.includes("CODE")) {
+    return EXACT_SCHOOL_COVERS["School of Computing (SoC)"];
+  }
+  if (upper.includes("ELECTR") || upper.includes("SEET") || upper.includes("BIOMED")) {
+    return EXACT_SCHOOL_COVERS["School of Electronics, Electrical and Biomedical Technology (SEET)"];
+  }
+  if (upper.includes("BUSINESS") || upper.includes("KBS") || upper.includes("COMMERCE") || upper.includes("MANAGEMENT")) {
+    return EXACT_SCHOOL_COVERS["Kalasalingam Business School (KBS)"];
+  }
+  if (upper.includes("ADVANCED") || upper.includes("SCIENCE") || upper.includes("SAS") || upper.includes("MATH")) {
+    return EXACT_SCHOOL_COVERS["School of Advanced Sciences (SAS)"];
+  }
+  if (upper.includes("LIBERAL") || upper.includes("ARTS") || upper.includes("SLASE") || upper.includes("SPECIAL")) {
+    return EXACT_SCHOOL_COVERS["School of Liberal Arts and Special Education (SLASE)"];
+  }
+  if (upper.includes("AGRICULT") || upper.includes("HORTICULT") || upper.includes("KSAH")) {
+    return EXACT_SCHOOL_COVERS["Kalasalingam School of Agriculture and Horticulture (KSAH)"];
+  }
+  if (upper.includes("ALLIED") || upper.includes("HEALTH") || upper.includes("AHS") || upper.includes("NURS") || upper.includes("PHYSIO")) {
+    return EXACT_SCHOOL_COVERS["Kalasalingam School of Allied And Health Sciences"];
+  }
+  if (upper.includes("FIRST YEAR") || upper.includes("FOUNDATION") || upper.includes("FE")) {
+    return EXACT_SCHOOL_COVERS["First Year Engineering & Foundation (FE)"];
+  }
+  if (upper.includes("RESEARCH")) {
+    return EXACT_SCHOOL_COVERS["Research Programmes"];
+  }
+
+  return "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80";
 }
 
 export function EventCatalogExplorer({
@@ -609,7 +681,7 @@ export function EventCatalogExplorer({
             </div>
 
             <span className="rounded-full bg-indigo-50 text-primary border border-indigo-200 px-3 py-1 text-xs font-bold font-mono">
-              14 Departments
+              {schoolsData.length} Schools &amp; Departments
             </span>
           </div>
 

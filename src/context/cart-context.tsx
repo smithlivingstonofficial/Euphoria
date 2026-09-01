@@ -84,6 +84,9 @@ interface CartContextType {
     isProPass: boolean;
     isIncrementalClaim: boolean;
   };
+  needsAccommodation: boolean;
+  setNeedsAccommodation: (val: boolean) => void;
+  toggleNeedsAccommodation: () => void;
 }
 
 const DEFAULT_PRICING: PricingSettings = {
@@ -133,6 +136,33 @@ export function CartProvider({
   const [confirmedEvents, setConfirmedEvents] = useState<ConfirmedEventItem[]>(
     initialConfirmedEvents
   );
+
+  const [needsAccommodation, setNeedsAccommodation] = useState(false);
+  const ACCOMMODATION_STORAGE_KEY = "euphoria_2026_accommodation_pref";
+
+  useEffect(() => {
+    try {
+      const savedAcc = localStorage.getItem(ACCOMMODATION_STORAGE_KEY);
+      if (savedAcc !== null) {
+        setNeedsAccommodation(savedAcc === "true");
+      }
+    } catch (e) {
+      console.error("Failed to load accommodation preference", e);
+    }
+  }, []);
+
+  const handleSetAccommodation = useCallback((val: boolean) => {
+    setNeedsAccommodation(val);
+    try {
+      localStorage.setItem(ACCOMMODATION_STORAGE_KEY, String(val));
+    } catch (e) {
+      console.error("Failed to save accommodation preference", e);
+    }
+  }, []);
+
+  const toggleNeedsAccommodation = useCallback(() => {
+    handleSetAccommodation(!needsAccommodation);
+  }, [needsAccommodation, handleSetAccommodation]);
 
   // Sync external props if they change
   useEffect(() => {
@@ -433,6 +463,9 @@ export function CartProvider({
         confirmedEvents,
         setUserPassState,
         calculatePricing,
+        needsAccommodation,
+        setNeedsAccommodation: handleSetAccommodation,
+        toggleNeedsAccommodation,
       }}
     >
       {children}

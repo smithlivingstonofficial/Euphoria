@@ -67,6 +67,7 @@ interface ProfileData {
   course?: string;
   year_of_study?: number;
   mobile_number?: string;
+  needs_accommodation?: boolean;
 }
 
 interface OrderItem {
@@ -77,6 +78,7 @@ interface OrderItem {
   currency: string;
   provider: string;
   created_at: string;
+  metadata?: Record<string, any>;
 }
 
 export function DigitalPassClient({
@@ -97,6 +99,15 @@ export function DigitalPassClient({
   const hasPro =
     passSummary?.passTier === "pro_pass" ||
     registrations.some((r) => Boolean(r.event?.is_pro_event));
+
+  const isAccommodationRequested = Boolean(
+    profile.needs_accommodation ||
+    orders.some(
+      (o) =>
+        o.status === "paid" &&
+        (o.metadata?.needs_accommodation === true || o.metadata?.needs_accommodation === "true")
+    )
+  );
 
   const slotsUsed = passSummary?.slotsUsed ?? registrations.length;
   const remainingSlots = Math.max(0, 2 - slotsUsed);
@@ -355,6 +366,12 @@ export function DigitalPassClient({
                   <span className="text-slate-500 block font-medium">Payment Provider</span>
                   <span className="font-bold text-slate-900 block">{billProvider}</span>
                 </div>
+                <div>
+                  <span className="text-slate-500 block font-medium">Campus Accommodation</span>
+                  <span className={`font-bold block ${isAccommodationRequested ? "text-emerald-800" : "text-slate-700"}`}>
+                    {isAccommodationRequested ? "Requested (In-Person Settlement)" : "None"}
+                  </span>
+                </div>
               </div>
 
               <div className="flex justify-between items-center bg-indigo-50/80 text-slate-900 p-2.5 rounded-xl border border-indigo-200 pt-2 mt-1">
@@ -532,6 +549,57 @@ export function DigitalPassClient({
         {/* RIGHT COLUMN: COMPETITIONS & RECEIPT (Visible according to mobileTab or Desktop grid) */}
         <div className="lg:col-span-7 space-y-6">
           
+          {/* CAMPUS ACCOMMODATION STATUS CARD */}
+          <div className={`rounded-3xl border p-5 sm:p-6 shadow-xs space-y-3 transition-all ${
+            isAccommodationRequested
+              ? "bg-gradient-to-br from-emerald-50/90 via-teal-50/30 to-white border-emerald-300"
+              : "bg-white border-slate-200"
+          }`}>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                  isAccommodationRequested ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-100 text-slate-500"
+                }`}>
+                  <Building className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                    Campus Accommodation
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Hostel &amp; lodging during Euphoria (Sep 25–26)
+                  </p>
+                </div>
+              </div>
+
+              <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider border ${
+                isAccommodationRequested
+                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+                  : "bg-slate-100 text-slate-600 border-slate-200"
+              }`}>
+                {isAccommodationRequested ? "Requested ✓" : "Not Requested"}
+              </span>
+            </div>
+
+            {isAccommodationRequested ? (
+              <div className="rounded-2xl bg-white/80 border border-emerald-200 p-3.5 space-y-2 text-xs text-emerald-950">
+                <div className="flex items-center gap-2 font-bold text-emerald-900">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Accommodation request linked to pass {masterCode}</span>
+                </div>
+                <p className="text-emerald-900/80 leading-relaxed">
+                  Your hostel spot request is registered in the system. Please report to the <strong>Euphoria Hospitality &amp; Hostel Helpdesk</strong> upon arriving at Kalasalingam University campus to complete your room allocation and in-person payment.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 space-y-1 text-xs text-slate-600">
+                <p className="leading-relaxed">
+                  No campus hostel accommodation was requested with this delegate pass. If you are an outstation participant and require lodging, please visit the on-campus registration helpdesk on event morning subject to room availability.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* 1. REGISTERED COMPETITIONS CARD (Visible on desktop OR mobileTab === 'events') */}
           <div className={`rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs space-y-4 ${mobileTab === "events" ? "block" : "hidden sm:block"}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">

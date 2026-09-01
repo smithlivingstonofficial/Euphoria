@@ -404,7 +404,40 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return { success: true, registrations: data || [] };
+    // Check orders and profiles for accommodation requests
+    const userIds = Array.from(new Set((data || []).map((r: any) => r.user?.id).filter(Boolean)));
+    const accommodationMap = new Map<string, boolean>();
+
+    if (userIds.length > 0) {
+      try {
+        const { data: userOrders } = await adminClient
+          .from("orders")
+          .select("user_id, metadata")
+          .in("user_id", userIds)
+          .eq("status", "paid");
+
+        (userOrders || []).forEach((ord: any) => {
+          if (ord.metadata?.needs_accommodation === true || ord.metadata?.needs_accommodation === "true") {
+            accommodationMap.set(ord.user_id, true);
+          }
+        });
+      } catch (ordErr) {
+        console.warn("Accommodation orders fetch notice:", ordErr);
+      }
+    }
+
+    const enriched = (data || []).map((r: any) => {
+      const needsAcc = Boolean(
+        r.user?.needs_accommodation ||
+        (r.user?.id && accommodationMap.get(r.user.id))
+      );
+      return {
+        ...r,
+        needs_accommodation: needsAcc,
+      };
+    });
+
+    return { success: true, registrations: enriched };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch registrations";
     return { success: false, error: msg, registrations: [] };

@@ -53,9 +53,13 @@ export function CartDrawer({
     hasProEventSelected,
     maxEventsLimit,
     confirmedEvents,
+    needsAccommodation,
+    setNeedsAccommodation,
+    toggleNeedsAccommodation,
   } = useCart();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     masterCode: string;
@@ -112,7 +116,7 @@ export function CartDrawer({
     const eventIds = selectedEvents.map((e) => e.id);
 
     // 1. Create Razorpay Order Server-Side
-    const orderRes = await createRazorpayOrderAction(eventIds);
+    const orderRes = await createRazorpayOrderAction(eventIds, needsAccommodation);
 
     if (!orderRes.success || !orderRes.orderId) {
       if (orderRes.redirect) {
@@ -135,6 +139,7 @@ export function CartDrawer({
         razorpay_payment_id: paymentId,
         razorpay_signature: signature,
         eventIds,
+        needsAccommodation,
       });
 
       if (!verifyRes.success) {
@@ -206,7 +211,7 @@ export function CartDrawer({
   if (!isCartOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex flex-col justify-end sm:justify-center">
+    <div className="fixed inset-0 z-[1000] overflow-hidden flex flex-col justify-end sm:justify-stretch">
       {/* Backdrop */}
       <div
         onClick={closeCart}
@@ -214,21 +219,21 @@ export function CartDrawer({
       />
 
       {/* Sheet Container: Bottom Sheet on Mobile (<640px), Slide-Over Drawer on Desktop (>=640px) */}
-      <div className="relative z-10 w-full sm:fixed sm:inset-y-0 sm:right-0 sm:max-w-md flex flex-col bg-white shadow-2xl rounded-t-3xl sm:rounded-none max-h-[92vh] sm:max-h-full overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-200">
+      <div className="relative z-10 w-full sm:fixed sm:inset-y-0 sm:right-0 sm:w-full sm:max-w-md flex flex-col bg-white shadow-2xl rounded-t-3xl sm:rounded-none h-[92vh] sm:h-screen overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-200">
         {/* Mobile Drag Indicator Handle */}
         <div className="sm:hidden pt-2.5 pb-1 flex items-center justify-center">
           <div className="h-1.5 w-12 rounded-full bg-slate-300" />
         </div>
 
         {/* Drawer Header */}
-        <div className="px-5 py-3.5 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-xs">
-              <ShoppingBag className="h-5 w-5" />
+              <ShoppingBag className="h-4.5 w-4.5" />
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-extrabold text-slate-900 truncate font-display">
-                Pass Checkout ({selectedEvents.length}/{maxEventsLimit} Events)
+                Pass Checkout ({selectedEvents.length}/{maxEventsLimit})
               </h2>
               <p className="text-[11px] font-semibold text-slate-500 truncate">
                 Official Festival Delegate Pass
@@ -238,7 +243,7 @@ export function CartDrawer({
 
           <button
             onClick={closeCart}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition-colors cursor-pointer shrink-0"
+            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer shrink-0"
             title="Close pass drawer"
           >
             <X className="h-5 w-5" />
@@ -317,38 +322,32 @@ export function CartDrawer({
           ) : (
             /* Selected Events List */
             <>
-              {/* Pass Tier Header Banner */}
-              <div className="rounded-2xl border p-3.5 text-xs space-y-1 bg-slate-50 border-slate-200">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[10px]">
-                    Pass Selection
-                  </span>
-                  <span className="font-mono text-[11px] font-bold text-primary">
-                    {selectedEvents.length} / {maxEventsLimit} Events Chosen
-                  </span>
-                </div>
-
+              {/* Compact Header Summary Bar */}
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className="font-bold text-slate-700">
+                  {selectedEvents.length} of {maxEventsLimit} Events Selected
+                </span>
                 {hasProEventSelected ? (
-                  <div className="flex items-center gap-1.5 text-amber-900 font-bold text-xs pt-1">
-                    <Star className="h-4 w-4 text-amber-500 fill-amber-500 shrink-0" />
-                    <span>Flagship Delegate Pass (Includes 1 Flagship Event choice)</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300">
+                    <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                    <span>PRO PASS (₹300)</span>
+                  </span>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-indigo-900 font-bold text-xs pt-1">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <span>Regular Delegate Pass (Includes Regular Events)</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-950 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    <span>STANDARD PASS (₹200)</span>
+                  </span>
                 )}
               </div>
 
               {/* Time Conflict Warnings */}
               {timeConflicts.length > 0 && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-2.5 text-xs text-amber-900 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-950 text-[11px]">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
                     <span>Schedule Timing Notice</span>
                   </div>
-                  <ul className="space-y-1 text-[11px] text-amber-800 list-disc list-inside">
+                  <ul className="space-y-0.5 text-[10px] text-amber-800 list-disc list-inside">
                     {timeConflicts.map((c, idx) => (
                       <li key={idx}>{c}</li>
                     ))}
@@ -356,80 +355,125 @@ export function CartDrawer({
                 </div>
               )}
 
-              {/* Event Cards */}
-              <div className="space-y-3">
+              {/* Event Cards (Compact & Clean) */}
+              <div className="space-y-2.5">
                 {selectedEvents.map((evt, index) => {
                   const isPro = Boolean(evt.is_pro_event);
                   return (
                     <div
                       key={evt.id}
-                      className={`group relative rounded-2xl border p-3.5 shadow-2xs hover:shadow-xs transition-all flex items-start justify-between gap-3 ${isPro
-                          ? "bg-amber-50/40 border-amber-200"
-                          : "bg-white border-slate-200/90"
-                        }`}
+                      className={`group relative rounded-xl border p-3 shadow-2xs hover:shadow-xs transition-all space-y-1.5 ${
+                        isPro
+                          ? "bg-amber-50/30 border-amber-200"
+                          : "bg-white border-slate-200"
+                      }`}
                     >
-                      <div className="space-y-1 flex-1 pr-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="rounded-md bg-slate-900 text-white px-1.5 py-0.2 text-[9px] font-bold font-mono">
-                            Choice #{index + 1}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="rounded bg-slate-900 text-white px-1.5 py-0.2 text-[9px] font-bold font-mono shrink-0">
+                            Slot #{index + 1}
                           </span>
                           {isPro && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider">
+                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase shrink-0">
                               <Star className="h-2.5 w-2.5 fill-current" />
-                              <span>PRO EVENT</span>
+                              <span>PRO</span>
                             </span>
                           )}
+                          <span className="text-[10px] text-slate-400 font-medium truncate">
+                            {evt.school_or_dept}
+                          </span>
                         </div>
-                        <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
+
+                        <button
+                          onClick={() => removeEvent(evt.id)}
+                          className="rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer shrink-0"
+                          title="Remove event from pass"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 leading-snug line-clamp-1">
                           {evt.name}
                         </h4>
-                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 pt-0.5">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-slate-400" />
-                            {evt.event_date ? formatDate(evt.event_date) : ""} •{" "}
-                            {evt.start_time ? formatTime(evt.start_time) : ""}
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 pt-0.5">
+                          <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                          <span>
+                            {evt.event_date ? formatDate(evt.event_date) : ""} • {evt.start_time ? formatTime(evt.start_time) : ""}
                           </span>
                         </div>
                       </div>
-
-                      <button
-                        onClick={() => removeEvent(evt.id)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Remove event from pass"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Pricing Breakdown Card */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4 space-y-3 text-xs">
-                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                  <span className="font-bold text-slate-800">Delegate Pass Tier</span>
-                  <span className="font-extrabold text-primary">
-                    {hasProEventSelected ? "⭐ Pro Delegate Pass" : "📌 Standard Delegate Pass"}
-                  </span>
-                </div>
+              {/* CAMPUS ACCOMMODATION (COMPACT & ATTRACTIVE, NO ₹0) */}
+              <div
+                className={`rounded-xl border p-3 transition-all duration-200 ${
+                  needsAccommodation
+                    ? "bg-indigo-50/70 border-indigo-200 ring-1 ring-indigo-500/20 shadow-2xs"
+                    : "bg-slate-50/70 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                        needsAccommodation
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      <Building className="h-4 w-4" />
+                    </div>
 
-                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-extrabold text-slate-900">
-                  <span>Total Amount Payable</span>
-                  <span className="text-base text-primary font-mono">
-                    {formatCurrency(pricing.totalAmount)}
-                  </span>
-                </div>
-              </div>
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-bold text-slate-900 leading-none">
+                          Campus Accommodation
+                        </h4>
+                        {needsAccommodation ? (
+                          <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded-md">
+                            REQUESTED ✓
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.2 rounded-md">
+                            Optional
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-tight">
+                        Hostel lodging • Pay in-person upon campus arrival
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Security Shield Banner */}
-              <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5 border border-slate-200/80 text-[11px] text-slate-600">
-                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>256-bit Encrypted Checkout • Razorpay Gateway Verification</span>
+                  {/* Clean Switch */}
+                  <button
+                    type="button"
+                    onClick={toggleNeedsAccommodation}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      needsAccommodation ? "bg-indigo-600" : "bg-slate-300"
+                    }`}
+                    role="switch"
+                    aria-checked={needsAccommodation}
+                    title="Toggle accommodation request"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        needsAccommodation ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Error Banner */}
               {errorMessage && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-center gap-2">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
                   <span>{errorMessage}</span>
                 </div>
@@ -440,21 +484,25 @@ export function CartDrawer({
 
         {/* Drawer Footer */}
         {!successResult && selectedEvents.length > 0 && (
-          <div className="p-4 sm:p-5 border-t border-slate-100 bg-white space-y-2.5">
+          <div className="p-3.5 sm:p-4 border-t border-slate-100 bg-white space-y-2">
             <button
-              onClick={handleRazorpayCheckout}
+              onClick={() => {
+                if (!user) {
+                  window.location.href = `/login?redirect=/events`;
+                  return;
+                }
+                setIsConfirmModalOpen(true);
+              }}
               disabled={isSubmitting}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-xs font-bold text-white shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (
                 <span>Securing Payment Order...</span>
               ) : (
                 <>
                   <CreditCard className="h-4 w-4 text-cyan-200" />
-                  <span>
-                    Pay {formatCurrency(pricing.totalAmount)} via Razorpay
-                  </span>
-                  <ArrowRight className="h-4 w-4 ml-1" />
+                  <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
+                  <ArrowRight className="h-4 w-4 ml-0.5" />
                 </>
               )}
             </button>
@@ -464,13 +512,185 @@ export function CartDrawer({
                 onClick={clearCart}
                 className="hover:text-rose-600 transition-colors cursor-pointer"
               >
-                Clear Selection
+                Clear Cart
               </button>
-              <span>Instant Digital Pass issued on payment</span>
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                <span>256-bit Razorpay Checkout</span>
+              </span>
             </div>
           </div>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* PRE-PROCESSING CONFIRMATION POPUP MODAL */}
+      {/* ========================================================================= */}
+      {isConfirmModalOpen && (
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-lg rounded-3xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-primary">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 font-display">
+                    Review &amp; Confirm Registration
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Verify your event selections and accommodation preference
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+                title="Cancel and close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Event Selections Summary */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Selected Events ({selectedEvents.length} of 2)
+              </h4>
+              <div className="space-y-2">
+                {selectedEvents.map((evt, idx) => (
+                  <div
+                    key={evt.id}
+                    className="flex items-start justify-between gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs"
+                  >
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 line-clamp-1">
+                          Slot #{idx + 1}: {evt.name}
+                        </span>
+                        {evt.is_pro_event && (
+                          <span className="inline-flex items-center gap-1 text-[9px] bg-amber-500 text-white font-black px-1.5 py-0.2 rounded-sm">
+                            <Star className="h-2.5 w-2.5 fill-current" />
+                            <span>FLAGSHIP</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {evt.school_or_dept}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {evt.event_date ? formatDate(evt.event_date) : ""} •{" "}
+                        {evt.start_time ? formatTime(evt.start_time) : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pricing Summary */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <div>
+                <span className="font-bold text-slate-800">
+                  {hasProEventSelected ? "⭐ Pro Delegate Pass" : "📌 Standard Delegate Pass"}
+                </span>
+                <p className="text-[10px] text-slate-500">Official Euphoria 2026 Pass</p>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-extrabold text-primary font-mono">
+                  {formatCurrency(pricing.totalAmount)}
+                </span>
+                <p className="text-[10px] text-slate-400">Charged Online Now</p>
+              </div>
+            </div>
+
+            {/* PROMINENT ACCOMMODATION STATUS SECTION */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Accommodation Status
+              </h4>
+              
+              {needsAccommodation ? (
+                <div className="rounded-xl border border-emerald-300 bg-emerald-50/90 p-3.5 space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-emerald-950 font-bold text-xs">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Campus Accommodation: REQUESTED (YES)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleNeedsAccommodation}
+                      className="text-[11px] font-bold text-emerald-800 hover:text-rose-600 underline cursor-pointer shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <p className="text-xs text-emerald-900/90 leading-normal">
+                    Hostel accommodation will be reserved under your delegate pass. Room fees will be collected directly <strong>in-person</strong> upon your arrival at the KARE campus registration desk.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
+                      <Building className="h-4 w-4 text-slate-400 shrink-0" />
+                      <span>Campus Accommodation: NOT REQUESTED (NO)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleNeedsAccommodation}
+                      className="text-[11px] font-bold text-primary hover:underline cursor-pointer shrink-0"
+                    >
+                      + Add Accommodation
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-normal">
+                    No campus accommodation requested. If you require a hostel room during the festival, click &ldquo;Add Accommodation&rdquo; before confirming.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* General Disclaimer */}
+            <div className="flex items-start gap-2 rounded-xl bg-amber-50/80 p-3 border border-amber-200 text-[11px] text-amber-900 leading-snug">
+              <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Please ensure you bring your valid college student ID card on event day to collect your physical badge and complete campus check-in.
+              </span>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="flex-1 py-3 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+              >
+                ← Back to Cart
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmModalOpen(false);
+                  handleRazorpayCheckout();
+                }}
+                disabled={isSubmitting}
+                className="flex-1 py-3 px-4 rounded-xl bg-primary text-white text-xs font-bold shadow-md shadow-primary/20 hover:bg-primary-hover transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+              >
+                <span>Confirm &amp; Pay {formatCurrency(pricing.totalAmount)}</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

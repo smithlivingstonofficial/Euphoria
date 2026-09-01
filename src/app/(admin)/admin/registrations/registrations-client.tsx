@@ -31,6 +31,7 @@ interface RegistrationRow {
   status: string;
   payment_status: string;
   created_at: string;
+  needs_accommodation?: boolean;
   pass?: {
     id?: string;
     pass_code?: string;
@@ -89,6 +90,7 @@ export function MasterRegistrationsClient({
   const [selectedTier, setSelectedTier] = useState<"all" | "pro_pass" | "standard_pass">("all");
   const [selectedSlot, setSelectedSlot] = useState<"all" | "1" | "2">("all");
   const [selectedAttendance, setSelectedAttendance] = useState<"all" | "attended" | "pending">("all");
+  const [selectedAccommodation, setSelectedAccommodation] = useState<"all" | "requested" | "none">("all");
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Filtered registrations
@@ -148,6 +150,10 @@ export function MasterRegistrationsClient({
       if (selectedAttendance === "attended" && !isAttended) return false;
       if (selectedAttendance === "pending" && isAttended) return false;
 
+      // Accommodation filter
+      if (selectedAccommodation === "requested" && !row.needs_accommodation) return false;
+      if (selectedAccommodation === "none" && row.needs_accommodation) return false;
+
       return true;
     });
   }, [
@@ -158,6 +164,7 @@ export function MasterRegistrationsClient({
     selectedTier,
     selectedSlot,
     selectedAttendance,
+    selectedAccommodation,
     allEvents,
   ]);
 
@@ -172,6 +179,10 @@ export function MasterRegistrationsClient({
     return registrations.filter(
       (r) => r.pass?.pass_tier === "pro_pass" || Boolean(r.event?.is_pro_event)
     ).length;
+  }, [registrations]);
+
+  const accommodationCount = useMemo(() => {
+    return registrations.filter((r) => r.needs_accommodation).length;
   }, [registrations]);
 
   const handleManualCheckIn = async (regId: string) => {
@@ -214,6 +225,7 @@ export function MasterRegistrationsClient({
       "Competition",
       "Is Pro Event",
       "Date & Venue",
+      "Accommodation Required",
       "Attendance Status",
       "Scanned At",
       "Registration Date",
@@ -244,6 +256,7 @@ export function MasterRegistrationsClient({
         `"${r.event?.name || ""}"`,
         r.event?.is_pro_event ? "Yes" : "No",
         `"${r.event?.event_date || ""} - ${r.event?.venue || ""}"`,
+        r.needs_accommodation ? "Yes (In-Person Pay)" : "No",
         `"${isAttended ? "Present" : "Pending"}"`,
         `"${scannedAt ? new Date(scannedAt).toLocaleString() : ""}"`,
         `"${new Date(r.created_at).toLocaleString()}"`,
@@ -273,6 +286,7 @@ export function MasterRegistrationsClient({
     setSelectedTier("all");
     setSelectedSlot("all");
     setSelectedAttendance("all");
+    setSelectedAccommodation("all");
   };
 
   const hasFilters =
@@ -281,7 +295,8 @@ export function MasterRegistrationsClient({
     selectedType !== "all" ||
     selectedTier !== "all" ||
     selectedSlot !== "all" ||
-    selectedAttendance !== "all";
+    selectedAttendance !== "all" ||
+    selectedAccommodation !== "all";
 
   return (
     <div className="space-y-5">
@@ -444,6 +459,17 @@ export function MasterRegistrationsClient({
             <option value="attended">✅ Present / Checked In</option>
             <option value="pending">⏳ Pending Check-In</option>
           </select>
+
+          {/* Accommodation Filter */}
+          <select
+            value={selectedAccommodation}
+            onChange={(e) => setSelectedAccommodation(e.target.value as any)}
+            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none appearance-none cursor-pointer col-span-2 sm:col-span-1"
+          >
+            <option value="all">All Accommodation ({accommodationCount})</option>
+            <option value="requested">🏡 Needs Accommodation ({accommodationCount})</option>
+            <option value="none">No Accommodation</option>
+          </select>
         </div>
       </div>
 
@@ -457,6 +483,7 @@ export function MasterRegistrationsClient({
                 <th className="px-4 py-3.5">Participant Details</th>
                 <th className="px-4 py-3.5">Institution / Dept</th>
                 <th className="px-4 py-3.5">Registered Event</th>
+                <th className="px-4 py-3.5">Accommodation</th>
                 <th className="px-4 py-3.5">Payment</th>
                 <th className="px-4 py-3.5">Attendance</th>
                 <th className="px-4 py-3.5 text-right">Actions</th>
@@ -555,6 +582,20 @@ export function MasterRegistrationsClient({
                             <span>{row.event?.venue}</span>
                           </div>
                         </div>
+                      </td>
+
+                      {/* Accommodation */}
+                      <td className="px-4 py-3">
+                        {row.needs_accommodation ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-black">
+                            <Building className="h-3 w-3 text-emerald-600" />
+                            <span>Requested ✓</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[10px] font-medium">
+                            None
+                          </span>
+                        )}
                       </td>
 
                       {/* Payment Status */}

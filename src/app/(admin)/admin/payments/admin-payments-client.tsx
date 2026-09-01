@@ -295,6 +295,13 @@ export function AdminPaymentsClient({
                       <td className="py-3.5 px-4 font-sans">
                         <div className="font-bold text-slate-900">{ord.user.fullName}</div>
                         <div className="text-[11px] text-slate-500">{ord.user.email}</div>
+                        {Boolean(ord.metadata?.needs_accommodation) && (
+                          <div className="pt-0.5">
+                            <span className="inline-flex items-center gap-1 rounded bg-purple-50 text-purple-800 border border-purple-200 px-1.5 py-0.2 text-[9px] font-extrabold">
+                              🏡 Accommodation Requested
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Pass Code & Tier */}
