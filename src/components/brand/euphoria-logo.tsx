@@ -6,13 +6,15 @@ import { Sparkles } from "lucide-react";
 
 interface EuphoriaLogoProps {
   className?: string;
+  imgClassName?: string;
   variant?: "full" | "compact" | "icon" | "hero";
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "hero";
   showWordmark?: boolean;
 }
 
 export function EuphoriaLogo({
   className,
+  imgClassName,
   variant = "full",
   size = "md",
   showWordmark = true,
@@ -24,6 +26,9 @@ export function EuphoriaLogo({
     md: "h-9 sm:h-10",
     lg: "h-12 sm:h-14",
     xl: "h-16 sm:h-20",
+    "2xl": "h-20 sm:h-24 lg:h-28",
+    "3xl": "h-24 sm:h-28 lg:h-32",
+    hero: "h-32 sm:h-44 md:h-52 lg:h-60 max-w-full drop-shadow-xs",
   };
 
   if (variant === "icon") {
@@ -81,7 +86,7 @@ export function EuphoriaLogo({
         <img
           src="/logos/Euphoria.png"
           alt="Euphoria 2026 Logo"
-          className={cn("object-contain w-auto", sizeClasses[size])}
+          className={cn("object-contain w-auto", sizeClasses[size], imgClassName)}
           onError={() => setImgError(true)}
         />
       ) : (

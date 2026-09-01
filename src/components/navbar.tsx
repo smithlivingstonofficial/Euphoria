@@ -157,10 +157,10 @@ export function Navbar({ user: propUser }: NavbarProps) {
     <>
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 z-[990] w-full transition-all duration-300",
+          "fixed top-0 left-0 right-0 z-[990] w-full transition-all duration-300 border-b",
           isScrolled
-            ? "bg-white/96 shadow-sm shadow-slate-900/[0.06] backdrop-blur-xl"
-            : "bg-white/85 backdrop-blur-md"
+            ? "bg-white/95 border-slate-200/90 shadow-xs backdrop-blur-xl"
+            : "bg-white/80 border-slate-200/60 backdrop-blur-md"
         )}
       >
         {/* ── Festival gradient top-stripe ── */}

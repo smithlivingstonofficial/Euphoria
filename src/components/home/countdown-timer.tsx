@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { Calendar, MapPin } from "lucide-react";
 
 interface TimeLeft {
   days: number;
@@ -28,15 +29,11 @@ function DigitCard({ value, label }: { value: string; label: string }) {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative flex flex-col items-center justify-center bg-white border border-indigo-200/80 rounded-xl sm:rounded-2xl px-2.5 sm:px-3.5 py-2 sm:py-2.5 min-w-[46px] sm:min-w-[60px] shadow-sm overflow-hidden group hover:border-indigo-400 hover:shadow-indigo-100 transition-all duration-200">
-        {/* Subtle background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/60 via-white to-slate-50/40 pointer-events-none" />
-        {/* Top border accent */}
-        <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent" />
-
+      <div className="relative flex flex-col items-center justify-center bg-white/95 border border-slate-200/90 rounded-xl px-2.5 sm:px-3 py-1.5 min-w-[42px] sm:min-w-[50px] shadow-2xs overflow-hidden group hover:border-indigo-300 transition-all duration-200">
         <span
-          className={`relative font-mono font-black text-base sm:text-xl leading-none tracking-tight bg-gradient-to-br from-indigo-600 via-primary to-cyan-600 bg-clip-text text-transparent transition-all duration-150 ${animating ? "opacity-0 -translate-y-1" : "opacity-100 translate-y-0"
-            }`}
+          className={`relative font-mono font-black text-sm sm:text-base lg:text-lg leading-none tracking-tight text-slate-900 transition-all duration-150 ${
+            animating ? "scale-95 opacity-80" : "scale-100 opacity-100"
+          }`}
         >
           {displayValue}
         </span>
@@ -88,42 +85,57 @@ export function CountdownTimer() {
 
   if (!mounted) {
     return (
-      <div className="inline-flex items-center gap-2 p-2 rounded-2xl bg-white border border-slate-200 animate-pulse w-fit">
-        <div className="h-12 w-56 bg-slate-100 rounded-xl" />
+      <div className="inline-flex items-center gap-2 p-3 rounded-2xl bg-white/80 border border-slate-200 animate-pulse w-fit">
+        <div className="h-14 w-64 bg-slate-100 rounded-xl" />
       </div>
     );
   }
 
   const units = [
     { label: "DAYS", value: String(timeLeft.days).padStart(2, "0") },
-    { label: "HRS", value: String(timeLeft.hours).padStart(2, "0") },
+    { label: "HOURS", value: String(timeLeft.hours).padStart(2, "0") },
     { label: "MINS", value: String(timeLeft.minutes).padStart(2, "0") },
     { label: "SECS", value: String(timeLeft.seconds).padStart(2, "0") },
   ];
 
   return (
-    <div className="inline-flex flex-col sm:flex-row items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-indigo-200/80 shadow-md shadow-indigo-100/50 max-w-full">
-      {/* Live indicator badge */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/90 border border-indigo-200/70 rounded-xl text-[9px] sm:text-[10px] font-mono font-bold text-indigo-700 shrink-0 whitespace-nowrap">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-        </span>
-        <span className="tracking-wider uppercase">EVENT STARTS IN</span>
+    <div className="flex flex-col gap-2.5 p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-md w-full sm:w-auto">
+      {/* Event Day & Campus Detail Strip */}
+      <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2 border-b border-slate-100 pb-2">
+        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50/90 px-2.5 py-1 rounded-xl border border-indigo-100/90 shadow-2xs">
+          <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+          <span>September 25 &amp; 26, 2026</span>
+        </div>
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 bg-slate-100/80 px-2.5 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
+          <MapPin className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+          <span>KARE Campus, Krishnankoil</span>
+        </div>
       </div>
 
-      {/* Digit cards row */}
-      <div className="flex items-end gap-1 sm:gap-1.5">
-        {units.map((unit, idx) => (
-          <div key={unit.label} className="flex items-end gap-1 sm:gap-1.5">
-            <DigitCard value={unit.value} label={unit.label} />
-            {idx < units.length - 1 && (
-              <span className="font-mono font-black text-indigo-300 text-sm sm:text-lg leading-none mb-4 sm:mb-5 animate-pulse">
-                :
-              </span>
-            )}
-          </div>
-        ))}
+      {/* Countdown Timer Row */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-0.5">
+        {/* Live indicator badge */}
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-mono font-bold shrink-0 shadow-2xs">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+          </span>
+          <span className="tracking-wider uppercase text-slate-200">EVENT STARTS IN</span>
+        </div>
+
+        {/* Digit cards row */}
+        <div className="flex items-end gap-1.5">
+          {units.map((unit, idx) => (
+            <div key={unit.label} className="flex items-end gap-1.5">
+              <DigitCard value={unit.value} label={unit.label} />
+              {idx < units.length - 1 && (
+                <span className="font-mono font-bold text-slate-300 text-xs leading-none mb-3">
+                  :
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
