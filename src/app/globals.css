@@ -261,6 +261,80 @@ body {
   animation: orbit-cw 26s ease-in-out infinite reverse;
 }
 
+/* Lively Glow Flow & Breath Animations for Complete Profile Backdrop */
+@keyframes glow-flow-1 {
+  0% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(45px, -35px) scale(1.14) rotate(40deg);
+  }
+  66% {
+    transform: translate(-35px, 30px) scale(0.92) rotate(-25deg);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes glow-flow-2 {
+  0% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(-40px, 50px) scale(1.18) rotate(-45deg);
+  }
+  66% {
+    transform: translate(35px, -25px) scale(0.9) rotate(35deg);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes glow-flow-3 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(30px, 40px) scale(1.22);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+@keyframes glow-breath {
+  0%, 100% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  50% {
+    opacity: 0.65;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+.animate-glow-flow-1 {
+  animation: glow-flow-1 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.animate-glow-flow-2 {
+  animation: glow-flow-2 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.animate-glow-flow-3 {
+  animation: glow-flow-3 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.animate-glow-breath {
+  animation: glow-breath 9s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
 /* Scan line on holographic card */
 .scan-line-active {
   animation: scan-sweep 2.5s ease-in-out infinite;
