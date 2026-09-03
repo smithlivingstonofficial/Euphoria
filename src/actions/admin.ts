@@ -3,9 +3,9 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
+const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
 
-export const ROLE_HIERARCHY: Record<string, number> = {
+const ROLE_HIERARCHY: Record<string, number> = {
   super_admin: 4,
   admin: 3,
   staff_coordinator: 2,
