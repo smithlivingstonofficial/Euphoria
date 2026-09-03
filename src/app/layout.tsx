@@ -104,7 +104,11 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`light ${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`light ${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}
+    >
       <body className="min-h-screen bg-background text-slate-900 font-sans antialiased selection:bg-primary selection:text-white flex flex-col">
         <AppProviders
           initialPricing={pricing}

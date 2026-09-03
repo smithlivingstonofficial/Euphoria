@@ -1681,21 +1681,7 @@ export async function getSuperAdminDashboardData() {
     ] = await Promise.all([
       adminClient
         .from("user_role_assignments")
-        .select(`
-          id,
-          user_id,
-          role_id,
-          created_at,
-          assigned_by,
-          profile:profiles (
-            id,
-            email,
-            full_name,
-            mobile_number,
-            department,
-            participant_type
-          )
-        `)
+        .select("id, user_id, role_id, created_at, assigned_by")
         .in("role_id", ["admin", "super_admin"]),
       adminClient
         .from("profiles")
@@ -1708,17 +1694,28 @@ export async function getSuperAdminDashboardData() {
       adminClient.from("orders").select("amount").eq("status", "paid"),
     ]);
 
-    if (aErr) throw aErr;
-    if (pErr) throw pErr;
+    if (aErr) {
+      console.error("Super Admin adminAssignments error:", aErr);
+      throw aErr;
+    }
+    if (pErr) {
+      console.error("Super Admin profiles error:", pErr);
+      throw pErr;
+    }
 
     const totalRevenue = (paidOrders || []).reduce(
       (sum, o) => sum + Number(o.amount || 0),
       0
     );
 
+    const profileMap = new Map<string, any>();
+    (profiles || []).forEach((p) => {
+      profileMap.set(p.id, p);
+    });
+
     // Format admin list
     const admins = (adminAssignments || []).map((ra: any) => {
-      const p = Array.isArray(ra.profile) ? ra.profile[0] : ra.profile;
+      const p = profileMap.get(ra.user_id);
       return {
         id: ra.id,
         userId: ra.user_id,
@@ -1754,7 +1751,8 @@ export async function getSuperAdminDashboardData() {
       },
     };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to load super admin data";
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Super Admin Dashboard Load Error:", err);
     return { success: false, error: msg };
   }
 }
