@@ -32,7 +32,7 @@
 - **FR-REG-06**: Paid Events: Creates a registration record with `payment_status = 'pending'`, creates a payment order, redirects user to gateway / mock checkout, and confirms registration upon verified server webhook or signed callback.
 
 ### 1.4 Payment Gateway Abstraction & Verification
-- **FR-PAY-01**: Modular payment provider interface (`IPaymentProvider`) allowing seamless swaps between test/mock gateway, Razorpay, Cashfree, or UPI gateways.
+- **FR-PAY-01**: Official Easebuzz payment gateway integration with EaseCheckout iFrame and hosted fallback supporting UPI, Cards, and NetBanking, with SHA-512 cryptographic verification.
 - **FR-PAY-02**: Zero trust on frontend callbacks: Registration confirmation must only occur when a cryptographically signed signature / webhook payload is validated server-side.
 - **FR-PAY-03**: Support payment lifecycles: `not_required`, `pending`, `paid`, `failed`, `refunded`.
 

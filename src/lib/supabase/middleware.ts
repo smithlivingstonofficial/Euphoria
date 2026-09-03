@@ -60,13 +60,14 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/coordinator") ||
     path.startsWith("/staff") ||
     path.startsWith("/admin") ||
+    path.startsWith("/super-admin") ||
     path.startsWith("/complete-profile");
 
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone();
     if (path.startsWith("/coordinator")) {
       url.pathname = "/coordinator/login";
-    } else if (path.startsWith("/admin")) {
+    } else if (path.startsWith("/admin") || path.startsWith("/super-admin")) {
       url.pathname = "/admin/login";
     } else {
       url.pathname = "/login";

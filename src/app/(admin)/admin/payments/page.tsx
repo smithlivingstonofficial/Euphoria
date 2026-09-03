@@ -3,7 +3,7 @@ import AdminPaymentsClient from "./admin-payments-client";
 
 export const metadata = {
   title: "Payment Transactions Audit | Euphoria 2026 Admin",
-  description: "Manage and track all festival pass payments, Razorpay order statuses, and transaction details.",
+  description: "Manage and track all festival pass payments, Easebuzz order statuses, and transaction details.",
 };
 
 export default async function AdminPaymentsPage() {

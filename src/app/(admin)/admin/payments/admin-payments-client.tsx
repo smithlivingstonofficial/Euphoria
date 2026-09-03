@@ -61,16 +61,16 @@ export function AdminPaymentsClient({
       const emailMatch = ord.user.email.toLowerCase().includes(q);
       const orderMatch = ord.orderNumber.toLowerCase().includes(q);
       const passMatch = ord.pass?.passCode?.toLowerCase().includes(q);
-      const razorpayPayId = (ord.metadata?.razorpay_payment_id || "").toLowerCase();
-      const razorpayOrdId = (ord.metadata?.razorpay_order_id || "").toLowerCase();
+      const easebuzzPayId = (ord.metadata?.easebuzz_pay_id || ord.metadata?.gateway_payment_id || ord.metadata?.payment_id || "").toLowerCase();
+      const easebuzzTxnId = (ord.metadata?.easebuzz_txnid || ord.metadata?.gateway_order_id || ord.orderNumber || "").toLowerCase();
 
       return (
         nameMatch ||
         emailMatch ||
         orderMatch ||
         Boolean(passMatch) ||
-        razorpayPayId.includes(q) ||
-        razorpayOrdId.includes(q)
+        easebuzzPayId.includes(q) ||
+        easebuzzTxnId.includes(q)
       );
     });
   }, [orders, searchQuery, statusFilter]);
@@ -112,7 +112,7 @@ export function AdminPaymentsClient({
         <div className="shrink-0 flex items-center">
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200/90 shadow-2xs">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-            <span>Razorpay Active</span>
+            <span>Easebuzz Active</span>
           </span>
         </div>
       </div>
@@ -205,7 +205,7 @@ export function AdminPaymentsClient({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by participant name, email, pass code, or Razorpay Txn ID..."
+            placeholder="Search by participant name, email, pass code, or Easebuzz Txn ID..."
             className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
@@ -265,7 +265,7 @@ export function AdminPaymentsClient({
                 <th className="py-3 px-4 font-bold">Participant</th>
                 <th className="py-3 px-4 font-bold">Pass Code &amp; Tier</th>
                 <th className="py-3 px-4 font-bold">Amount</th>
-                <th className="py-3 px-4 font-bold">Razorpay Txn ID</th>
+                <th className="py-3 px-4 font-bold">Easebuzz Txn ID</th>
                 <th className="py-3 px-4 font-bold">Status</th>
                 <th className="py-3 px-4 font-bold text-right">Date</th>
               </tr>
@@ -279,7 +279,7 @@ export function AdminPaymentsClient({
                 </tr>
               ) : (
                 filteredOrders.map((ord) => {
-                  const payId = ord.metadata?.razorpay_payment_id || "N/A";
+                  const payId = ord.metadata?.easebuzz_pay_id || ord.metadata?.easebuzz_txnid || ord.metadata?.gateway_payment_id || "N/A";
                   const isPaid = ord.status === "paid";
                   const isPending = ord.status === "pending";
                   const isPro = ord.pass?.passTier === "pro_pass";
@@ -332,7 +332,7 @@ export function AdminPaymentsClient({
                         {formatCurrency(ord.amount)}
                       </td>
 
-                      {/* Razorpay Txn ID */}
+                      {/* Easebuzz Txn ID */}
                       <td className="py-3.5 px-4 font-mono">
                         {payId !== "N/A" ? (
                           <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-800 px-2 py-0.5 border border-slate-200/90 font-bold text-[10px]">

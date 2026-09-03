@@ -244,7 +244,7 @@ export default async function AdminDashboardPage() {
                 <h3 className="text-xs font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">
                   Payment Audit
                 </h3>
-                <p className="text-[11px] text-slate-500">Razorpay Txn IDs &amp; revenue</p>
+                <p className="text-[11px] text-slate-500">Easebuzz Txn IDs &amp; revenue</p>
               </div>
             </div>
             <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 group-hover:text-cyan-600 transition-all" />

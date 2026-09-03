@@ -5,6 +5,7 @@ import {
   AdminUserListItem,
   updateUserProfileAdmin,
   updateUserRoleAdmin,
+  CallerAuthInfo,
 } from "@/actions/admin";
 import {
   Search,
@@ -31,13 +32,18 @@ import {
   UserCheck,
   UserX,
   Edit3,
+  Lock,
+  Crown,
+  Shield,
 } from "lucide-react";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 
 export function UsersAdminClient({
   initialUsers,
+  currentUserRole,
 }: {
   initialUsers: AdminUserListItem[];
+  currentUserRole?: CallerAuthInfo | null;
 }) {
   const [users, setUsers] = useState<AdminUserListItem[]>(initialUsers);
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,7 +51,7 @@ export function UsersAdminClient({
   const [slotFilter, setSlotFilter] = useState<"all" | "0" | "1" | "2">("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "internal" | "external">("all");
   const [profileFilter, setProfileFilter] = useState<"all" | "completed" | "incomplete">("all");
-  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "staff_coordinator" | "student_coordinator" | "participant">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "super_admin" | "admin" | "staff_coordinator" | "student_coordinator" | "participant">("all");
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
@@ -481,10 +487,11 @@ export function UsersAdminClient({
             className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
           >
             <option value="all">All Roles</option>
-            <option value="participant">Participant Only</option>
-            <option value="staff_coordinator">Staff Coordinator</option>
-            <option value="student_coordinator">Student Coordinator</option>
-            <option value="admin">Administrator</option>
+            <option value="super_admin">👑 Super Admin</option>
+            <option value="admin">🛡️ Platform Administrator</option>
+            <option value="staff_coordinator">👔 Staff Coordinator</option>
+            <option value="student_coordinator">🎓 Student Coordinator</option>
+            <option value="participant">👤 Participant Only</option>
           </select>
         </div>
       </div>
@@ -641,14 +648,56 @@ export function UsersAdminClient({
 
                           {user.roles.length > 0 && (
                             <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                              {user.roles.map((r) => (
-                                <span
-                                  key={r}
-                                  className="rounded bg-slate-900 text-white font-bold px-1.5 py-0.2 text-[9px] capitalize"
-                                >
-                                  {r.replace("_", " ")}
-                                </span>
-                              ))}
+                              {user.roles.map((r) => {
+                                if (r === "super_admin") {
+                                  return (
+                                    <span
+                                      key={r}
+                                      className="rounded bg-gradient-to-r from-purple-700 via-indigo-700 to-amber-500 text-white font-black px-1.5 py-0.2 text-[9px] uppercase tracking-wider shadow-2xs"
+                                    >
+                                      👑 SUPER ADMIN
+                                    </span>
+                                  );
+                                }
+                                if (r === "admin") {
+                                  return (
+                                    <span
+                                      key={r}
+                                      className="rounded bg-indigo-700 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                    >
+                                      🛡️ ADMIN
+                                    </span>
+                                  );
+                                }
+                                if (r === "staff_coordinator") {
+                                  return (
+                                    <span
+                                      key={r}
+                                      className="rounded bg-amber-600 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                    >
+                                      👔 STAFF
+                                    </span>
+                                  );
+                                }
+                                if (r === "student_coordinator") {
+                                  return (
+                                    <span
+                                      key={r}
+                                      className="rounded bg-teal-700 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                    >
+                                      🎓 COORD
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span
+                                    key={r}
+                                    className="rounded bg-slate-100 text-slate-600 font-bold px-1.5 py-0.2 text-[9px] capitalize"
+                                  >
+                                    {r}
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -864,6 +913,141 @@ export function UsersAdminClient({
                       <span className="font-bold text-slate-900">
                         {selectedUser.course || "General"} {selectedUser.yearOfStudy ? `(Yr ${selectedUser.yearOfStudy})` : ""}
                       </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Hierarchical RBAC Role Management */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-primary" />
+                    <span>RBAC Governance &amp; Role Assignments</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Your Authority: {currentUserRole?.isSuperAdmin ? "👑 Super Admin (L4)" : currentUserRole?.roleLevel === 3 ? "🛡️ Admin (L3)" : "Staff / Coordinator"}
+                  </span>
+                </div>
+
+                {selectedUser.email.toLowerCase().trim() === "smithlivingston2005@gmail.com" || selectedUser.roles.includes("super_admin") ? (
+                  <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-amber-50/30 p-4 space-y-1.5 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-700 text-white">
+                        <Crown className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-purple-900 tracking-tight">
+                          Root Super Administrator (Developer)
+                        </span>
+                        <span className="block text-[10px] text-purple-700 font-medium">
+                          Permanent developer account with full site control &amp; admin delegation authority
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-600 pl-9 pt-0.5">
+                      This root account holds immutable governance over Euphoria 2026. Roles cannot be modified or revoked.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* 1. Platform Admin Role */}
+                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("admin") ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <ShieldCheck className={`h-4 w-4 ${selectedUser.roles.includes("admin") ? "text-indigo-600" : "text-slate-400"}`} />
+                          <span className="text-xs font-bold text-slate-900">Admin</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 3</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-3">
+                        Event control, finances, pass verification, coordinator delegation.
+                      </p>
+                      {currentUserRole?.isSuperAdmin ? (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleToggleRole("admin", selectedUser.roles.includes("admin") ? "revoke" : "assign")}
+                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                            selectedUser.roles.includes("admin")
+                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                              : "bg-indigo-600 text-white hover:bg-indigo-700"
+                          }`}
+                        >
+                          {selectedUser.roles.includes("admin") ? "Revoke Admin" : "Grant Admin"}
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                          <Lock className="h-3 w-3" />
+                          <span>Super Admin Only</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Staff Coordinator Role */}
+                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("staff_coordinator") ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Building className={`h-4 w-4 ${selectedUser.roles.includes("staff_coordinator") ? "text-amber-600" : "text-slate-400"}`} />
+                          <span className="text-xs font-bold text-slate-900">Staff Coord</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-3">
+                        Faculty overseer. Can assign event student coordinators.
+                      </p>
+                      {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleToggleRole("staff_coordinator", selectedUser.roles.includes("staff_coordinator") ? "revoke" : "assign")}
+                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                            selectedUser.roles.includes("staff_coordinator")
+                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                              : "bg-amber-600 text-white hover:bg-amber-700"
+                          }`}
+                        >
+                          {selectedUser.roles.includes("staff_coordinator") ? "Revoke Staff" : "Grant Staff"}
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                          <Lock className="h-3 w-3" />
+                          <span>Admin Required</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Student Coordinator Role */}
+                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("student_coordinator") ? "border-teal-300 bg-teal-50/50" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <GraduationCap className={`h-4 w-4 ${selectedUser.roles.includes("student_coordinator") ? "text-teal-600" : "text-slate-400"}`} />
+                          <span className="text-xs font-bold text-slate-900">Student Coord</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 1</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-3">
+                        Attendance scanner &amp; desk operations on event day.
+                      </p>
+                      {(currentUserRole?.roleLevel ?? 0) >= 2 ? (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleToggleRole("student_coordinator", selectedUser.roles.includes("student_coordinator") ? "revoke" : "assign")}
+                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                            selectedUser.roles.includes("student_coordinator")
+                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                              : "bg-teal-600 text-white hover:bg-teal-700"
+                          }`}
+                        >
+                          {selectedUser.roles.includes("student_coordinator") ? "Revoke Coord" : "Grant Coord"}
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                          <Lock className="h-3 w-3" />
+                          <span>Staff Required</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -113,7 +113,7 @@ export default async function ParticipantDashboardPage() {
       {/* Main Content Area */}
       <main className="flex-1 pt-20 sm:pt-24 pb-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 flex flex-col w-full">
-          
+
           {/* 1. DIGITAL PASS & COMPETITIONS DASHBOARD (First on mobile, second on desktop) */}
           <div className="order-1 sm:order-2">
             <DigitalPassClient
@@ -137,11 +137,10 @@ export default async function ParticipantDashboardPage() {
                     {profile.full_name}
                   </h1>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
-                      profile.participant_type === "internal"
-                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                        : "bg-purple-50 text-purple-800 border-purple-200"
-                    }`}
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${profile.participant_type === "internal"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      : "bg-purple-50 text-purple-800 border-purple-200"
+                      }`}
                   >
                     {profile.participant_type === "internal"
                       ? "KARE Student"

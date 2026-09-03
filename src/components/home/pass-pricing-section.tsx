@@ -158,8 +158,8 @@ export function PassPricingSection() {
 
         {/* Security Trust Footnote */}
         <div className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-500 pt-2">
-          <ShieldCheck className="h-4 w-4 text-emerald-600" />
-          <span>Instant Razorpay Secure Payment • 100% Refundable if event cancelled</span>
+          <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Instant Easebuzz Secure Payment • 100% Refundable if event cancelled</span>
         </div>
       </div>
     </section>

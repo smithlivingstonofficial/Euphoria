@@ -3,35 +3,133 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-// Verify admin role
-async function verifyAdminSession() {
+export const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
+
+export const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 4,
+  admin: 3,
+  staff_coordinator: 2,
+  student_coordinator: 1,
+  participant: 0,
+};
+
+export interface CallerAuthInfo {
+  user: {
+    id: string;
+    email?: string;
+  };
+  roleId: "super_admin" | "admin" | "staff_coordinator" | "student_coordinator" | "participant";
+  roleLevel: number;
+  isSuperAdmin: boolean;
+  isAdmin: boolean;
+  isStaff: boolean;
+  isCoordinator: boolean;
+}
+
+/**
+ * Resolves the authenticated caller's identity and highest hierarchical role
+ */
+export async function getCallerAuthInfo(): Promise<CallerAuthInfo | null> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { authorized: false, user: null };
+  if (!user || !user.email) return null;
+
+  const normalizedEmail = user.email.toLowerCase().trim();
+  const isRootSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
 
   const adminClient = await createAdminClient();
-  const { data: roleAssignment } = await adminClient
+  const { data: assignments } = await adminClient
     .from("user_role_assignments")
     .select("role_id")
-    .eq("user_id", user.id)
-    .eq("role_id", "admin")
-    .maybeSingle();
+    .eq("user_id", user.id);
 
-  // Allow admin access if role assigned OR if authenticated user
-  const isAuthorized =
-    Boolean(roleAssignment) ||
-    Boolean(
-      user.email &&
-        (user.email.toLowerCase().includes("admin") ||
-          user.email.toLowerCase().includes("smith") ||
-          user.email.toLowerCase().endsWith("@klu.ac.in") ||
-          user.email === process.env.ADMIN_EMAIL)
-    );
+  const assignedRoles = new Set((assignments || []).map((a) => a.role_id));
 
-  return { authorized: isAuthorized, user };
+  // Determine highest active role level
+  let highestLevel = 0;
+  let highestRole: CallerAuthInfo["roleId"] = "participant";
+
+  if (isRootSuperAdmin || assignedRoles.has("super_admin")) {
+    highestLevel = 4;
+    highestRole = "super_admin";
+  } else if (assignedRoles.has("admin")) {
+    highestLevel = 3;
+    highestRole = "admin";
+  } else if (assignedRoles.has("staff_coordinator")) {
+    highestLevel = 2;
+    highestRole = "staff_coordinator";
+  } else if (assignedRoles.has("student_coordinator")) {
+    highestLevel = 1;
+    highestRole = "student_coordinator";
+  }
+
+  return {
+    user: { id: user.id, email: user.email },
+    roleId: highestRole,
+    roleLevel: highestLevel,
+    isSuperAdmin: highestLevel >= 4,
+    isAdmin: highestLevel >= 3,
+    isStaff: highestLevel >= 2,
+    isCoordinator: highestLevel >= 1,
+  };
+}
+
+/**
+ * Public Server Action to fetch current user's role profile for UI layout and badges
+ */
+export async function getCurrentUserRoleInfo(): Promise<CallerAuthInfo | null> {
+  return await getCallerAuthInfo();
+}
+
+/**
+ * Verifies admin or super_admin session (Level >= 3)
+ */
+export async function verifyAdminSession() {
+  const authInfo = await getCallerAuthInfo();
+  if (!authInfo || authInfo.roleLevel < 3) {
+    return {
+      authorized: false,
+      user: null,
+      roleLevel: 0,
+      isSuperAdmin: false,
+      roleId: "participant" as const,
+    };
+  }
+
+  return {
+    authorized: true,
+    user: authInfo.user,
+    roleLevel: authInfo.roleLevel,
+    isSuperAdmin: authInfo.isSuperAdmin,
+    roleId: authInfo.roleId,
+  };
+}
+
+/**
+ * Verifies super_admin exclusive session (Level 4: smithlivingston2005@gmail.com)
+ */
+export async function verifySuperAdminSession() {
+  const authInfo = await getCallerAuthInfo();
+  if (!authInfo || authInfo.roleLevel < 4) {
+    return { authorized: false, user: null };
+  }
+
+  return { authorized: true, user: authInfo.user };
+}
+
+/**
+ * Verifies staff coordinator or above session (Level >= 2)
+ */
+export async function verifyStaffSession() {
+  const authInfo = await getCallerAuthInfo();
+  if (!authInfo || authInfo.roleLevel < 2) {
+    return { authorized: false, user: null };
+  }
+
+  return { authorized: true, user: authInfo.user, roleLevel: authInfo.roleLevel };
 }
 
 // 1. Overview Metrics
@@ -671,8 +769,21 @@ export async function assignCoordinatorAdmin(
   userId: string
 ) {
   try {
-    const { authorized, user } = await verifyAdminSession();
-    if (!authorized || !user) return { success: false, error: "Unauthorized" };
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 2) {
+      return { success: false, error: "Unauthorized: Insufficient coordinator privileges" };
+    }
+
+    // Strict Hierarchy Check:
+    // To assign a staff coordinator: caller must be Level >= 3 (Admin or Super Admin)
+    // To assign a student coordinator: caller must be Level >= 2 (Staff Coordinator, Admin, or Super Admin)
+    if (type === "staff" && authInfo.roleLevel < 3) {
+      return { success: false, error: "Hierarchy Violation: Only Administrators or Super Admin can assign Staff Coordinators." };
+    }
+
+    if (type === "student" && authInfo.roleLevel < 2) {
+      return { success: false, error: "Hierarchy Violation: Only Staff Coordinators or higher can assign Student Coordinators." };
+    }
 
     const adminClient = await createAdminClient();
 
@@ -681,27 +792,35 @@ export async function assignCoordinatorAdmin(
       await adminClient.from("staff_event_assignments").insert({
         event_id: eventId,
         user_id: userId,
-        assigned_by: user.id,
+        assigned_by: authInfo.user.id,
       });
 
       // 2. Grant role
-      await adminClient.from("user_role_assignments").upsert({
-        user_id: userId,
-        role_id: "staff_coordinator",
-      });
+      await adminClient.from("user_role_assignments").upsert(
+        {
+          user_id: userId,
+          role_id: "staff_coordinator",
+          assigned_by: authInfo.user.id,
+        },
+        { onConflict: "user_id,role_id" }
+      );
     } else {
       // 1. Assign in student_coordinator_assignments
       await adminClient.from("student_coordinator_assignments").insert({
         event_id: eventId,
         user_id: userId,
-        assigned_by: user.id,
+        assigned_by: authInfo.user.id,
       });
 
       // 2. Grant role
-      await adminClient.from("user_role_assignments").upsert({
-        user_id: userId,
-        role_id: "student_coordinator",
-      });
+      await adminClient.from("user_role_assignments").upsert(
+        {
+          user_id: userId,
+          role_id: "student_coordinator",
+          assigned_by: authInfo.user.id,
+        },
+        { onConflict: "user_id,role_id" }
+      );
     }
 
     revalidatePath("/admin/coordinators", "page");
@@ -718,8 +837,18 @@ export async function revokeCoordinatorAdmin(
   userId: string
 ) {
   try {
-    const { authorized } = await verifyAdminSession();
-    if (!authorized) return { success: false, error: "Unauthorized" };
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 2) {
+      return { success: false, error: "Unauthorized: Insufficient coordinator privileges" };
+    }
+
+    if (type === "staff" && authInfo.roleLevel < 3) {
+      return { success: false, error: "Hierarchy Violation: Only Administrators or Super Admin can revoke Staff Coordinators." };
+    }
+
+    if (type === "student" && authInfo.roleLevel < 2) {
+      return { success: false, error: "Hierarchy Violation: Only Staff Coordinators or higher can revoke Student Coordinators." };
+    }
 
     const adminClient = await createAdminClient();
 
@@ -997,7 +1126,7 @@ export async function getAllOrdersAdmin() {
         orderNumber: ord.order_number,
         amount: Number(ord.amount || 0),
         status: ord.status as "paid" | "pending" | "failed" | "refunded",
-        provider: ord.provider || "razorpay",
+        provider: ord.provider || "easebuzz",
         createdAt: ord.created_at,
         metadata: ord.metadata || {},
         user: {
@@ -1428,17 +1557,75 @@ export async function updateUserProfileAdmin(
   }
 }
 
-// 14. Assign or Revoke Role by Admin
+// 14. Assign or Revoke Role by Admin (Strict RBAC Hierarchy Enforced)
 export async function updateUserRoleAdmin(
   userId: string,
   roleId: "admin" | "staff_coordinator" | "student_coordinator",
   action: "assign" | "revoke"
 ) {
   try {
-    const { authorized } = await verifyAdminSession();
-    if (!authorized) return { success: false, error: "Unauthorized" };
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 2) {
+      return { success: false, error: "Unauthorized: Insufficient role assignment privileges" };
+    }
 
     const adminClient = await createAdminClient();
+
+    // Fetch target user's details & existing roles
+    const [{ data: targetProfile }, { data: targetRoles }] = await Promise.all([
+      adminClient.from("profiles").select("email, full_name").eq("id", userId).maybeSingle(),
+      adminClient.from("user_role_assignments").select("role_id").eq("user_id", userId),
+    ]);
+
+    const isTargetSuperAdmin =
+      targetProfile?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL ||
+      (targetRoles || []).some((r) => r.role_id === "super_admin");
+
+    // Rule 1: Super Admin is completely protected & immutable
+    if (isTargetSuperAdmin) {
+      return {
+        success: false,
+        error: "Security Restriction: Super Admin privileges are immutable and cannot be altered.",
+      };
+    }
+
+    // Rule 2: Hierarchy Delegation Constraints
+    // - Only Super Admin (Level 4) can assign/revoke 'admin' (Level 3)
+    if (roleId === "admin" && authInfo.roleLevel < 4) {
+      return {
+        success: false,
+        error: "Hierarchy Restriction: Only Super Admin (smithlivingston2005@gmail.com) can create or revoke Platform Administrators.",
+      };
+    }
+
+    // - Only Admin or above (Level >= 3) can assign/revoke 'staff_coordinator' (Level 2)
+    if (roleId === "staff_coordinator" && authInfo.roleLevel < 3) {
+      return {
+        success: false,
+        error: "Hierarchy Restriction: Only Administrators or Super Admin can assign or revoke Staff Coordinators.",
+      };
+    }
+
+    // - Only Staff Coordinator or above (Level >= 2) can assign/revoke 'student_coordinator' (Level 1)
+    if (roleId === "student_coordinator" && authInfo.roleLevel < 2) {
+      return {
+        success: false,
+        error: "Hierarchy Restriction: Only Staff Coordinators or above can assign or revoke Student Coordinators.",
+      };
+    }
+
+    // Rule 3: Cannot modify a user whose highest role is equal to or higher than caller's level (unless Super Admin)
+    const targetHighestLevel = Math.max(
+      0,
+      ...(targetRoles || []).map((r) => ROLE_HIERARCHY[r.role_id] || 0)
+    );
+
+    if (!authInfo.isSuperAdmin && targetHighestLevel >= authInfo.roleLevel) {
+      return {
+        success: false,
+        error: "Hierarchy Restriction: Cannot modify roles for an account with equal or higher authority.",
+      };
+    }
 
     if (action === "assign") {
       const { error } = await adminClient
@@ -1447,6 +1634,7 @@ export async function updateUserRoleAdmin(
           {
             user_id: userId,
             role_id: roleId,
+            assigned_by: authInfo.user.id,
           },
           { onConflict: "user_id,role_id" }
         );
@@ -1470,4 +1658,132 @@ export async function updateUserRoleAdmin(
     return { success: false, error: msg };
   }
 }
+
+// 16. Super Admin Telemetry & Dashboard Data
+export async function getSuperAdminDashboardData() {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || !authInfo.isSuperAdmin) {
+      return { success: false, error: "Unauthorized: Super Admin access required." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Fetch all admins, profiles, events, and telemetry
+    const [
+      { data: adminAssignments, error: aErr },
+      { data: profiles, error: pErr },
+      { count: eventsCount },
+      { count: categoriesCount },
+      { count: passesCount },
+      { count: ordersCount },
+      { data: paidOrders },
+    ] = await Promise.all([
+      adminClient
+        .from("user_role_assignments")
+        .select(`
+          id,
+          user_id,
+          role_id,
+          created_at,
+          assigned_by,
+          profile:profiles (
+            id,
+            email,
+            full_name,
+            mobile_number,
+            department,
+            participant_type
+          )
+        `)
+        .in("role_id", ["admin", "super_admin"]),
+      adminClient
+        .from("profiles")
+        .select("id, email, full_name, mobile_number, department, participant_type")
+        .order("full_name", { ascending: true }),
+      adminClient.from("events").select("*", { count: "exact", head: true }),
+      adminClient.from("event_categories").select("*", { count: "exact", head: true }),
+      adminClient.from("delegate_passes").select("*", { count: "exact", head: true }),
+      adminClient.from("orders").select("*", { count: "exact", head: true }),
+      adminClient.from("orders").select("amount").eq("status", "paid"),
+    ]);
+
+    if (aErr) throw aErr;
+    if (pErr) throw pErr;
+
+    const totalRevenue = (paidOrders || []).reduce(
+      (sum, o) => sum + Number(o.amount || 0),
+      0
+    );
+
+    // Format admin list
+    const admins = (adminAssignments || []).map((ra: any) => {
+      const p = Array.isArray(ra.profile) ? ra.profile[0] : ra.profile;
+      return {
+        id: ra.id,
+        userId: ra.user_id,
+        roleId: ra.role_id,
+        isRootSuperAdmin: p?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL,
+        assignedAt: ra.created_at,
+        email: p?.email || "",
+        fullName: p?.full_name || "Admin",
+        mobileNumber: p?.mobile_number || "",
+        department: p?.department || "Operations",
+        participantType: p?.participant_type || "internal",
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        superAdminEmail: SUPER_ADMIN_EMAIL,
+        admins,
+        allProfiles: profiles || [],
+        telemetry: {
+          eventsCount: eventsCount || 0,
+          categoriesCount: categoriesCount || 0,
+          usersCount: profiles?.length || 0,
+          passesCount: passesCount || 0,
+          ordersCount: ordersCount || 0,
+          totalRevenue,
+          paymentProvider: process.env.PAYMENT_PROVIDER || "easebuzz",
+          easebuzzEnv: process.env.EASEBUZZ_ENV || "prod",
+          easebuzzSubMerchantId: process.env.EASEBUZZ_SUB_MERCHANT_ID || "S123588RE82",
+          baseUrl: process.env.NEXT_PUBLIC_SITE_URL || "https://euphoria.kalasalingam.ac.in",
+        },
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load super admin data";
+    return { success: false, error: msg };
+  }
+}
+
+// 17. Super Admin Emergency Data Purge Action
+export async function purgeDatabaseTestDataAdmin(confirmationPhrase: string) {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || !authInfo.isSuperAdmin) {
+      return { success: false, error: "Unauthorized: Super Admin access required." };
+    }
+
+    if (confirmationPhrase !== `PURGE-TEST-DATA-${SUPER_ADMIN_EMAIL}`) {
+      return { success: false, error: "Invalid confirmation phrase." };
+    }
+
+    const adminClient = await createAdminClient();
+    const { data, error } = await adminClient.rpc("fn_purge_test_data_preserve_events");
+
+    if (error) throw error;
+
+    revalidatePath("/", "layout");
+    revalidatePath("/admin", "layout");
+    revalidatePath("/super-admin", "page");
+    return { success: true, data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Database purge failed";
+    return { success: false, error: msg };
+  }
+}
+
 

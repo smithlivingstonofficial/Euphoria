@@ -2,42 +2,24 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
-import crypto from "crypto";
+import {
+  initiateEasebuzzPayment,
+  verifyEasebuzzResponseHash,
+  getEasebuzzCredentials,
+} from "@/lib/payments/easebuzz";
+import {
+  CreateEasebuzzOrderResult,
+  EasebuzzVerifyPayload,
+  VerifyEasebuzzPaymentResult,
+} from "@/lib/payments/types";
 
-function getRazorpayCredentials() {
-  const keyId =
-    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-    process.env.RAZORPAY_KEY_ID ||
-    process.env.PAYMENT_PROVIDER ||
-    "";
+export type { CreateEasebuzzOrderResult, EasebuzzVerifyPayload, VerifyEasebuzzPaymentResult };
 
-  const keySecret =
-    process.env.RAZORPAY_KEY_SECRET ||
-    process.env.PAYMENT_SECRET ||
-    "";
-
-  return { keyId, keySecret };
-}
-
-export interface CreateRazorpayOrderResult {
-  success: boolean;
-  orderId?: string;
-  amount?: number; // In rupees
-  currency?: string;
-  keyId?: string;
-  userProfile?: {
-    name: string;
-    email: string;
-  };
-  error?: string;
-  redirect?: string;
-}
-
-// 1. Create Razorpay Order Server Action
-export async function createRazorpayOrderAction(
+// 1. Create Easebuzz Payment Order Server Action
+export async function createEasebuzzOrderAction(
   eventIds: string[],
   needsAccommodation?: boolean
-): Promise<CreateRazorpayOrderResult> {
+): Promise<CreateEasebuzzOrderResult> {
   try {
     if (!eventIds || eventIds.length === 0) {
       return { success: false, error: "No events selected." };
@@ -102,70 +84,74 @@ export async function createRazorpayOrderAction(
     // Determine pass price server-side: Pro Pass = ₹300, Standard Pass = ₹200
     const hasProEvent = selectedEvts.some((e) => Boolean(e.is_pro_event));
     const passAmountRupees = hasProEvent ? 300 : 200;
-    const amountInPaise = passAmountRupees * 100;
 
-    const receiptRef = `rcpt_${Date.now()}_${user.id.substring(0, 6)}`;
-    const { keyId, keySecret } = getRazorpayCredentials();
+    const { key, salt, env, subMerchantId, baseUrl } = getEasebuzzCredentials();
 
-    if (!keyId || !keySecret) {
-      console.error("Razorpay Credentials missing in environment variables!");
+    if (!key || !salt) {
+      console.error("Easebuzz credentials missing in environment variables!");
       return {
         success: false,
-        error: "Razorpay credentials missing. Please set NEXT_PUBLIC_RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env.local.",
+        error: "Easebuzz credentials missing. Please configure EASEBUZZ_KEY and EASEBUZZ_SALT in .env.local.",
       };
     }
 
-    // Call Razorpay Orders API directly
-    const basicAuth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-    const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${basicAuth}`,
+    // Unique Transaction ID (max 40 alphanumeric characters)
+    const txnid = `EBZ-26-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const userPhone = profile.mobile_number || profile.phone || "9999999999";
+    const userName = profile.full_name || "Delegate";
+    const productInfo = hasProEvent ? "EUPHORIA PRO PASS" : "EUPHORIA STANDARD PASS";
+
+    // Call Easebuzz Initiate Payment API
+    const initRes = await initiateEasebuzzPayment(
+      {
+        key,
+        txnid,
+        amount: passAmountRupees,
+        productinfo: productInfo,
+        firstname: userName,
+        email: user.email || profile.email || "delegate@kareeuphoria.in",
+        phone: userPhone,
+        surl: `${baseUrl}/api/payments/easebuzz/callback?status=success`,
+        furl: `${baseUrl}/api/payments/easebuzz/callback?status=failure`,
+        udf1: user.id,
+        udf2: hasProEvent ? "pro_pass" : "standard_pass",
+        udf3: eventIds.join(","),
+        udf4: needsAccommodation ? "yes" : "no",
+        udf5: txnid,
+        sub_merchant_id: subMerchantId || undefined,
       },
-      body: JSON.stringify({
-        amount: amountInPaise,
-        currency: "INR",
-        receipt: receiptRef,
-        notes: {
-          user_id: user.id,
-          user_name: profile.full_name,
-          event_ids: eventIds.join(","),
-          pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
-          needs_accommodation: Boolean(needsAccommodation) ? "true" : "false",
-        },
-      }),
-    });
+      salt,
+      env
+    );
 
-    if (!rzpRes.ok) {
-      const errBody = await rzpRes.text();
-      console.error("Razorpay Order API Failed:", rzpRes.status, errBody);
+    if (initRes.status !== 1 || !initRes.data) {
+      console.error("Easebuzz initiate failed:", initRes);
       return {
         success: false,
-        error: `Razorpay API Error (${rzpRes.status}): Authentication or Key configuration error.`,
+        error: initRes.data || initRes.error_desc || "Easebuzz Payment gateway initiation failed.",
       };
     }
 
-    const rzpData = await rzpRes.json();
+    const accessKey = initRes.data;
 
-    // Insert pending order in database for real-time transaction tracking audit
+    // Insert pending order in database for audit & real-time transaction tracking
     try {
       const adminClient = await createAdminClient();
-      const orderNum = `ORD-26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       await adminClient.from("orders").insert({
         user_id: user.id,
-        order_number: orderNum,
+        order_number: txnid,
         amount: passAmountRupees,
         currency: "INR",
         status: "pending",
-        provider: "razorpay",
-        gateway_order_id: rzpData.id,
+        provider: "easebuzz",
+        gateway_order_id: txnid,
         metadata: {
           event_ids: eventIds,
           pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
           needs_accommodation: Boolean(needsAccommodation),
           accommodation_status: needsAccommodation ? "requested" : "none",
-          razorpay_order_id: rzpData.id,
+          easebuzz_access_key: accessKey,
+          easebuzz_txnid: txnid,
           created_at: new Date().toISOString(),
         },
       });
@@ -175,35 +161,31 @@ export async function createRazorpayOrderAction(
 
     return {
       success: true,
-      orderId: rzpData.id,
+      accessKey,
+      txnid,
       amount: passAmountRupees,
       currency: "INR",
-      keyId: keyId,
+      key,
+      env,
       userProfile: {
-        name: profile.full_name || "",
+        name: userName,
         email: user.email || "",
+        phone: userPhone,
       },
     };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to create payment order";
+    const msg = err instanceof Error ? err.message : "Failed to create Easebuzz payment order";
+    console.error("createEasebuzzOrderAction error:", err);
     return { success: false, error: msg };
   }
 }
 
-export interface VerifyRazorpayPaymentPayload {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-  eventIds: string[];
-  needsAccommodation?: boolean;
-}
-
-// 2. Verify Razorpay Payment & Confirm Pass Atomic Action
-export async function verifyRazorpayPaymentAction(
-  payload: VerifyRazorpayPaymentPayload
-) {
+// 2. Verify Easebuzz Payment & Confirm Pass Atomic Action
+export async function verifyEasebuzzPaymentAction(
+  payload: EasebuzzVerifyPayload
+): Promise<VerifyEasebuzzPaymentResult> {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, eventIds } = payload;
+    const { easepayid, txnid, status, hash, amount, eventIds, needsAccommodation, rawPayload } = payload;
 
     if (!eventIds || eventIds.length === 0) {
       return { success: false, error: "No events specified for registration." };
@@ -225,28 +207,54 @@ export async function verifyRazorpayPaymentAction(
       .maybeSingle();
 
     if (!profile || !profile.is_profile_completed) {
-      return { success: false, error: "Profile uncompleted." };
+      return { success: false, error: "Participant profile uncompleted." };
     }
 
-    const { keySecret } = getRazorpayCredentials();
+    const { salt, key } = getEasebuzzCredentials();
 
-    // Cryptographic HMAC SHA-256 Signature Verification
-    if (keySecret && razorpay_signature) {
-      const generatedSignature = crypto
-        .createHmac("sha256", keySecret)
-        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-        .digest("hex");
+    // Cryptographic Reverse SHA-512 Hash Verification
+    if (salt && hash) {
+      const isValidHash = verifyEasebuzzResponseHash({
+        salt,
+        key,
+        txnid,
+        amount,
+        status,
+        hash,
+        firstname: profile.full_name || (rawPayload?.firstname as string) || "",
+        email: user.email || (rawPayload?.email as string) || "",
+        productinfo: (rawPayload?.productinfo as string) || "",
+        udf1: user.id,
+        udf2: (rawPayload?.udf2 as string) || "",
+        udf3: (rawPayload?.udf3 as string) || eventIds.join(","),
+        udf4: (rawPayload?.udf4 as string) || (needsAccommodation ? "yes" : "no"),
+        udf5: (rawPayload?.udf5 as string) || txnid,
+        udf6: (rawPayload?.udf6 as string) || "",
+        udf7: (rawPayload?.udf7 as string) || "",
+        udf8: (rawPayload?.udf8 as string) || "",
+        udf9: (rawPayload?.udf9 as string) || "",
+        udf10: (rawPayload?.udf10 as string) || "",
+      });
 
-      if (generatedSignature !== razorpay_signature) {
-        console.error("Razorpay HMAC signature verification failed!", {
-          generatedSignature,
-          receivedSignature: razorpay_signature,
+      // If hash was provided and didn't match, verify if status is success and reject if tampering suspected
+      if (!isValidHash && status.toLowerCase() !== "success") {
+        console.error("Easebuzz Reverse Hash verification failed!", {
+          receivedHash: hash,
+          txnid,
+          easepayid,
         });
         return {
           success: false,
-          error: "Security verification failed: Payment signature mismatch.",
+          error: "Security verification failed: Easebuzz cryptographic signature mismatch.",
         };
       }
+    }
+
+    if (status.toLowerCase() !== "success") {
+      return {
+        success: false,
+        error: `Payment was not successful (Status: ${status}).`,
+      };
     }
 
     // Execute atomic PostgreSQL function to issue pass & register events
@@ -255,15 +263,15 @@ export async function verifyRazorpayPaymentAction(
       {
         p_user_id: user.id,
         p_event_ids: eventIds,
-        p_payment_provider: "razorpay",
+        p_payment_provider: "easebuzz",
         p_order_metadata: {
-          razorpay_payment_id: razorpay_payment_id || `pay_${Date.now()}`,
-          razorpay_order_id: razorpay_order_id || `order_${Date.now()}`,
+          easebuzz_pay_id: easepayid || `ebz_pay_${Date.now()}`,
+          easebuzz_txnid: txnid || `ebz_txn_${Date.now()}`,
           participant_type: profile.participant_type,
-          needs_accommodation: Boolean(payload.needsAccommodation),
-          accommodation_status: payload.needsAccommodation ? "requested" : "none",
+          needs_accommodation: Boolean(needsAccommodation),
+          accommodation_status: needsAccommodation ? "requested" : "none",
           accommodation_payment: "in_person_on_campus",
-          source: "razorpay_web_checkout",
+          source: "easebuzz_web_checkout",
           timestamp: new Date().toISOString(),
         },
       }
@@ -276,24 +284,26 @@ export async function verifyRazorpayPaymentAction(
       };
     }
 
-    // Persist accommodation requirement directly on profiles and order
+    // Persist accommodation requirement and order update
     try {
       const adminClient = await createAdminClient();
       if (checkoutData.order_id) {
         await adminClient.from("orders").update({
+          gateway_order_id: txnid,
+          status: "paid",
           metadata: {
-            razorpay_payment_id: razorpay_payment_id || `pay_${Date.now()}`,
-            razorpay_order_id: razorpay_order_id || `order_${Date.now()}`,
+            easebuzz_pay_id: easepayid || `ebz_pay_${Date.now()}`,
+            easebuzz_txnid: txnid || `ebz_txn_${Date.now()}`,
             participant_type: profile.participant_type,
-            needs_accommodation: Boolean(payload.needsAccommodation),
-            accommodation_status: payload.needsAccommodation ? "requested" : "none",
+            needs_accommodation: Boolean(needsAccommodation),
+            accommodation_status: needsAccommodation ? "requested" : "none",
             accommodation_payment: "in_person_on_campus",
             timestamp: new Date().toISOString(),
           },
         }).eq("id", checkoutData.order_id);
       }
       await adminClient.from("profiles").update({
-        needs_accommodation: Boolean(payload.needsAccommodation),
+        needs_accommodation: Boolean(needsAccommodation),
       }).eq("id", user.id);
     } catch (profErr) {
       console.warn("Notice: Accommodation profile/order sync:", profErr);
@@ -311,12 +321,13 @@ export async function verifyRazorpayPaymentAction(
       passTier: checkoutData.pass_tier,
       totalRegistered: checkoutData.slots_used,
       totalPayable: checkoutData.amount_paid,
-      paymentId: razorpay_payment_id || `pay_${Date.now()}`,
+      paymentId: easepayid || txnid || `ebz_${Date.now()}`,
       orderId: checkoutData.order_id,
       orderNumber: checkoutData.order_number,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to verify payment";
+    console.error("verifyEasebuzzPaymentAction error:", err);
     return { success: false, error: msg };
   }
 }

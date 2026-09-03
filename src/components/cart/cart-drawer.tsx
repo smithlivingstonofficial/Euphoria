@@ -28,8 +28,9 @@ import {
 import { useCart } from "@/context/cart-context";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import {
-  createRazorpayOrderAction,
-  verifyRazorpayPaymentAction,
+  createEasebuzzOrderAction,
+  verifyEasebuzzPaymentAction,
+  EasebuzzVerifyPayload,
 } from "@/actions/payments";
 
 export function CartDrawer({
@@ -49,12 +50,10 @@ export function CartDrawer({
     removeEvent,
     clearCart,
     calculatePricing,
-    firstSelectedEvent,
     hasProEventSelected,
     maxEventsLimit,
     confirmedEvents,
     needsAccommodation,
-    setNeedsAccommodation,
     toggleNeedsAccommodation,
   } = useCart();
 
@@ -70,11 +69,11 @@ export function CartDrawer({
 
   const pricing = calculatePricing(user?.participantType);
 
-  // Dynamically load Razorpay SDK Script
+  // Dynamically load Easebuzz Checkout SDK Script
   useEffect(() => {
-    if (typeof window !== "undefined" && !(window as any).Razorpay) {
+    if (typeof window !== "undefined" && !(window as any).EasebuzzCheckout) {
       const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.src = "https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js";
       script.async = true;
       document.body.appendChild(script);
     }
@@ -101,7 +100,31 @@ export function CartDrawer({
     return conflicts;
   })();
 
-  const handleRazorpayCheckout = async () => {
+  const processPaymentVerification = async (payload: EasebuzzVerifyPayload) => {
+    try {
+      setIsSubmitting(true);
+      const verifyRes = await verifyEasebuzzPaymentAction(payload);
+
+      if (!verifyRes.success) {
+        setErrorMessage(verifyRes.error || "Easebuzz payment verification failed.");
+      } else {
+        setSuccessResult({
+          masterCode: verifyRes.masterCode || "CONFIRMED",
+          totalRegistered: verifyRes.totalRegistered || payload.eventIds.length,
+          totalPayable: verifyRes.totalPayable || (typeof payload.amount === "number" ? payload.amount : 200),
+          paymentId: verifyRes.paymentId,
+        });
+        clearCart();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Payment verification failed";
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEasebuzzCheckout = async () => {
     if (!user) {
       window.location.href = `/login?redirect=/events`;
       return;
@@ -115,96 +138,64 @@ export function CartDrawer({
 
     const eventIds = selectedEvents.map((e) => e.id);
 
-    // 1. Create Razorpay Order Server-Side
-    const orderRes = await createRazorpayOrderAction(eventIds, needsAccommodation);
+    // 1. Create Easebuzz Order Server-Side & obtain access_key
+    const orderRes = await createEasebuzzOrderAction(eventIds, needsAccommodation);
 
-    if (!orderRes.success || !orderRes.orderId) {
+    if (!orderRes.success || !orderRes.accessKey) {
       if (orderRes.redirect) {
         window.location.href = orderRes.redirect;
       } else {
-        setErrorMessage(orderRes.error || "Failed to initialize payment order.");
+        setErrorMessage(orderRes.error || "Failed to initialize Easebuzz payment gateway.");
         setIsSubmitting(false);
       }
       return;
     }
 
-    // Function to verify payment on server
-    const processPaymentVerification = async (
-      orderId: string,
-      paymentId: string,
-      signature: string
-    ) => {
-      const verifyRes = await verifyRazorpayPaymentAction({
-        razorpay_order_id: orderId,
-        razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
-        eventIds,
-        needsAccommodation,
-      });
+    const { accessKey, key, env = "test", amount = 200, txnid = "" } = orderRes;
 
-      if (!verifyRes.success) {
-        setErrorMessage(verifyRes.error || "Payment verification failed.");
-      } else {
-        setSuccessResult({
-          masterCode: verifyRes.masterCode || "CONFIRMED",
-          totalRegistered: verifyRes.totalRegistered || eventIds.length,
-          totalPayable: verifyRes.totalPayable || orderRes.amount || 200,
-          paymentId: verifyRes.paymentId,
-        });
-        clearCart();
-      }
-      setIsSubmitting(false);
-    };
-
-    // 2. Launch Razorpay Checkout SDK if loaded
-    if (typeof window !== "undefined" && (window as any).Razorpay) {
+    // 2. Launch Easebuzz Checkout iFrame Modal if SDK loaded
+    if (typeof window !== "undefined" && (window as any).EasebuzzCheckout) {
       try {
+        const easebuzz = new (window as any).EasebuzzCheckout(key, env);
+
         const options = {
-          key: orderRes.keyId || "rzp_test_KARE_EUPHORIA_2026",
-          amount: (orderRes.amount || 200) * 100,
-          currency: orderRes.currency || "INR",
-          name: "EUPHORIA 2026 Festival Pass",
-          description: `Delegate Pass (${orderRes.amount === 300 ? "PRO TIER" : "STANDARD TIER"})`,
-          order_id: orderRes.orderId,
-          prefill: {
-            name: orderRes.userProfile?.name || user?.fullName || "",
-            email: orderRes.userProfile?.email || user?.email || "",
-          },
-          theme: {
-            color: "#4F46E5",
-          },
-          handler: async function (response: any) {
-            setIsSubmitting(true);
-            await processPaymentVerification(
-              response.razorpay_order_id || orderRes.orderId || "",
-              response.razorpay_payment_id || `pay_${Date.now()}`,
-              response.razorpay_signature || ""
-            );
-          },
-          modal: {
-            ondismiss: function () {
+          access_key: accessKey,
+          onResponse: async (response: any) => {
+            if (response.status === "success") {
+              await processPaymentVerification({
+                easepayid: response.easepayid || response.txnid || `ebz_${Date.now()}`,
+                txnid: response.txnid || txnid,
+                amount: response.amount || amount,
+                status: response.status,
+                hash: response.hash || "",
+                eventIds,
+                needsAccommodation,
+                rawPayload: response,
+              });
+            } else if (response.status === "userCancelled") {
               setIsSubmitting(false);
-            },
+            } else {
+              setErrorMessage(
+                response.error_Message ||
+                response.error ||
+                `Payment was not completed (${response.status || "Failed"}).`
+              );
+              setIsSubmitting(false);
+            }
           },
+          theme: "#4F46E5",
         };
 
-        const rzp = new (window as any).Razorpay(options);
-        rzp.open();
+        easebuzz.initiatePayment(options);
       } catch (err) {
-        console.warn("Razorpay SDK launch error, using direct server verification:", err);
-        await processPaymentVerification(
-          orderRes.orderId,
-          `pay_test_${Date.now()}`,
-          "test_signature"
-        );
+        console.warn("Easebuzz modal launch issue, redirecting to hosted checkout:", err);
+        const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
+        window.location.href = hostedUrl;
       }
     } else {
-      // Direct server verification fallback if Razorpay script is unavailable
-      await processPaymentVerification(
-        orderRes.orderId,
-        `pay_test_${Date.now()}`,
-        "test_signature"
-      );
+      // Hosted redirect fallback if iFrame script is blocked
+      const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
+      window.location.href = hostedUrl;
     }
   };
 
@@ -277,7 +268,7 @@ export function CartDrawer({
                 </span>
                 <div className="flex justify-between items-center text-[11px] text-slate-600 pt-1 border-t border-slate-100">
                   <span>Amount Paid: <strong>{formatCurrency(successResult.totalPayable)}</strong></span>
-                  <span className="font-mono text-emerald-700 font-bold">Razorpay Verified</span>
+                  <span className="font-mono text-emerald-700 font-bold">Easebuzz Verified</span>
                 </div>
               </div>
 
@@ -516,7 +507,7 @@ export function CartDrawer({
               </button>
               <span className="flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                <span>256-bit Razorpay Checkout</span>
+                <span>256-bit Easebuzz College Gateway</span>
               </span>
             </div>
           </div>
@@ -679,7 +670,7 @@ export function CartDrawer({
                 type="button"
                 onClick={() => {
                   setIsConfirmModalOpen(false);
-                  handleRazorpayCheckout();
+                  handleEasebuzzCheckout();
                 }}
                 disabled={isSubmitting}
                 className="flex-1 py-3 px-4 rounded-xl bg-primary text-white text-xs font-bold shadow-md shadow-primary/20 hover:bg-primary-hover transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5"

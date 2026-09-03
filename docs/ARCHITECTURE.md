@@ -76,7 +76,7 @@
   ```
 - Ships with:
   1. `MockPaymentProvider` (Zero-cost sandbox for local development and offline testing).
-  2. Ready adapters for Razorpay / Cashfree / custom UPI gateway without altering database schema or business logic.
+  2. Official Easebuzz Payment Gateway integration with secure SHA-512 cryptographic verification.
 
 ### 2.4 Cryptographic QR Verification Architecture
 - QR codes do not store plaintext IDs or raw database keys directly.

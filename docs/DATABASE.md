@@ -135,7 +135,7 @@ Stores payment orders and transaction verification records.
 | `registration_id` | `uuid` | NOT NULL, UNIQUE, FK -> `event_registrations.id` | Associated registration |
 | `amount` | `numeric(10,2)` | NOT NULL | Amount in INR |
 | `currency` | `text` | NOT NULL DEFAULT `'INR'` | Currency code |
-| `provider` | `text` | NOT NULL | `'mock'`, `'razorpay'`, `'cashfree'`, etc. |
+| `provider` | `text` | NOT NULL | `'easebuzz'`, `'mock'`, etc. |
 | `order_id` | `text` | NOT NULL, UNIQUE | Provider Order / Ref ID |
 | `payment_id` | `text` | NULL | Gateway Transaction ID |
 | `status` | `text` | NOT NULL DEFAULT `'pending'` | `'pending'`, `'paid'`, `'failed'`, `'refunded'` |

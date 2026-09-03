@@ -30,14 +30,19 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/announcements": "Broadcast Alerts & Notifications",
   "/admin/payments": "Payment Audit & Financial Telemetry",
   "/admin/reports": "Data Export & Audit Center",
+  "/super-admin": "Super Admin Developer Console",
 };
 
 export function AdminTopbar({
   userEmail,
   userFullName,
+  roleId = "admin",
+  isSuperAdmin = false,
 }: {
   userEmail: string;
   userFullName?: string;
+  roleId?: string;
+  isSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -92,11 +97,18 @@ export function AdminTopbar({
             <span>Create Event</span>
           </Link>
 
-          {/* System Pulse Badge */}
-          <div className="hidden xl:flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Supabase Sync Active</span>
-          </div>
+          {/* System Role Badge */}
+          {isSuperAdmin ? (
+            <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-purple-300 bg-purple-50 px-2.5 py-1 text-[11px] font-extrabold text-purple-800 shadow-2xs">
+              <Sparkles className="h-3 w-3 text-purple-600 fill-purple-200" />
+              <span>SUPER ADMIN (DEV)</span>
+            </div>
+          ) : (
+            <div className="hidden xl:flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Admin OS Active</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -108,7 +120,12 @@ export function AdminTopbar({
             onClick={() => setMobileDrawerOpen(false)}
           />
           <div className="fixed inset-y-0 left-0 w-72 max-w-full">
-            <AdminSidebar userEmail={userEmail} userFullName={userFullName} />
+            <AdminSidebar
+              userEmail={userEmail}
+              userFullName={userFullName}
+              roleId={roleId}
+              isSuperAdmin={isSuperAdmin}
+            />
           </div>
         </div>
       )}

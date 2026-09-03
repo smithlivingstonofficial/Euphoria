@@ -181,7 +181,7 @@ export function DigitalPassClient({
   const billStatus = primaryOrder?.status || "CONFIRMED";
   const billDate = primaryOrder?.created_at || registrations[0]?.created_at || new Date().toISOString();
   const billRef = primaryOrder?.order_number || masterCode;
-  const billProvider = primaryOrder?.provider || "Razorpay / UPI";
+  const billProvider = primaryOrder?.provider || "Easebuzz / UPI";
 
   if (registrations.length === 0) {
     return (
@@ -217,12 +217,12 @@ export function DigitalPassClient({
 
   return (
     <div className="space-y-6">
-      
+
       {/* ========================================================================= */}
       {/* INK-FRIENDLY LIGHT-THEME 1-PAGE A4 PRINT CONTAINER (Only visible in print) */}
       {/* ========================================================================= */}
       <div className="hidden print:block w-full text-slate-900 space-y-2 p-0 m-0 max-h-[280mm] overflow-hidden">
-        
+
         {/* Light University Letterhead Ribbon */}
         <div className="bg-slate-50 border-b-2 border-indigo-600 rounded-xl p-3 space-y-1">
           <div className="flex justify-between items-start">
@@ -252,14 +252,13 @@ export function DigitalPassClient({
 
         {/* 2-Column Side-by-Side Grid fitting 100% on Single A4 Sheet */}
         <div className="grid grid-cols-12 gap-3 items-start pt-0.5">
-          
+
           {/* LEFT COLUMN: TICKET PASS CARD (5 Cols) */}
           <div className="col-span-5 border border-slate-300 rounded-2xl overflow-hidden bg-white">
             <div className="p-3 bg-indigo-50/80 border-b border-indigo-200 relative">
               <div className="flex items-center justify-between">
-                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                  hasPro ? "bg-amber-100 text-amber-950 border-amber-300" : "bg-indigo-100 text-indigo-950 border-indigo-300"
-                }`}>
+                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${hasPro ? "bg-amber-100 text-amber-950 border-amber-300" : "bg-indigo-100 text-indigo-950 border-indigo-300"
+                  }`}>
                   {hasPro ? "★ PRO DELEGATE PASS" : "STANDARD DELEGATE PASS"}
                 </span>
                 <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
@@ -398,17 +397,16 @@ export function DigitalPassClient({
       {/* ========================================================================= */}
       {/* SCREEN UI LAYOUT (Hidden during window.print())                             */}
       {/* ========================================================================= */}
-      
+
       {/* MOBILE SEGMENTED TAB SWITCHER (Visible only on mobile screens < sm) */}
       <div className="sm:hidden bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 border border-slate-300/80 shadow-inner print:hidden">
         <button
           type="button"
           onClick={() => setMobileTab("pass")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-            mobileTab === "pass"
-              ? "bg-slate-900 text-white shadow-xs"
-              : "text-slate-700 hover:text-slate-900"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${mobileTab === "pass"
+            ? "bg-slate-900 text-white shadow-xs"
+            : "text-slate-700 hover:text-slate-900"
+            }`}
         >
           <QrCode className="h-3.5 w-3.5" />
           <span>Pass QR</span>
@@ -417,11 +415,10 @@ export function DigitalPassClient({
         <button
           type="button"
           onClick={() => setMobileTab("events")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-            mobileTab === "events"
-              ? "bg-slate-900 text-white shadow-xs"
-              : "text-slate-700 hover:text-slate-900"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${mobileTab === "events"
+            ? "bg-slate-900 text-white shadow-xs"
+            : "text-slate-700 hover:text-slate-900"
+            }`}
         >
           <Layers className="h-3.5 w-3.5" />
           <span>Events ({registrations.length})</span>
@@ -430,11 +427,10 @@ export function DigitalPassClient({
         <button
           type="button"
           onClick={() => setMobileTab("receipt")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-            mobileTab === "receipt"
-              ? "bg-slate-900 text-white shadow-xs"
-              : "text-slate-700 hover:text-slate-900"
-          }`}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${mobileTab === "receipt"
+            ? "bg-slate-900 text-white shadow-xs"
+            : "text-slate-700 hover:text-slate-900"
+            }`}
         >
           <Receipt className="h-3.5 w-3.5" />
           <span>Receipt</span>
@@ -443,26 +439,24 @@ export function DigitalPassClient({
 
       {/* MAIN SCREEN RESPONSIVE GRID (Stacked on mobile according to mobileTab, 2-col grid on desktop) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start print:hidden">
-        
+
         {/* LEFT COLUMN: DIGITAL TICKET PASS (Visible on desktop OR mobileTab === 'pass') */}
         <div className={`lg:col-span-5 space-y-4 ${mobileTab === "pass" ? "block" : "hidden sm:block"}`}>
           <div className="rounded-3xl border border-slate-200 bg-white shadow-md overflow-hidden relative">
             {/* Top Foil Strip */}
             <div
-              className={`h-1.5 w-full ${
-                hasPro
-                  ? "bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500"
-                  : "bg-gradient-to-r from-indigo-500 via-purple-400 to-primary"
-              }`}
+              className={`h-1.5 w-full ${hasPro
+                ? "bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500"
+                : "bg-gradient-to-r from-indigo-500 via-purple-400 to-primary"
+                }`}
             />
 
             {/* Header Banner */}
             <div
-              className={`p-5 text-white relative overflow-hidden ${
-                hasPro
-                  ? "bg-gradient-to-br from-amber-950 via-slate-900 to-amber-900"
-                  : "bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950"
-              }`}
+              className={`p-5 text-white relative overflow-hidden ${hasPro
+                ? "bg-gradient-to-br from-amber-950 via-slate-900 to-amber-900"
+                : "bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950"
+                }`}
             >
               <div className="space-y-2 relative z-10">
                 <div className="flex items-center justify-between gap-2">
@@ -548,18 +542,16 @@ export function DigitalPassClient({
 
         {/* RIGHT COLUMN: COMPETITIONS & RECEIPT (Visible according to mobileTab or Desktop grid) */}
         <div className="lg:col-span-7 space-y-6">
-          
+
           {/* CAMPUS ACCOMMODATION STATUS CARD */}
-          <div className={`rounded-3xl border p-5 sm:p-6 shadow-xs space-y-3 transition-all ${
-            isAccommodationRequested
-              ? "bg-gradient-to-br from-emerald-50/90 via-teal-50/30 to-white border-emerald-300"
-              : "bg-white border-slate-200"
-          }`}>
+          <div className={`rounded-3xl border p-5 sm:p-6 shadow-xs space-y-3 transition-all ${isAccommodationRequested
+            ? "bg-gradient-to-br from-emerald-50/90 via-teal-50/30 to-white border-emerald-300"
+            : "bg-white border-slate-200"
+            }`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2.5">
-                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                  isAccommodationRequested ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-100 text-slate-500"
-                }`}>
+                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${isAccommodationRequested ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-100 text-slate-500"
+                  }`}>
                   <Building className="h-5 w-5" />
                 </div>
                 <div>
@@ -572,11 +564,10 @@ export function DigitalPassClient({
                 </div>
               </div>
 
-              <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider border ${
-                isAccommodationRequested
-                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
-                  : "bg-slate-100 text-slate-600 border-slate-200"
-              }`}>
+              <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider border ${isAccommodationRequested
+                ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+                : "bg-slate-100 text-slate-600 border-slate-200"
+                }`}>
                 {isAccommodationRequested ? "Requested ✓" : "Not Requested"}
               </span>
             </div>

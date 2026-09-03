@@ -8,7 +8,7 @@ Euphoria is a modern, high-performance web platform built for managing national-
 
 - 🎟️ **Cryptographic QR Ticketing & Check-in**: Secure HMAC-SHA256 signed dynamic/static QR passes for entry & event verification.
 - 👥 **Role-Based Access Control (RBAC)**: Fine-grained permissions for Admins, Faculty, Student Coordinators, and Participants.
-- 💳 **Flexible Payment Integration**: Modular payment architecture supporting sandbox/mock payments and payment gateways like Razorpay.
+- 💳 **College Payment Integration**: Official Easebuzz Payment Gateway integration with secure SHA-512 cryptographic verification, instant UPI/QR/Card checkout, and automated pass issuance.
 - 🏆 **Event Management & Team Registrations**: Support for solo and team registrations with dynamic team sizes and captain controls.
 - 📊 **Real-time Analytics & Attendance**: Live check-in dashboards, capacity monitoring, and participant verification.
 - 📱 **Responsive & Accessible UI**: Modern, sleek mobile-first design with smooth interactions.

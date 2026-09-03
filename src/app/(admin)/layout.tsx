@@ -1,4 +1,5 @@
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { getCallerAuthInfo } from "@/actions/admin";
+import { createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { AdminTopbar } from "@/components/admin/admin-topbar";
@@ -12,32 +13,14 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const authInfo = await getCallerAuthInfo();
 
-  if (!user) {
+  if (!authInfo || !authInfo.user) {
     redirect("/login?redirect=/admin");
   }
 
-  // Check admin role & fetch profile
-  const adminClient = await createAdminClient();
-  const [{ data: roleAssignment }, { data: profile }] = await Promise.all([
-    adminClient
-      .from("user_role_assignments")
-      .select("role_id")
-      .eq("user_id", user.id)
-      .eq("role_id", "admin")
-      .maybeSingle(),
-    adminClient
-      .from("profiles")
-      .select("full_name")
-      .eq("id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (!roleAssignment) {
+  // Enforce Level >= 3 (Admin or Super Admin)
+  if (authInfo.roleLevel < 3) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-900 p-4 text-slate-100">
         <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-950 p-8 text-center shadow-xl space-y-4">
@@ -49,7 +32,7 @@ export default async function AdminLayout({
               Admin Access Restricted
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Your account (<strong>{user.email}</strong>) does not have administrator privileges for Euphoria &apos;26.
+              Your account (<strong>{authInfo.user.email}</strong>) does not have administrator privileges for Euphoria &apos;26.
             </p>
           </div>
           <div className="pt-2 flex flex-col gap-2">
@@ -66,19 +49,30 @@ export default async function AdminLayout({
     );
   }
 
+  const adminClient = await createAdminClient();
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("full_name")
+    .eq("id", authInfo.user.id)
+    .maybeSingle();
+
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-900 flex">
       {/* Desktop Persistent SaaS Sidebar */}
       <AdminSidebar
-        userEmail={user.email || "admin@kare.edu"}
-        userFullName={profile?.full_name || "Admin"}
+        userEmail={authInfo.user.email || "admin@kare.edu"}
+        userFullName={profile?.full_name || (authInfo.isSuperAdmin ? "Smith Livingston (Super Admin)" : "Admin")}
+        roleId={authInfo.roleId}
+        isSuperAdmin={authInfo.isSuperAdmin}
       />
 
       {/* Main SaaS Content Container */}
       <div className="flex flex-1 flex-col lg:pl-64">
         <AdminTopbar
-          userEmail={user.email || "admin@kare.edu"}
-          userFullName={profile?.full_name || "Admin"}
+          userEmail={authInfo.user.email || "admin@kare.edu"}
+          userFullName={profile?.full_name || (authInfo.isSuperAdmin ? "Smith Livingston" : "Admin")}
+          roleId={authInfo.roleId}
+          isSuperAdmin={authInfo.isSuperAdmin}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">

@@ -1,11 +1,14 @@
-import { getAllUsersAndPassesAdmin } from "@/actions/admin";
+import { getAllUsersAndPassesAdmin, getCallerAuthInfo } from "@/actions/admin";
 import { UsersAdminClient } from "./users-client";
 import { Users, Sparkles, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
-  const data = await getAllUsersAndPassesAdmin();
+  const [data, authInfo] = await Promise.all([
+    getAllUsersAndPassesAdmin(),
+    getCallerAuthInfo(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -26,7 +29,10 @@ export default async function AdminUsersPage() {
       </div>
 
       {/* Main Interactive Client */}
-      <UsersAdminClient initialUsers={data.users || []} />
+      <UsersAdminClient
+        initialUsers={data.users || []}
+        currentUserRole={authInfo}
+      />
     </div>
   );
 }

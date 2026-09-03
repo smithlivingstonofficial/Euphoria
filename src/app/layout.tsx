@@ -28,6 +28,7 @@ const fontMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://euphoria.kalasalingam.ac.in"),
   title: "Euphoria 2026 | Kalasalingam Academy of Research and Education (KARE)",
   description:
     "Official event portal for Euphoria — The flagship national technical festival of Kalasalingam Academy of Research and Education.",
