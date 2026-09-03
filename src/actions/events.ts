@@ -2,6 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache";
+import { isProfileComplete } from "@/lib/profile";
 
 // Raw query with column projection to reduce egress bandwidth
 async function fetchPublicEventsRaw() {
@@ -132,14 +133,14 @@ export async function registerForEvent(eventId: string) {
       return { success: false, error: "Please sign in with Google to register." };
     }
 
-    // Verify profile is completed
+    // Verify profile is completed with all required fields
     const { data: profile } = await supabase
       .from("profiles")
-      .select("is_profile_completed, full_name, mobile_number")
+      .select("*")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed) {
+    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
       return {
         success: false,
         error: "Please complete your participant profile before registering.",
@@ -425,7 +426,7 @@ export async function batchRegisterEvents(eventIds: string[]) {
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed) {
+    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
       return {
         success: false,
         error: "Please complete your participant profile before registering for events.",

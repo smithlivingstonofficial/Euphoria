@@ -2,6 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { isProfileComplete } from "@/lib/profile";
 
 export async function getCurrentUser() {
   try {
@@ -71,6 +72,18 @@ export async function getCurrentUser() {
     const isStaff = roles.includes("staff_coordinator") || hasStaffAssignment;
     const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment;
 
+    // Verify profile completeness - if any fields are empty/null, rectify is_profile_completed to false
+    const actuallyComplete = isProfileComplete(profile);
+    if (profile) {
+      if (profile.is_profile_completed && !actuallyComplete) {
+        profile.is_profile_completed = false;
+        adminClient.from("profiles").update({ is_profile_completed: false }).eq("id", user.id).then();
+      } else if (!profile.is_profile_completed && actuallyComplete) {
+        profile.is_profile_completed = true;
+        adminClient.from("profiles").update({ is_profile_completed: true }).eq("id", user.id).then();
+      }
+    }
+
     return {
       user,
       profile,
@@ -111,6 +124,27 @@ export async function saveParticipantProfile(profileData: {
 
     if (!targetUserId || !targetEmail) {
       return { success: false, error: "User identity not found. Please sign in again." };
+    }
+
+    // Verify all mandatory profile fields are non-empty before permitting completion
+    const isComplete = isProfileComplete({
+      email: targetEmail,
+      full_name: profileData.fullName,
+      mobile_number: profileData.mobileNumber,
+      gender: profileData.gender as any,
+      participant_type: profileData.participantType,
+      register_number: profileData.registerNumber,
+      school: profileData.school,
+      college_name: profileData.collegeName,
+      city: profileData.city,
+      pincode: profileData.pincode,
+      course: profileData.course,
+      department: profileData.department,
+      year_of_study: profileData.yearOfStudy,
+    });
+
+    if (!isComplete) {
+      return { success: false, error: "Please fill in all required profile fields before submitting." };
     }
 
     const payload: Record<string, unknown> = {
@@ -274,6 +308,9 @@ export async function ensureStaffAccountAndRole(user: any) {
 
       const isInternal = userEmail.endsWith("@klu.ac.in");
 
+      // Verify whether existing profile genuinely has all required fields completed
+      const isActuallyComplete = isProfileComplete(existingProfile);
+
       const profilePayload = {
         id: user.id,
         email: userEmail,
@@ -282,15 +319,15 @@ export async function ensureStaffAccountAndRole(user: any) {
         participant_type: isInternal ? "internal" : "external",
         college_name: isInternal
           ? "Kalasalingam Academy of Research and Education"
-          : existingProfile?.college_name || "Partner University",
-        is_profile_completed: true,
+          : existingProfile?.college_name || null,
+        is_profile_completed: isActuallyComplete,
         updated_at: new Date().toISOString(),
       };
 
       if (!existingProfile) {
         await adminClient.from("profiles").insert(profilePayload);
-      } else if (!existingProfile.is_profile_completed) {
-        await adminClient.from("profiles").update({ is_profile_completed: true }).eq("id", user.id);
+      } else if (existingProfile.is_profile_completed !== isActuallyComplete) {
+        await adminClient.from("profiles").update({ is_profile_completed: isActuallyComplete }).eq("id", user.id);
       }
 
       // Ensure staff role assignment exists in DB

@@ -5,6 +5,7 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { DigitalPassClient } from "../digital-pass-client";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import { isProfileComplete } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function DynamicPassPage({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !profile.is_profile_completed) {
+  if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
     redirect("/complete-profile");
   }
 

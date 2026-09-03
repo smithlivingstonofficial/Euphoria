@@ -33,7 +33,10 @@ import { FAQInteractive } from "@/components/home/faq-interactive";
 import { MobileFloatingDock } from "@/components/home/mobile-floating-dock";
 import { DroneLottie } from "@/components/home/drone-lottie";
 
+import { isProfileComplete } from "@/lib/profile";
+
 export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -49,7 +52,7 @@ export default async function HomePage() {
     const [{ data: p }, { data: roleAssignment }, passRes] = await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, participant_type, is_profile_completed")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle(),
       supabase
@@ -61,6 +64,11 @@ export default async function HomePage() {
     ]);
 
     profile = p;
+    // Verify that profile data is actually non-empty
+    if (profile && profile.is_profile_completed && !isProfileComplete(profile)) {
+      profile.is_profile_completed = false;
+    }
+
     if (passRes?.success && passRes?.data?.hasPass) {
       hasPass = true;
     }
@@ -139,7 +147,7 @@ export default async function HomePage() {
               <div className="w-full space-y-3.5 pt-1">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-md sm:max-w-none">
                   <Link
-                    href={user ? (hasPass ? "/dashboard/passes" : "/events") : "/register"}
+                    href={user ? (hasPass ? "/dashboard/passes" : (profile?.is_profile_completed ? "/events" : "/complete-profile")) : "/register"}
                     className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-primary to-cyan-600 px-7 sm:px-8 py-3.5 sm:py-4 text-sm sm:text-base font-black text-white shadow-xl shadow-indigo-500/25 hover:shadow-2xl hover:shadow-indigo-500/35 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 group cursor-pointer"
                   >
                     <Ticket className="h-5 w-5 text-cyan-200" />

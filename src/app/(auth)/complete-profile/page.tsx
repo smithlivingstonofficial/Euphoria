@@ -1,6 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { CompleteProfileForm } from "./complete-profile-form";
+import { isProfileComplete } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,15 @@ export default async function CompleteProfilePage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // If already complete, redirect directly to events
-  if (profile && profile.is_profile_completed) {
+  const actuallyComplete = isProfileComplete(profile);
+
+  // If already genuinely complete with all required fields, redirect directly to events
+  if (profile && profile.is_profile_completed && actuallyComplete) {
     redirect("/events");
+  } else if (profile && profile.is_profile_completed && !actuallyComplete) {
+    // If DB erroneously had true but data is empty, rectify DB state to false
+    const adminClient = await createAdminClient();
+    await adminClient.from("profiles").update({ is_profile_completed: false }).eq("id", user.id);
   }
 
   const userEmail = user.email || "";

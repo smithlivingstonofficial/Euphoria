@@ -12,6 +12,7 @@ import {
   EasebuzzVerifyPayload,
   VerifyEasebuzzPaymentResult,
 } from "@/lib/payments/types";
+import { isProfileComplete } from "@/lib/profile";
 
 export type { CreateEasebuzzOrderResult, EasebuzzVerifyPayload, VerifyEasebuzzPaymentResult };
 
@@ -48,7 +49,7 @@ export async function createEasebuzzOrderAction(
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed) {
+    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
       return {
         success: false,
         error: "Please complete your participant profile before checking out.",
@@ -206,7 +207,7 @@ export async function verifyEasebuzzPaymentAction(
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed) {
+    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
       return { success: false, error: "Participant profile uncompleted." };
     }
 

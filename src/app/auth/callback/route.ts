@@ -2,6 +2,8 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { ensureStaffAccountAndRole } from "@/actions/auth";
+import { createAdminClient } from "@/lib/supabase/server";
+import { isProfileComplete } from "@/lib/profile";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -71,15 +73,34 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(`${origin}/coordinator`);
         }
 
-        // 4. Standard Participant Flow
+        // 4. Standard Participant Flow: Strictly verify that all profile fields are filled
         const { data: profile } = await supabase
           .from("profiles")
-          .select("is_profile_completed")
+          .select("*")
           .eq("id", user.id)
           .maybeSingle();
 
-        if (!profile || !profile.is_profile_completed) {
+        const profileActuallyComplete = isProfileComplete(profile);
+
+        // If any required field is empty or missing, keep is_profile_completed as false and redirect
+        if (!profile || !profileActuallyComplete) {
+          if (profile && profile.is_profile_completed) {
+            const adminClient = await createAdminClient();
+            await adminClient
+              .from("profiles")
+              .update({ is_profile_completed: false })
+              .eq("id", user.id);
+          }
           return NextResponse.redirect(`${origin}/complete-profile`);
+        }
+
+        // If fully complete, ensure DB state reflects true
+        if (profile && !profile.is_profile_completed) {
+          const adminClient = await createAdminClient();
+          await adminClient
+            .from("profiles")
+            .update({ is_profile_completed: true })
+            .eq("id", user.id);
         }
 
         return NextResponse.redirect(`${origin}${next !== "/events" ? next : "/events"}`);

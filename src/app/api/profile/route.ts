@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { isProfileComplete } from "@/lib/profile";
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,6 +65,33 @@ export async function POST(request: NextRequest) {
 
     if (!targetUserId || !targetEmail) {
       return NextResponse.redirect(new URL("/register?error=session_expired", request.url), 303);
+    }
+
+    // Verify all required fields are non-empty before setting profile completed
+    const completenessCheck = isProfileComplete({
+      email: targetEmail,
+      full_name: fullName,
+      mobile_number: mobileNumber,
+      gender: gender as "male" | "female" | "other",
+      participant_type: participantType as "internal" | "external",
+      register_number: registerNumber,
+      school: school,
+      college_name: collegeName,
+      city: city,
+      pincode: pincode,
+      course: course,
+      department: department,
+      year_of_study: yearOfStudy,
+    });
+
+    if (!completenessCheck) {
+      if (contentType.includes("application/json")) {
+        return NextResponse.json(
+          { success: false, error: "Please fill in all required profile fields before submitting." },
+          { status: 400 }
+        );
+      }
+      return NextResponse.redirect(new URL("/complete-profile?error=incomplete_fields", request.url), 303);
     }
 
     const payload: Record<string, unknown> = {

@@ -16,11 +16,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserPassSummary } from "@/actions/passes";
 import { DigitalPassClient } from "./passes/digital-pass-client";
 
+import { isProfileComplete } from "@/lib/profile";
+
 export const dynamic = "force-dynamic";
 
 export default async function ParticipantDashboardPage() {
   const supabase = await createClient();
 
+  // Get authenticated user
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -36,8 +39,8 @@ export default async function ParticipantDashboardPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // If profile is not complete, redirect to complete-profile
-  if (!profile || !profile.is_profile_completed) {
+  // If profile is not complete or has missing data, redirect to complete-profile
+  if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
     redirect("/complete-profile");
   }
 
