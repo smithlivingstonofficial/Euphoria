@@ -76,6 +76,11 @@ export function generateEasebuzzHash(params: {
   udf3?: string;
   udf4?: string;
   udf5?: string;
+  udf6?: string;
+  udf7?: string;
+  udf8?: string;
+  udf9?: string;
+  udf10?: string;
   salt: string;
 }): string {
   const {
@@ -90,6 +95,11 @@ export function generateEasebuzzHash(params: {
     udf3 = "",
     udf4 = "",
     udf5 = "",
+    udf6 = "",
+    udf7 = "",
+    udf8 = "",
+    udf9 = "",
+    udf10 = "",
     salt = "",
   } = params;
 
@@ -110,11 +120,11 @@ export function generateEasebuzzHash(params: {
     String(udf3).trim(),
     String(udf4).trim(),
     String(udf5).trim(),
-    "", // udf6
-    "", // udf7
-    "", // udf8
-    "", // udf9
-    "", // udf10
+    String(udf6).trim(),
+    String(udf7).trim(),
+    String(udf8).trim(),
+    String(udf9).trim(),
+    String(udf10).trim(),
     String(salt).trim(),
   ].join("|");
 
@@ -218,6 +228,11 @@ export async function initiateEasebuzzPayment(
       udf3: params.udf3,
       udf4: params.udf4,
       udf5: params.udf5,
+      udf6: params.udf6,
+      udf7: params.udf7,
+      udf8: params.udf8,
+      udf9: params.udf9,
+      udf10: params.udf10,
       salt: salt,
     });
 
@@ -238,6 +253,11 @@ export async function initiateEasebuzzPayment(
     if (params.udf3) formData.append("udf3", String(params.udf3).trim());
     if (params.udf4) formData.append("udf4", String(params.udf4).trim());
     if (params.udf5) formData.append("udf5", String(params.udf5).trim());
+    if (params.udf6) formData.append("udf6", String(params.udf6).trim());
+    if (params.udf7) formData.append("udf7", String(params.udf7).trim());
+    if (params.udf8) formData.append("udf8", String(params.udf8).trim());
+    if (params.udf9) formData.append("udf9", String(params.udf9).trim());
+    if (params.udf10) formData.append("udf10", String(params.udf10).trim());
     if (params.sub_merchant_id)
       formData.append("sub_merchant_id", String(params.sub_merchant_id).trim());
     if (params.address1) formData.append("address1", String(params.address1).trim());

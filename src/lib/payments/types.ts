@@ -9,15 +9,15 @@ export interface EasebuzzInitiateParams {
   surl: string;
   furl: string;
   udf1?: string; // userId
-  udf2?: string; // passTier
-  udf3?: string; // eventIds (comma separated)
+  udf2?: string; // pass purpose / tier ("Euphoria 2026 Regular Pass" | "Euphoria 2026 Flagship Pass")
+  udf3?: string; // registered event names
   udf4?: string; // needsAccommodation ('yes' | 'no')
-  udf5?: string; // orderNumber / reference
-  udf6?: string;
-  udf7?: string;
-  udf8?: string;
-  udf9?: string;
-  udf10?: string;
+  udf5?: string; // txnid / merchant order reference
+  udf6?: string; // candidate unique registration number or candidate unique ID (Auditor requirement)
+  udf7?: string; // audit event key: "Euphoria 2026" (Auditor requirement)
+  udf8?: string; // college / institution name
+  udf9?: string; // participant type & department
+  udf10?: string; // city / location
   sub_merchant_id?: string;
   address1?: string;
   city?: string;

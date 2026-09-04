@@ -97,13 +97,29 @@ export async function createEasebuzzOrderAction(
       };
     }
 
-    // Unique Transaction ID (max 40 alphanumeric characters)
-    const txnid = `EBZ-26-${isTestPayment ? "TEST-" : ""}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    // Unique Transaction ID (max 40 alphanumeric characters with Euphoria 2026 prefix)
+    const txnid = `EUPH26-${isTestPayment ? "TEST-" : (hasProEvent ? "FLAG-" : "REG-")}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const userPhone = profile.mobile_number || profile.phone || "9999999999";
     const userName = profile.full_name || "Delegate";
+    
+    // Product description strictly alphanumeric and spaces to comply with Easebuzz validation
     const productInfo = isTestPayment
-      ? (hasProEvent ? "EUPHORIA PRO PASS TEST" : "EUPHORIA PASS TEST")
-      : (hasProEvent ? "EUPHORIA PRO PASS" : "EUPHORIA STANDARD PASS");
+      ? "Euphoria 2026 Test Pass"
+      : (hasProEvent ? "Euphoria 2026 Flagship Pass" : "Euphoria 2026 Regular Pass");
+
+    // Clean event names for audit UDF3 (alphanumeric and commas/spaces only)
+    const cleanEventNames = selectedEvts
+      .map((e) => e.name.replace(/[^a-zA-Z0-9 ]/g, "").trim())
+      .filter(Boolean)
+      .join(", ")
+      .slice(0, 100);
+
+    // Auditor requirements: UDF6 = Unique Regn No. or Unique ID of candidate; UDF7 = "Euphoria 2026"
+    const candidateRegnOrId = (profile.register_number?.trim() || user.id || "CANDIDATE").replace(/[^a-zA-Z0-9_-]/g, "");
+    const auditKey = "Euphoria 2026";
+    const cleanCollege = (profile.college_name || "KARE").replace(/[^a-zA-Z0-9 ]/g, "").trim().slice(0, 100);
+    const cleanDept = ((profile.department ? `${profile.department} ` : "") + (profile.participant_type || "Student")).replace(/[^a-zA-Z0-9 -]/g, "").trim().slice(0, 60);
+    const cleanCity = (profile.city || "Srivilliputhur").replace(/[^a-zA-Z0-9 ]/g, "").trim().slice(0, 50);
 
     // Call Easebuzz Initiate Payment API
     const initRes = await initiateEasebuzzPayment(
@@ -118,10 +134,15 @@ export async function createEasebuzzOrderAction(
         surl: `${baseUrl}/api/payments/easebuzz/callback?status=success`,
         furl: `${baseUrl}/api/payments/easebuzz/callback?status=failure`,
         udf1: user.id,
-        udf2: isTestPayment ? "test_pass" : (hasProEvent ? "pro_pass" : "standard_pass"),
-        udf3: eventIds.join(","),
+        udf2: isTestPayment ? "Euphoria 2026 Test Pass" : (hasProEvent ? "Euphoria 2026 Flagship Pass" : "Euphoria 2026 Regular Pass"),
+        udf3: cleanEventNames || "Euphoria Events",
         udf4: needsAccommodation ? "yes" : "no",
         udf5: txnid,
+        udf6: candidateRegnOrId,
+        udf7: auditKey,
+        udf8: cleanCollege,
+        udf9: cleanDept,
+        udf10: cleanCity,
         sub_merchant_id: subMerchantId || undefined,
       },
       salt,
@@ -151,7 +172,14 @@ export async function createEasebuzzOrderAction(
         gateway_order_id: txnid,
         metadata: {
           event_ids: eventIds,
-          pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
+          pass_tier: hasProEvent ? "flagship_pass" : "regular_pass",
+          productinfo: productInfo,
+          purpose: productInfo,
+          udf6_candidate_id: candidateRegnOrId,
+          udf7_audit_key: auditKey,
+          candidate_regn: profile.register_number || null,
+          college_name: profile.college_name || null,
+          participant_type: profile.participant_type || null,
           is_test_payment: Boolean(isTestPayment),
           needs_accommodation: Boolean(needsAccommodation),
           accommodation_status: needsAccommodation ? "requested" : "none",
@@ -222,6 +250,18 @@ export async function verifyEasebuzzPaymentAction(
 
     // Cryptographic Reverse SHA-512 Hash Verification
     if (salt && hash) {
+      const productInfoReceived =
+        (rawPayload?.productinfo as string) ||
+        (isTest
+          ? "Euphoria 2026 Test Pass"
+          : "Euphoria 2026 Regular Pass");
+      const candidateRegnOrId = (profile.register_number?.trim() || user.id || "CANDIDATE").replace(/[^a-zA-Z0-9_-]/g, "");
+      const udf6Received = (rawPayload?.udf6 as string) || candidateRegnOrId;
+      const udf7Received = (rawPayload?.udf7 as string) || "Euphoria 2026";
+      const udf8Received = (rawPayload?.udf8 as string) || (profile.college_name || "KARE").replace(/[^a-zA-Z0-9 ]/g, "").trim().slice(0, 100);
+      const udf9Received = (rawPayload?.udf9 as string) || "";
+      const udf10Received = (rawPayload?.udf10 as string) || "";
+
       const isValidHash = verifyEasebuzzResponseHash({
         salt,
         key,
@@ -231,17 +271,17 @@ export async function verifyEasebuzzPaymentAction(
         hash,
         firstname: profile.full_name || (rawPayload?.firstname as string) || "",
         email: user.email || (rawPayload?.email as string) || "",
-        productinfo: (rawPayload?.productinfo as string) || "",
+        productinfo: productInfoReceived,
         udf1: user.id,
         udf2: (rawPayload?.udf2 as string) || "",
         udf3: (rawPayload?.udf3 as string) || eventIds.join(","),
         udf4: (rawPayload?.udf4 as string) || (needsAccommodation ? "yes" : "no"),
         udf5: (rawPayload?.udf5 as string) || txnid,
-        udf6: (rawPayload?.udf6 as string) || "",
-        udf7: (rawPayload?.udf7 as string) || "",
-        udf8: (rawPayload?.udf8 as string) || "",
-        udf9: (rawPayload?.udf9 as string) || "",
-        udf10: (rawPayload?.udf10 as string) || "",
+        udf6: udf6Received,
+        udf7: udf7Received,
+        udf8: udf8Received,
+        udf9: udf9Received,
+        udf10: udf10Received,
       });
 
       // If hash was provided and didn't match, verify if status is success and reject if tampering suspected
@@ -297,6 +337,15 @@ export async function verifyEasebuzzPaymentAction(
     // Persist accommodation requirement and order update
     try {
       const adminClient = await createAdminClient();
+      const productInfoReceived =
+        (rawPayload?.productinfo as string) ||
+        (isTest
+          ? "Euphoria 2026 Test Pass"
+          : "Euphoria 2026 Regular Pass");
+      const candidateRegnOrId = (profile.register_number?.trim() || user.id || "CANDIDATE").replace(/[^a-zA-Z0-9_-]/g, "");
+      const udf6Received = (rawPayload?.udf6 as string) || candidateRegnOrId;
+      const udf7Received = (rawPayload?.udf7 as string) || "Euphoria 2026";
+
       if (checkoutData.order_id) {
         await adminClient.from("orders").update({
           gateway_order_id: txnid,
@@ -305,6 +354,12 @@ export async function verifyEasebuzzPaymentAction(
           metadata: {
             easebuzz_pay_id: easepayid || `ebz_pay_${Date.now()}`,
             easebuzz_txnid: txnid || `ebz_txn_${Date.now()}`,
+            productinfo: productInfoReceived,
+            purpose: productInfoReceived,
+            udf6_candidate_id: udf6Received,
+            udf7_audit_key: udf7Received,
+            candidate_regn: profile.register_number || null,
+            college_name: profile.college_name || null,
             participant_type: profile.participant_type,
             needs_accommodation: Boolean(needsAccommodation),
             accommodation_status: needsAccommodation ? "requested" : "none",

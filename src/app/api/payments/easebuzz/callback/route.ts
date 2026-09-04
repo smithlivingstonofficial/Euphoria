@@ -100,6 +100,10 @@ export async function POST(req: NextRequest) {
         metadata: {
           easebuzz_pay_id: easepayid,
           easebuzz_txnid: txnid,
+          productinfo: productinfo || "Euphoria 2026 Pass",
+          purpose: productinfo || "Euphoria 2026 Pass",
+          udf6_candidate_id: data.udf6 || userId,
+          udf7_audit_key: data.udf7 || "Euphoria 2026",
           needs_accommodation: needsAccommodation,
           source: "easebuzz_hosted_callback",
           timestamp: new Date().toISOString(),
