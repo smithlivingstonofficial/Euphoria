@@ -185,20 +185,37 @@ export function CartProvider({
   // Load cart from localStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(CART_STORAGE_KEY);
-      if (saved) {
-        const parsed: PublicEvent[] = JSON.parse(saved);
-        // Filter out any items that the user has already confirmed
-        const filtered = parsed.filter(
-          (p) => !confirmedEvents.some((c) => c.eventId === p.id)
-        );
-        setSelectedEvents(filtered);
+      if (confirmedEvents.length >= 2) {
+        setSelectedEvents([]);
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } else {
+        const saved = localStorage.getItem(CART_STORAGE_KEY);
+        if (saved) {
+          const parsed: PublicEvent[] = JSON.parse(saved);
+          // Filter out any items that the user has already confirmed
+          const filtered = parsed.filter(
+            (p) => !confirmedEvents.some((c) => c.eventId === p.id)
+          );
+          setSelectedEvents(filtered);
+        }
       }
     } catch (e) {
       console.error("Failed to load cart from localStorage", e);
     }
     setIsLoaded(true);
   }, [confirmedEvents]);
+
+  // If user reaches 2 confirmed events, clear cart immediately
+  useEffect(() => {
+    if (confirmedEvents.length >= 2 && selectedEvents.length > 0) {
+      setSelectedEvents([]);
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [confirmedEvents, selectedEvents.length]);
 
   // Save cart to localStorage
   useEffect(() => {

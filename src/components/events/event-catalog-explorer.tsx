@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
+import { useRouter } from "next/navigation";
+import { claimSecondSlotAction } from "@/actions/passes";
 
 export interface PublicEvent {
   id: string;
@@ -275,10 +277,20 @@ export function EventCatalogExplorer({
 }) {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedDate, setSelectedDate] = useState<string>("all");
+  const router = useRouter();
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
   const [showSchoolCards, setShowSchoolCards] = useState<boolean>(true);
   const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
+
+  // Dedicated Slot #2 Claim Modal State
+  const [claimingSlot2Event, setClaimingSlot2Event] = useState<PublicEvent | null>(null);
+  const [isSubmittingSlot2, setIsSubmittingSlot2] = useState<boolean>(false);
+  const [slot2Error, setSlot2Error] = useState<string | null>(null);
+  const [slot2Success, setSlot2Success] = useState<{
+    eventName: string;
+    passCode: string;
+  } | null>(null);
 
   // Cart Context Hook
   const {
@@ -287,15 +299,73 @@ export function EventCatalogExplorer({
     toggleEvent,
     canSelectEvent,
     openCart,
+    clearCart,
     selectedEvents,
     hasProEventSelected,
     maxEventsLimit,
     confirmedEvents,
+    userPass,
+    setUserPassState,
   } = useCart();
 
   const totalConfirmedCount = confirmedEvents.length;
   const isPassFull = totalConfirmedCount >= 2;
   const isIncrementalSlotClaim = totalConfirmedCount === 1;
+
+  const handleConfirmSlot2 = async () => {
+    if (!claimingSlot2Event) return;
+
+    setIsSubmittingSlot2(true);
+    setSlot2Error(null);
+
+    try {
+      const res = await claimSecondSlotAction(claimingSlot2Event.id);
+
+      if (!res.success) {
+        setSlot2Error(res.error || "Failed to confirm 2nd event slot.");
+        setIsSubmittingSlot2(false);
+        return;
+      }
+
+      // Success! Clear any lingering cart items so cart count becomes 0
+      clearCart();
+
+      // Immediately update local cart context pass state so UI updates
+      const updatedConfirmed = [
+        ...confirmedEvents,
+        {
+          id: claimingSlot2Event.id,
+          eventId: claimingSlot2Event.id,
+          name: claimingSlot2Event.name,
+          isProEvent: Boolean(claimingSlot2Event.is_pro_event),
+          slotNumber: 2,
+          registrationCode: res.passCode || userPass?.passCode || "CONFIRMED",
+        },
+      ];
+
+      setUserPassState(
+        {
+          ...userPass,
+          slotsUsed: 2,
+          remainingSlots: 0,
+          passCode: res.passCode || userPass?.passCode,
+        },
+        updatedConfirmed
+      );
+
+      setSlot2Success({
+        eventName: claimingSlot2Event.name,
+        passCode: res.passCode || userPass?.passCode || "CONFIRMED",
+      });
+
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to claim 2nd slot";
+      setSlot2Error(msg);
+    } finally {
+      setIsSubmittingSlot2(false);
+    }
+  };
 
   const passTotalAmount = useMemo(() => {
     if (isIncrementalSlotClaim) return 0;
@@ -903,7 +973,13 @@ export function EventCatalogExplorer({
                         ) : validation.allowed ? (
                           <button
                             type="button"
-                            onClick={() => toggleEvent(evt)}
+                            onClick={() => {
+                              if (isIncrementalSlotClaim) {
+                                setClaimingSlot2Event(evt);
+                              } else {
+                                toggleEvent(evt);
+                              }
+                            }}
                             className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                               isIncrementalSlotClaim
                                 ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
@@ -1303,9 +1379,15 @@ export function EventCatalogExplorer({
                   <button
                     type="button"
                     onClick={() => {
-                      toggleEvent(activeModalEvent);
-                      setActiveModalEvent(null);
-                      openCart();
+                      if (isIncrementalSlotClaim) {
+                        const target = activeModalEvent;
+                        setActiveModalEvent(null);
+                        setClaimingSlot2Event(target);
+                      } else {
+                        toggleEvent(activeModalEvent);
+                        setActiveModalEvent(null);
+                        openCart();
+                      }
                     }}
                     className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md transition-all active:scale-95 cursor-pointer ${
                       isIncrementalSlotClaim
@@ -1344,6 +1426,192 @@ export function EventCatalogExplorer({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SLOT #2 CONFIRMATION & PERMANENT LOCKING MODAL */}
+      {/* ========================================================================= */}
+      {claimingSlot2Event && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            {slot2Success ? (
+              /* Success Celebration State */
+              <div className="text-center py-4 space-y-4">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/30">
+                  <CheckCircle2 className="h-9 w-9" />
+                </div>
+                <div className="space-y-1">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+                    Pass Complete • 2/2 Slots Locked
+                  </span>
+                  <h3 className="text-xl font-extrabold text-slate-900 font-display">
+                    Slot #2 Confirmed!
+                  </h3>
+                  <p className="text-xs text-slate-600 max-w-sm mx-auto">
+                    <strong>{slot2Success.eventName}</strong> has been confirmed and locked as your 2nd event under your delegate pass.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 space-y-1 text-center">
+                  <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block">
+                    Master Festival Pass Code
+                  </span>
+                  <span className="text-base font-mono font-black text-emerald-900 tracking-wider block">
+                    {slot2Success.passCode}
+                  </span>
+                  <p className="text-[11px] text-emerald-800 pt-1">
+                    Both competition slots are fully registered. No further payment or registration is required!
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <Link
+                    href="/dashboard/passes"
+                    onClick={() => {
+                      setClaimingSlot2Event(null);
+                      setSlot2Success(null);
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 px-4 text-xs font-bold text-white shadow-md hover:bg-emerald-700 transition-colors cursor-pointer"
+                  >
+                    <span>View Pass in Dashboard</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClaimingSlot2Event(null);
+                      setSlot2Success(null);
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Close &amp; Browse
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Confirmation Screen */
+              <>
+                {/* Header */}
+                <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 shadow-xs">
+                      <Gift className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900 font-display">
+                        Confirm Slot #2 Registration
+                      </h3>
+                      <p className="text-xs font-semibold text-emerald-700">
+                        Included with your active Festival Pass (+₹0 Extra Fee)
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClaimingSlot2Event(null);
+                      setSlot2Error(null);
+                    }}
+                    className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {slot2Error && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2 text-xs text-rose-800">
+                    <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>{slot2Error}</span>
+                  </div>
+                )}
+
+                {/* Event Summary Card */}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                      SLOT #2 SELECTION
+                    </span>
+                    <span className="text-xs font-black text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                      +₹0 (Included)
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {claimingSlot2Event.name}
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      {claimingSlot2Event.school_or_dept}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span>{claimingSlot2Event.event_date ? formatDate(claimingSlot2Event.event_date) : "25 Sep 2026"}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span>{claimingSlot2Event.start_time ? formatTime(claimingSlot2Event.start_time) : "TBD"}</span>
+                    </div>
+                    <div className="col-span-2 flex items-center gap-1.5 truncate">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{claimingSlot2Event.venue || "Campus Venue"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Locking Warning (Critical User Requirement) */}
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 space-y-1 text-xs text-amber-950">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>Permanent Pass Locking Notice</span>
+                  </div>
+                  <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                    Are you sure you want to add <strong>{claimingSlot2Event.name}</strong> to your 2nd slot? Once confirmed, your festival delegate pass will be <strong>permanently locked (2/2 slots used)</strong> and you will not be able to change, swap, or add any other events.
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClaimingSlot2Event(null);
+                      setSlot2Error(null);
+                    }}
+                    disabled={isSubmittingSlot2}
+                    className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 text-center cursor-pointer"
+                  >
+                    Cancel / Choose Another
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmSlot2}
+                    disabled={isSubmittingSlot2}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50 inline-flex items-center justify-center gap-1.5 text-center cursor-pointer"
+                  >
+                    {isSubmittingSlot2 ? (
+                      <span>Confirming &amp; Locking...</span>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Confirm &amp; Lock Slot #2 (+₹0)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

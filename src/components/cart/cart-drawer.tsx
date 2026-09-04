@@ -33,6 +33,7 @@ import {
   bypassTestRegisterAction,
   EasebuzzVerifyPayload,
 } from "@/actions/payments";
+import { claimSecondSlotAction } from "@/actions/passes";
 
 export function CartDrawer({
   user,
@@ -237,6 +238,37 @@ export function CartDrawer({
     } finally {
       setIsSubmitting(false);
       setIsBypassMode(false);
+    }
+  };
+
+  const handleConfirmSlot2FromCart = async () => {
+    if (!user) {
+      window.location.href = `/login?redirect=/events`;
+      return;
+    }
+    if (selectedEvents.length === 0) return;
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await claimSecondSlotAction(selectedEvents[0].id);
+      if (!res.success) {
+        setErrorMessage(res.error || "Failed to confirm 2nd event slot.");
+      } else {
+        setSuccessResult({
+          masterCode: res.passCode || "CONFIRMED",
+          totalRegistered: 2,
+          totalPayable: 0,
+          paymentId: "SLOT2-CONFIRMED",
+        });
+        clearCart();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to claim 2nd slot";
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -512,76 +544,121 @@ export function CartDrawer({
         {/* Drawer Footer */}
         {!successResult && selectedEvents.length > 0 && (
           <div className="p-3.5 sm:p-4 border-t border-slate-100 bg-white space-y-2">
-            {/* Primary Action: Standard / Pro Pass Full Amount */}
-            <button
-              onClick={() => {
-                if (!user) {
-                  window.location.href = `/login?redirect=/events`;
-                  return;
-                }
-                setIsTestPaymentMode(false);
-                setIsConfirmModalOpen(true);
-              }}
-              disabled={isSubmitting}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {isSubmitting && !isTestPaymentMode ? (
-                <span>Securing Payment Order...</span>
-              ) : (
-                <>
-                  <CreditCard className="h-4 w-4 text-cyan-200" />
-                  <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
-                  <ArrowRight className="h-4 w-4 ml-0.5" />
-                </>
-              )}
-            </button>
+            {/* Slot #2 Claim Mode for Users with 1 Confirmed Event */}
+            {confirmedEvents.length === 1 ? (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-emerald-300 bg-emerald-50/90 p-3 text-xs text-emerald-950 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Gift className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>Included in Active Festival Pass (+₹0)</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-900 leading-snug">
+                    Your festival pass already includes this 2nd competition. No extra fee or payment gateway needed. Once confirmed, your delegate pass will be permanently locked (2/2 slots).
+                  </p>
+                </div>
 
-            {/* Extra Action: Dedicated Test Payment with 1 Rupee (₹1) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (!user) {
-                  window.location.href = `/login?redirect=/events`;
-                  return;
-                }
-                setIsTestPaymentMode(true);
-                setIsConfirmModalOpen(true);
-              }}
-              disabled={isSubmitting}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 active:scale-[0.99] py-2.5 text-xs font-bold text-amber-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {isSubmitting && isTestPaymentMode ? (
-                <span>Securing ₹1 Test Order...</span>
-              ) : (
-                <>
-                  <Zap className="h-3.5 w-3.5 text-amber-600 fill-amber-500 shrink-0" />
-                  <span>Test Payment (₹1 Only)</span>
-                  <span className="text-[10px] font-semibold text-amber-800 bg-amber-200/80 px-1.5 py-0.2 rounded-md">
-                    Gateway Test
-                  </span>
-                </>
-              )}
-            </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSlot2FromCart}
+                  disabled={isSubmitting}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] py-3 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <span>Confirming &amp; Locking Slot #2...</span>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Confirm &amp; Lock Slot #2 (+₹0)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : confirmedEvents.length >= 2 ? (
+              <div className="text-center p-3.5 rounded-2xl bg-slate-100 text-xs space-y-2">
+                <p className="font-bold text-slate-800">Your festival pass is complete (2/2 events confirmed).</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearCart();
+                    closeCart();
+                  }}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-primary transition-colors cursor-pointer"
+                >
+                  Clear Cart &amp; View Pass
+                </button>
+              </div>
+            ) : (
+              /* Regular New Pass Purchase Buttons */
+              <>
+                <button
+                  onClick={() => {
+                    if (!user) {
+                      window.location.href = `/login?redirect=/events`;
+                      return;
+                    }
+                    setIsTestPaymentMode(false);
+                    setIsConfirmModalOpen(true);
+                  }}
+                  disabled={isSubmitting}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting && !isTestPaymentMode ? (
+                    <span>Securing Payment Order...</span>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 text-cyan-200" />
+                      <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
+                      <ArrowRight className="h-4 w-4 ml-0.5" />
+                    </>
+                  )}
+                </button>
 
-            {/* Dedicated Test Option: Skip Payment & Complete Registration Directly */}
-            <button
-              type="button"
-              onClick={handleSkipPaymentTest}
-              disabled={isSubmitting}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 bg-emerald-50/80 hover:bg-emerald-100 active:scale-[0.99] py-2.5 text-xs font-bold text-emerald-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {isSubmitting && isBypassMode ? (
-                <span>Bypassing Payment &amp; Registering...</span>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Skip Payment &amp; Register Directly</span>
-                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/90 px-1.5 py-0.5 rounded-md">
-                    Test Mode (₹0)
-                  </span>
-                </>
-              )}
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user) {
+                      window.location.href = `/login?redirect=/events`;
+                      return;
+                    }
+                    setIsTestPaymentMode(true);
+                    setIsConfirmModalOpen(true);
+                  }}
+                  disabled={isSubmitting}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 active:scale-[0.99] py-2.5 text-xs font-bold text-amber-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting && isTestPaymentMode ? (
+                    <span>Securing ₹1 Test Order...</span>
+                  ) : (
+                    <>
+                      <Zap className="h-3.5 w-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                      <span>Test Payment (₹1 Only)</span>
+                      <span className="text-[10px] font-semibold text-amber-800 bg-amber-200/80 px-1.5 py-0.2 rounded-md">
+                        Gateway Test
+                      </span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSkipPaymentTest}
+                  disabled={isSubmitting}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 bg-emerald-50/80 hover:bg-emerald-100 active:scale-[0.99] py-2.5 text-xs font-bold text-emerald-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting && isBypassMode ? (
+                    <span>Bypassing Payment &amp; Registering...</span>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span>Skip Payment &amp; Register Directly</span>
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/90 px-1.5 py-0.5 rounded-md">
+                        Test Mode (₹0)
+                      </span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
               <button

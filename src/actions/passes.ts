@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export interface UserPassSummary {
   hasPass: boolean;
@@ -306,6 +306,7 @@ export async function claimSecondSlotAction(eventId: string) {
       };
     }
 
+    revalidateTag("public-events");
     revalidatePath("/", "layout");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard", "page");
