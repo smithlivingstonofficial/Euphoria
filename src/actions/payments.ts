@@ -99,15 +99,18 @@ export async function createEasebuzzOrderAction(
 
     // Unique Transaction ID (max 40 alphanumeric characters with Euphoria 2026 prefix)
     const txnid = `EUPH26-${isTestPayment ? "TEST-" : (hasProEvent ? "FLAG-" : "REG-")}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const userPhone = profile.mobile_number || profile.phone || "9999999999";
-    const userName = profile.full_name || "Delegate";
+    // Ensure 10-digit clean phone and sanitized customer name for payment gateway
+    const rawPhone = (profile.mobile_number || profile.phone || "9999999999").replace(/\D/g, "");
+    const userPhone = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone.padStart(10, "9");
+    const userName = (profile.full_name || "Delegate").replace(/[^a-zA-Z ]/g, "").trim().slice(0, 50) || "Delegate";
+    const userEmail = (user.email || profile.email || "delegate@kareeuphoria.in").trim().toLowerCase();
     
     // Product description strictly alphanumeric and spaces to comply with Easebuzz validation
     const productInfo = isTestPayment
       ? "Euphoria 2026 Test Pass"
       : (hasProEvent ? "Euphoria 2026 Flagship Pass" : "Euphoria 2026 Regular Pass");
 
-    // Clean event names for audit UDF3 (alphanumeric and commas/spaces only)
+    // Clean event names for audit UDF3 (alphanumeric and spaces only)
     const cleanEventNames = selectedEvts
       .map((e) => e.name.replace(/[^a-zA-Z0-9 ]/g, "").trim())
       .filter(Boolean)
@@ -121,7 +124,7 @@ export async function createEasebuzzOrderAction(
     const cleanDept = ((profile.department ? `${profile.department} ` : "") + (profile.participant_type || "Student")).replace(/[^a-zA-Z0-9 -]/g, "").trim().slice(0, 60);
     const cleanCity = (profile.city || "Srivilliputhur").replace(/[^a-zA-Z0-9 ]/g, "").trim().slice(0, 50);
 
-    // Call Easebuzz Initiate Payment API
+    // Call Easebuzz Initiate Payment API (Note: Easebuzz API requires udf8-udf10 to be empty to avoid Hash mismatch)
     const initRes = await initiateEasebuzzPayment(
       {
         key,
@@ -129,7 +132,7 @@ export async function createEasebuzzOrderAction(
         amount: passAmountRupees,
         productinfo: productInfo,
         firstname: userName,
-        email: user.email || profile.email || "delegate@kareeuphoria.in",
+        email: userEmail,
         phone: userPhone,
         surl: `${baseUrl}/api/payments/easebuzz/callback?status=success`,
         furl: `${baseUrl}/api/payments/easebuzz/callback?status=failure`,
@@ -140,9 +143,6 @@ export async function createEasebuzzOrderAction(
         udf5: txnid,
         udf6: candidateRegnOrId,
         udf7: auditKey,
-        udf8: cleanCollege,
-        udf9: cleanDept,
-        udf10: cleanCity,
         sub_merchant_id: subMerchantId || undefined,
       },
       salt,
@@ -153,7 +153,7 @@ export async function createEasebuzzOrderAction(
       console.error("Easebuzz initiate failed:", initRes);
       return {
         success: false,
-        error: initRes.data || initRes.error_desc || "Easebuzz Payment gateway initiation failed.",
+        error: (initRes as any).error_desc || initRes.data || "Easebuzz Payment gateway initiation failed.",
       };
     }
 
@@ -258,7 +258,7 @@ export async function verifyEasebuzzPaymentAction(
       const candidateRegnOrId = (profile.register_number?.trim() || user.id || "CANDIDATE").replace(/[^a-zA-Z0-9_-]/g, "");
       const udf6Received = (rawPayload?.udf6 as string) || candidateRegnOrId;
       const udf7Received = (rawPayload?.udf7 as string) || "Euphoria 2026";
-      const udf8Received = (rawPayload?.udf8 as string) || (profile.college_name || "KARE").replace(/[^a-zA-Z0-9 ]/g, "").trim().slice(0, 100);
+      const udf8Received = (rawPayload?.udf8 as string) || "";
       const udf9Received = (rawPayload?.udf9 as string) || "";
       const udf10Received = (rawPayload?.udf10 as string) || "";
 
