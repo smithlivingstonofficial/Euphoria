@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Crown,
   ShieldCheck,
@@ -22,6 +22,12 @@ import {
   Zap,
   Globe,
   Radio,
+  Search,
+  X,
+  UserCheck,
+  Building,
+  Mail,
+  ChevronDown,
 } from "lucide-react";
 import { updateUserRoleAdmin, purgeDatabaseTestDataAdmin } from "@/actions/admin";
 
@@ -66,9 +72,26 @@ interface SuperAdminClientProps {
 export function SuperAdminClient({ initialData }: SuperAdminClientProps) {
   const [data, setData] = useState(initialData);
   const [selectedUserIdToPromote, setSelectedUserIdToPromote] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const [isPromoting, setIsPromoting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(e.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Emergency Purge State
   const [purgeInput, setPurgeInput] = useState("");
@@ -114,6 +137,8 @@ export function SuperAdminClient({ initialData }: SuperAdminClientProps) {
           }));
         }
         setSelectedUserIdToPromote("");
+        setUserSearchQuery("");
+        setIsDropdownOpen(false);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Promotion error";
@@ -192,9 +217,29 @@ export function SuperAdminClient({ initialData }: SuperAdminClientProps) {
   };
 
   // Candidates who are not already admins
-  const eligibleCandidates = data.allProfiles.filter(
-    (p) => !data.admins.some((a) => a.userId === p.id)
-  );
+  const eligibleCandidates = useMemo(() => {
+    return data.allProfiles.filter(
+      (p) => !data.admins.some((a) => a.userId === p.id)
+    );
+  }, [data.allProfiles, data.admins]);
+
+  // Dynamically filter candidates as the Super Admin types in the text box
+  const matchingCandidates = useMemo(() => {
+    const q = userSearchQuery.toLowerCase().trim();
+    if (!q) return eligibleCandidates;
+    return eligibleCandidates.filter((p) => {
+      const nameMatch = p.full_name?.toLowerCase().includes(q);
+      const emailMatch = p.email?.toLowerCase().includes(q);
+      const deptMatch = p.department?.toLowerCase().includes(q);
+      const typeMatch = p.participant_type?.toLowerCase().includes(q);
+      const phoneMatch = p.mobile_number && p.mobile_number.includes(q);
+      return nameMatch || emailMatch || deptMatch || typeMatch || phoneMatch;
+    });
+  }, [eligibleCandidates, userSearchQuery]);
+
+  const selectedCandidateObj = useMemo(() => {
+    return eligibleCandidates.find((c) => c.id === selectedUserIdToPromote);
+  }, [eligibleCandidates, selectedUserIdToPromote]);
 
   return (
     <div className="space-y-8 pb-12">
@@ -316,30 +361,140 @@ export function SuperAdminClient({ initialData }: SuperAdminClientProps) {
 
         {/* Promote User Form */}
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4 sm:p-5 space-y-3">
-          <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-            <UserPlus className="h-4 w-4 text-indigo-600" />
-            <span>Designate New Platform Administrator</span>
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <UserPlus className="h-4 w-4 text-indigo-600" />
+              <span>Designate New Platform Administrator</span>
+            </label>
+            <span className="text-[10.5px] font-semibold text-slate-500">
+              {eligibleCandidates.length} eligible user{eligibleCandidates.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <select
-              value={selectedUserIdToPromote}
-              onChange={(e) => setSelectedUserIdToPromote(e.target.value)}
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-indigo-600 focus:outline-none cursor-pointer"
-            >
-              <option value="">Select an enrolled participant / user to elevate...</option>
-              {eligibleCandidates.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name} ({p.email}) — {p.department || p.participant_type}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3">
+            {/* Searchable Autocomplete Text Box */}
+            <div ref={searchContainerRef} className="relative flex-1">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={userSearchQuery}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setUserSearchQuery(val);
+                    setIsDropdownOpen(true);
+                    if (selectedCandidateObj && val !== `${selectedCandidateObj.full_name} (${selectedCandidateObj.email})`) {
+                      setSelectedUserIdToPromote("");
+                    }
+                  }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  placeholder="Type to search user by name, email, department..."
+                  className={`w-full rounded-xl border bg-white pl-10 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all shadow-2xs ${
+                    selectedUserIdToPromote
+                      ? "border-emerald-400 ring-2 ring-emerald-500/10"
+                      : "border-slate-200 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/10"
+                  }`}
+                />
 
+                {/* Clear button (X) */}
+                {userSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserSearchQuery("");
+                      setSelectedUserIdToPromote("");
+                      setIsDropdownOpen(false);
+                    }}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Suggestions Overlay Dropdown */}
+              {isDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl z-50 divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {matchingCandidates.length > 0 ? (
+                    matchingCandidates.map((p) => {
+                      const isCandidateSelected = selectedUserIdToPromote === p.id;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedUserIdToPromote(p.id);
+                            setUserSearchQuery(`${p.full_name} (${p.email})`);
+                            setIsDropdownOpen(false);
+                          }}
+                          className={`p-3 flex items-center justify-between gap-3 hover:bg-indigo-50/70 cursor-pointer transition-colors ${
+                            isCandidateSelected ? "bg-indigo-50" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs">
+                              {p.full_name ? p.full_name.charAt(0).toUpperCase() : "U"}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {p.full_name || "Enrolled Candidate"}
+                              </p>
+                              <p className="text-[11px] text-slate-500 font-mono truncate">
+                                {p.email}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200/60 max-w-[150px] truncate">
+                              {p.department || (p.participant_type === "internal" ? "KARE" : "External")}
+                            </span>
+                            {isCandidateSelected && (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-4 text-center">
+                      <p className="text-xs text-slate-500">
+                        No users found matching &ldquo;<span className="font-semibold text-slate-800">{userSearchQuery}</span>&rdquo;
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Selected User Confirmation Pill */}
+              {selectedCandidateObj && (
+                <div className="mt-2 flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs text-emerald-800 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 min-w-0 truncate">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span className="truncate">
+                      Ready to elevate: <strong>{selectedCandidateObj.full_name}</strong> ({selectedCandidateObj.email})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUserIdToPromote("");
+                      setUserSearchQuery("");
+                    }}
+                    className="text-emerald-700 hover:text-emerald-900 font-bold text-[11px] ml-2 shrink-0 cursor-pointer hover:underline"
+                  >
+                    Reset
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Grant Button */}
             <button
               type="button"
               disabled={!selectedUserIdToPromote || isPromoting}
               onClick={handlePromoteToAdmin}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
               <span>{isPromoting ? "Promoting..." : "Grant Admin Authority"}</span>
