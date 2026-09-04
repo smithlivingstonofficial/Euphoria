@@ -30,7 +30,6 @@ import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import {
   createEasebuzzOrderAction,
   verifyEasebuzzPaymentAction,
-  bypassTestRegisterAction,
   EasebuzzVerifyPayload,
 } from "@/actions/payments";
 import { claimSecondSlotAction } from "@/actions/passes";
@@ -61,8 +60,6 @@ export function CartDrawer({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [isTestPaymentMode, setIsTestPaymentMode] = useState(false);
-  const [isBypassMode, setIsBypassMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     masterCode: string;
@@ -115,7 +112,7 @@ export function CartDrawer({
         setSuccessResult({
           masterCode: verifyRes.masterCode || "CONFIRMED",
           totalRegistered: verifyRes.totalRegistered || payload.eventIds.length,
-          totalPayable: verifyRes.totalPayable || (typeof payload.amount === "number" ? payload.amount : (payload.isTestPayment ? 1 : 200)),
+          totalPayable: verifyRes.totalPayable || (typeof payload.amount === "number" ? payload.amount : pricing.totalAmount),
           paymentId: verifyRes.paymentId,
         });
         clearCart();
@@ -128,7 +125,7 @@ export function CartDrawer({
     }
   };
 
-  const handleEasebuzzCheckout = async (isTestPayment: boolean = isTestPaymentMode) => {
+  const handleEasebuzzCheckout = async () => {
     if (!user) {
       window.location.href = `/login?redirect=/events`;
       return;
@@ -142,8 +139,8 @@ export function CartDrawer({
 
     const eventIds = selectedEvents.map((e) => e.id);
 
-    // 1. Create Easebuzz Order Server-Side & obtain access_key (amount = ₹1 for test mode)
-    const orderRes = await createEasebuzzOrderAction(eventIds, needsAccommodation, isTestPayment);
+    // 1. Create Easebuzz Order Server-Side & obtain access_key
+    const orderRes = await createEasebuzzOrderAction(eventIds, needsAccommodation, false);
 
     if (!orderRes.success || !orderRes.accessKey) {
       if (orderRes.redirect) {
@@ -155,7 +152,7 @@ export function CartDrawer({
       return;
     }
 
-    const { accessKey, key, env = "test", amount = (isTestPayment ? 1 : 200), txnid = "" } = orderRes;
+    const { accessKey, key, env = "test", amount = pricing.totalAmount, txnid = "" } = orderRes;
 
     // 2. Launch Easebuzz Checkout iFrame Modal if SDK loaded
     if (typeof window !== "undefined" && (window as any).EasebuzzCheckout) {
@@ -174,7 +171,7 @@ export function CartDrawer({
                 hash: response.hash || "",
                 eventIds,
                 needsAccommodation,
-                isTestPayment,
+                isTestPayment: false,
                 rawPayload: response,
               });
             } else if (response.status === "userCancelled") {
@@ -201,43 +198,6 @@ export function CartDrawer({
       // Hosted redirect fallback if iFrame script is blocked
       const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
       window.location.href = hostedUrl;
-    }
-  };
-
-  const handleSkipPaymentTest = async () => {
-    if (!user) {
-      window.location.href = `/login?redirect=/events`;
-      return;
-    }
-
-    if (selectedEvents.length === 0) return;
-
-    setIsSubmitting(true);
-    setIsBypassMode(true);
-    setErrorMessage(null);
-    setSuccessResult(null);
-
-    try {
-      const eventIds = selectedEvents.map((e) => e.id);
-      const res = await bypassTestRegisterAction(eventIds, needsAccommodation);
-
-      if (!res.success) {
-        setErrorMessage(res.error || "Failed to complete test bypass registration.");
-      } else {
-        setSuccessResult({
-          masterCode: res.masterCode || "CONFIRMED",
-          totalRegistered: res.totalRegistered || eventIds.length,
-          totalPayable: 0,
-          paymentId: res.paymentId || "TEST-BYPASS",
-        });
-        clearCart();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Test bypass registration failed";
-      setErrorMessage(msg);
-    } finally {
-      setIsSubmitting(false);
-      setIsBypassMode(false);
     }
   };
 
@@ -589,75 +549,27 @@ export function CartDrawer({
               </div>
             ) : (
               /* Regular New Pass Purchase Buttons */
-              <>
-                <button
-                  onClick={() => {
-                    if (!user) {
-                      window.location.href = `/login?redirect=/events`;
-                      return;
-                    }
-                    setIsTestPaymentMode(false);
-                    setIsConfirmModalOpen(true);
-                  }}
-                  disabled={isSubmitting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-bold text-white shadow-md shadow-primary/20 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting && !isTestPaymentMode ? (
-                    <span>Securing Payment Order...</span>
-                  ) : (
-                    <>
-                      <CreditCard className="h-4 w-4 text-cyan-200" />
-                      <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
-                      <ArrowRight className="h-4 w-4 ml-0.5" />
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user) {
-                      window.location.href = `/login?redirect=/events`;
-                      return;
-                    }
-                    setIsTestPaymentMode(true);
-                    setIsConfirmModalOpen(true);
-                  }}
-                  disabled={isSubmitting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 active:scale-[0.99] py-2.5 text-xs font-bold text-amber-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting && isTestPaymentMode ? (
-                    <span>Securing ₹1 Test Order...</span>
-                  ) : (
-                    <>
-                      <Zap className="h-3.5 w-3.5 text-amber-600 fill-amber-500 shrink-0" />
-                      <span>Test Payment (₹1 Only)</span>
-                      <span className="text-[10px] font-semibold text-amber-800 bg-amber-200/80 px-1.5 py-0.2 rounded-md">
-                        Gateway Test
-                      </span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSkipPaymentTest}
-                  disabled={isSubmitting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 bg-emerald-50/80 hover:bg-emerald-100 active:scale-[0.99] py-2.5 text-xs font-bold text-emerald-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting && isBypassMode ? (
-                    <span>Bypassing Payment &amp; Registering...</span>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                      <span>Skip Payment &amp; Register Directly</span>
-                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/90 px-1.5 py-0.5 rounded-md">
-                        Test Mode (₹0)
-                      </span>
-                    </>
-                  )}
-                </button>
-              </>
+              <button
+                onClick={() => {
+                  if (!user) {
+                    window.location.href = `/login?redirect=/events`;
+                    return;
+                  }
+                  setIsConfirmModalOpen(true);
+                }}
+                disabled={isSubmitting}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <span>Securing Payment Order...</span>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4 text-cyan-200" />
+                    <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
+                    <ArrowRight className="h-4 w-4 ml-0.5" />
+                  </>
+                )}
+              </button>
             )}
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
@@ -711,27 +623,25 @@ export function CartDrawer({
               </button>
             </div>
 
-            {/* Test Payment Banner if in test mode */}
-            {isTestPaymentMode && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50/95 p-3 flex items-start justify-between gap-3 text-xs text-amber-950 animate-in fade-in duration-150">
-                <div className="flex items-start gap-2.5">
-                  <Zap className="h-4 w-4 text-amber-600 fill-amber-500 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
-                    <p className="font-extrabold text-amber-950">🧪 ₹1 Gateway Test Mode Active</p>
-                    <p className="text-[11px] text-amber-900 leading-snug">
-                      Instead of the full fee ({formatCurrency(pricing.totalAmount)}), you will only be charged a token payment of <strong>₹1.00</strong> to verify the live Easebuzz gateway.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsTestPaymentMode(false)}
-                  className="text-[11px] font-bold text-amber-900 hover:text-indigo-600 underline cursor-pointer shrink-0"
-                >
-                  Switch to Regular
-                </button>
+            {/* Pricing Summary */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <div>
+                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                  {hasProEventSelected ? "⭐ Euphoria 2026 Flagship Pass" : "⚡ Euphoria 2026 Regular Pass"}
+                </span>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Official Euphoria 2026 Delegate Pass
+                </p>
               </div>
-            )}
+              <div className="text-right">
+                <span className="text-base font-extrabold font-mono text-primary">
+                  {formatCurrency(pricing.totalAmount)}
+                </span>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Charged Online via Easebuzz
+                </p>
+              </div>
+            </div>
 
             {/* Event Selections Summary */}
             <div className="space-y-2">
@@ -769,25 +679,6 @@ export function CartDrawer({
               </div>
             </div>
 
-            {/* Pricing Summary */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-              <div>
-                <span className="font-bold text-slate-800">
-                  {hasProEventSelected ? "⭐ Pro Delegate Pass" : "📌 Standard Delegate Pass"}
-                </span>
-                <p className="text-[10px] text-slate-500">
-                  {isTestPaymentMode ? "Easebuzz Gateway Test Simulation" : "Official Euphoria 2026 Pass"}
-                </p>
-              </div>
-              <div className="text-right">
-                <span className={`text-base font-extrabold font-mono ${isTestPaymentMode ? "text-emerald-700" : "text-primary"}`}>
-                  {formatCurrency(isTestPaymentMode ? 1 : pricing.totalAmount)}
-                </span>
-                <p className="text-[10px] text-slate-400">
-                  {isTestPaymentMode ? "Charged Online Now (Test ₹1)" : "Charged Online Now"}
-                </p>
-              </div>
-            </div>
 
             {/* PROMINENT ACCOMMODATION STATUS SECTION */}
             <div className="space-y-2">
@@ -858,36 +749,13 @@ export function CartDrawer({
                 type="button"
                 onClick={() => {
                   setIsConfirmModalOpen(false);
-                  handleEasebuzzCheckout(isTestPaymentMode);
+                  handleEasebuzzCheckout();
                 }}
                 disabled={isSubmitting}
-                className={`flex-1 py-3 px-4 rounded-xl text-white text-xs font-bold shadow-md transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5 ${
-                  isTestPaymentMode
-                    ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20"
-                    : "bg-primary hover:bg-primary-hover shadow-primary/20"
-                }`}
+                className="flex-1 py-3 px-4 rounded-xl text-white text-xs font-bold shadow-md bg-primary hover:bg-primary-hover shadow-primary/20 transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
               >
-                <span>
-                  {isTestPaymentMode
-                    ? "Confirm & Pay ₹1 (Test Mode)"
-                    : `Confirm & Pay ${formatCurrency(pricing.totalAmount)}`}
-                </span>
+                <span>Confirm &amp; Pay {formatCurrency(pricing.totalAmount)}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            {/* Optional Skip Payment Test Action in Modal */}
-            <div className="text-center pt-1 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsConfirmModalOpen(false);
-                  handleSkipPaymentTest();
-                }}
-                disabled={isSubmitting}
-                className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 underline cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-              >
-                <span>🧪 Test Option: Skip payment &amp; complete registration directly (₹0)</span>
               </button>
             </div>
           </div>
