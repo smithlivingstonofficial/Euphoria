@@ -57,21 +57,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!userId || eventIds.length === 0) {
+    const adminClient = await createAdminClient();
+
+    // Resolve event UUIDs: check pending order metadata if udf3 contains names or fallback
+    let resolvedEventIds = eventIds;
+    try {
+      const { data: pendingOrder } = await adminClient
+        .from("orders")
+        .select("metadata, user_id")
+        .eq("order_number", txnid)
+        .maybeSingle();
+
+      if (pendingOrder?.metadata?.event_ids && Array.isArray(pendingOrder.metadata.event_ids) && pendingOrder.metadata.event_ids.length > 0) {
+        resolvedEventIds = pendingOrder.metadata.event_ids;
+      }
+    } catch (lookupErr) {
+      console.warn("Pending order lookup in callback warning:", lookupErr);
+    }
+
+    if (!userId || resolvedEventIds.length === 0) {
       return NextResponse.redirect(
         new URL(`/dashboard?payment=notice&msg=processed`, baseUrl),
         { status: 303 }
       );
     }
 
-    const adminClient = await createAdminClient();
-
     // Call atomic RPC
     const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
       "fn_checkout_pass_atomic",
       {
         p_user_id: userId,
-        p_event_ids: eventIds,
+        p_event_ids: resolvedEventIds,
         p_payment_provider: "easebuzz",
         p_order_metadata: {
           easebuzz_pay_id: easepayid || `ebz_${Date.now()}`,
