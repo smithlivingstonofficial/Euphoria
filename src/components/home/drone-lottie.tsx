@@ -84,8 +84,8 @@ export function DroneLottie({ className = "", size = "lg" }: DroneLottieProps) {
           <Bot className="h-3.5 w-3.5" />
         </div>
         <div className="text-left">
-          <div className="text-[10px] font-black text-slate-800 tracking-tight leading-none">Robotics &amp; AI</div>
-          <div className="text-[8.5px] font-semibold text-indigo-600 font-mono leading-none mt-0.5">Autonomous Arena</div>
+          <div className="text-[10px] font-black text-slate-800 tracking-tight leading-none">Technical</div>
+          <div className="text-[8.5px] font-semibold text-indigo-600 font-mono leading-none mt-0.5">Events Arena</div>
         </div>
       </div>
 
@@ -118,8 +118,8 @@ export function DroneLottie({ className = "", size = "lg" }: DroneLottieProps) {
           <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
         </span>
         <div className="text-left">
-          <div className="text-[9px] font-black text-white font-mono leading-none tracking-wider uppercase">RADAR ACTIVE</div>
-          <div className="text-[7.5px] font-semibold text-emerald-400 font-mono leading-none mt-0.5">Live Telemetry</div>
+          <div className="text-[9px] font-black text-white font-mono leading-none tracking-wider uppercase">Live Action</div>
+          <div className="text-[7.5px] font-semibold text-emerald-400 font-mono leading-none mt-0.5">Events</div>
         </div>
       </div>
 

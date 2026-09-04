@@ -16,9 +16,12 @@ import {
   Plus,
   Star,
   Sparkles,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { getEventSchedule } from "@/lib/schedule";
+import { parseEventMetadata } from "@/components/events/event-catalog-explorer";
 import { deleteEventAdmin, updateEventAdmin } from "@/actions/admin";
 
 interface EventItem {
@@ -105,11 +108,119 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
     }
   };
 
+  const exportEventsCSV = () => {
+    const listToExport = filteredEvents.length > 0 ? filteredEvents : events;
+
+    const headers = [
+      "S.No",
+      "Event Name",
+      "Slug",
+      "School / Academic Department",
+      "Category / Track",
+      "Tier",
+      "Event Date",
+      "Start Date",
+      "End Date",
+      "Start Time",
+      "End Time",
+      "Is 2-Day Event",
+      "Schedule Label",
+      "Venue Location",
+      "Max Capacity",
+      "Confirmed Registrations",
+      "Slot 1 First-Choice Count",
+      "Available Seats",
+      "Fill Percentage",
+      "Status",
+      "Coordinator Names",
+      "Coordinator Mobiles",
+      "Coordinator Emails",
+      "WhatsApp Group Link",
+      "Brochure PDF URL",
+      "Description",
+      "Rules & Guidelines",
+    ];
+
+    const escapeCSV = (val?: string | number | null | boolean) => {
+      if (val === undefined || val === null) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = listToExport.map((evt, idx) => {
+      const sched = getEventSchedule(evt);
+      const regCount = (evt.registrations || []).length;
+      const firstSlotCount = (evt.registrations || []).filter((r) => r.slot_number === 1).length;
+      const limit = evt.participant_limit || 100;
+      const available = Math.max(0, limit - regCount);
+      const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
+
+      const meta = parseEventMetadata({
+        ...evt,
+        school_or_dept: evt.school_or_dept || "",
+        venue: evt.venue || "",
+        event_date: evt.event_date || "",
+        start_time: evt.start_time || "",
+        end_time: evt.end_time || "",
+        registration_fee: evt.registration_fee || 0,
+        participant_limit: limit,
+        is_pro_event: Boolean(evt.is_pro_event),
+      } as any);
+
+      return [
+        (idx + 1).toString(),
+        escapeCSV(evt.name),
+        escapeCSV(evt.slug),
+        escapeCSV(evt.school_or_dept || "KARE"),
+        escapeCSV(evt.category?.name || "General Track"),
+        escapeCSV(evt.is_pro_event ? "Flagship" : "Regular"),
+        escapeCSV(evt.event_date || sched.startDate),
+        escapeCSV(sched.startDate),
+        escapeCSV(sched.endDate),
+        escapeCSV(sched.startTime),
+        escapeCSV(sched.endTime),
+        escapeCSV(sched.isTwoDay ? "YES" : "NO"),
+        escapeCSV(sched.displaySchedule),
+        escapeCSV(evt.venue || "Campus Venue"),
+        limit.toString(),
+        regCount.toString(),
+        firstSlotCount.toString(),
+        available.toString(),
+        `${fillPct}%`,
+        escapeCSV(evt.status),
+        escapeCSV(meta.names || (evt as any).coordinator_names || ""),
+        escapeCSV(meta.mobiles || (evt as any).coordinator_mobiles || ""),
+        escapeCSV(meta.emails || (evt as any).coordinator_emails || ""),
+        escapeCSV(meta.whatsappLink || (evt as any).whatsapp_link || ""),
+        escapeCSV(meta.brochureUrl || (evt as any).brochure_url || ""),
+        escapeCSV(meta.cleanDescription || evt.description || ""),
+        escapeCSV(Array.isArray((evt as any).rules) ? (evt as any).rules.join(" | ") : (evt as any).rules || ""),
+      ];
+    });
+
+    const csvContent =
+      "\uFEFF" +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `Euphoria_2026_Events_Master_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-4">
-      {/* Search and Filters Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      {/* Search, Filters and Export Controls Bar */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
             type="text"
@@ -120,7 +231,7 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Tier Filter */}
           <select
             value={tierFilter}
@@ -147,6 +258,17 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
             <option value="completed">Completed</option>
             <option value="draft">Draft</option>
           </select>
+
+          {/* Export CSV Button */}
+          <button
+            type="button"
+            onClick={exportEventsCSV}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 active:scale-95 transition-all shadow-2xs shrink-0 cursor-pointer"
+            title="Download full event catalog as CSV spreadsheet with all schedules, coordinates, and rules"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <span>Export CSV ({filteredEvents.length})</span>
+          </button>
         </div>
       </div>
 

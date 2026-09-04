@@ -13,6 +13,7 @@ import {
   AlertCircle,
   ExternalLink,
   Sparkles,
+  FileSpreadsheet,
 } from "lucide-react";
 import { getAllEventsAdmin } from "@/actions/admin";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
@@ -42,14 +43,24 @@ export default async function AdminEventsPage() {
           </p>
         </div>
 
-        {/* Action Button */}
-        <Link
-          href="/admin/events/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-primary-hover transition-colors shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add New Event</span>
-        </Link>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/reports"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors shrink-0"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            <span>Reports &amp; Exports</span>
+          </Link>
+
+          <Link
+            href="/admin/events/new"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-primary-hover transition-colors shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add New Event</span>
+          </Link>
+        </div>
       </div>
 
       {/* Interactive Events Table Component */}

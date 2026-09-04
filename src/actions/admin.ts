@@ -1123,7 +1123,7 @@ export async function getAllOrdersAdmin() {
         .order("created_at", { ascending: false }),
       adminClient
         .from("profiles")
-        .select("id, full_name, email, mobile_number, participant_type"),
+        .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number, city"),
       adminClient
         .from("delegate_passes")
         .select("id, user_id, pass_code, pass_tier, amount_paid, status"),
@@ -1155,6 +1155,10 @@ export async function getAllOrdersAdmin() {
           email: userProf?.email || "",
           mobileNumber: userProf?.mobile_number || "",
           participantType: userProf?.participant_type || "external",
+          collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
+          department: userProf?.department || "",
+          registerNumber: userProf?.register_number || "",
+          city: userProf?.city || "",
         },
         pass: userPass
           ? {
