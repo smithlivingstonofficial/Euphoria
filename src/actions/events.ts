@@ -3,6 +3,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, unstable_cache, revalidateTag } from "next/cache";
 import { isProfileComplete } from "@/lib/profile";
+import { getEventSchedule } from "@/lib/schedule";
 
 // Raw query with column projection to reduce egress bandwidth
 async function fetchPublicEventsRaw() {
@@ -278,6 +279,7 @@ async function fetchFestivalScheduleRaw() {
         id,
         name,
         slug,
+        description,
         school_or_dept,
         venue,
         event_date,
@@ -296,22 +298,31 @@ async function fetchFestivalScheduleRaw() {
 
     if (error) throw error;
 
-    const day1Events = (events || []).filter((e) => e.event_date === "2026-09-25");
-    const day2Events = (events || []).filter((e) => e.event_date === "2026-09-26");
-    const otherEvents = (events || []).filter(
-      (e) => e.event_date !== "2026-09-25" && e.event_date !== "2026-09-26"
-    );
+    const day1Events = (events || []).filter((e) => {
+      const s = getEventSchedule(e);
+      return s.isTwoDay || s.startDate === "2026-09-25";
+    });
+    const day2Events = (events || []).filter((e) => {
+      const s = getEventSchedule(e);
+      return s.isTwoDay || s.endDate === "2026-09-26";
+    });
+    const twoDayEvents = (events || []).filter((e) => getEventSchedule(e).isTwoDay);
+    const otherEvents = (events || []).filter((e) => {
+      const s = getEventSchedule(e);
+      return !s.isTwoDay && s.startDate !== "2026-09-25" && s.endDate !== "2026-09-26";
+    });
 
     return {
       success: true,
       day1: day1Events,
       day2: day2Events,
+      twoDay: twoDayEvents,
       other: otherEvents,
       totalCount: (events || []).length,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load schedule";
-    return { success: false, error: msg, day1: [], day2: [], other: [], totalCount: 0 };
+    return { success: false, error: msg, day1: [], day2: [], twoDay: [], other: [], totalCount: 0 };
   }
 }
 

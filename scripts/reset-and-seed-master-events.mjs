@@ -42,6 +42,93 @@ const SCHOOL_TO_CATEGORY_SLUG = {
   "First Year Engineering & Foundation (FE)": "first-year-engineering",
 };
 
+const TWO_DAY_EVENTS_MAP = {
+  "archathon-24": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:30:00",
+    endTime: "16:00:00",
+    scheduleLabel: "25 Sep 2026, 9:30 AM → 26 Sep 2026, 4:00 PM",
+  },
+  "skyforge-2026-revolutionizing-the-industry-with-smart-uavs": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "10:00:00",
+    endTime: "14:00:00",
+    scheduleLabel: "25 Sep 2026, 10:00 AM → 26 Sep 2026, 2:00 PM",
+  },
+  "smart-city-innovation-for-a-sustainable-future": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "10:00:00",
+    endTime: "13:00:00",
+    scheduleLabel: "25 Sep 2026, 10:00 AM → 26 Sep 2026, 1:00 PM",
+  },
+  "bot-velocity-engineered-to-race": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:00:00",
+    endTime: "09:00:00",
+    scheduleLabel: "25 Sep 2026, 9:00 AM → 26 Sep 2026, 9:00 AM (24-Hour)",
+  },
+  "draft-kings-a-cad-contest": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:00:00",
+    endTime: "09:00:00",
+    scheduleLabel: "25 Sep 2026, 9:00 AM → 26 Sep 2026, 9:00 AM (24-Hour)",
+  },
+  "wonders-of-ai-40": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:00:00",
+    endTime: "09:00:00",
+    scheduleLabel: "25 Sep 2026, 9:00 AM → 26 Sep 2026, 9:00 AM (24-Hour Hackathon)",
+  },
+  "hack-odyssey-40": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:00:00",
+    endTime: "09:00:00",
+    scheduleLabel: "25 Sep 2026, 9:00 AM → 26 Sep 2026, 9:00 AM (24-Hour Hackathon)",
+  },
+  "chipcraft-30": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:30:00",
+    endTime: "11:00:00",
+    scheduleLabel: "25 Sep 2026, 9:30 AM → 26 Sep 2026, 11:00 AM",
+  },
+  "qnx-world": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:30:00",
+    endTime: "11:00:00",
+    scheduleLabel: "25 Sep 2026, 9:30 AM → 26 Sep 2026, 11:00 AM",
+  },
+  "accfinthon": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:00:00",
+    endTime: "12:00:00",
+    scheduleLabel: "25 Sep 2026, 9:00 AM → 26 Sep 2026, 12:00 PM",
+  },
+  "biogrant-x-from-problems-to-proposals": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "10:00:00",
+    endTime: "16:00:00",
+    scheduleLabel: "25 Sep 2026, 10:00 AM → 26 Sep 2026, 4:00 PM (2-Day Event)",
+  },
+  "techdetective-20": {
+    startDate: "2026-09-25",
+    endDate: "2026-09-26",
+    startTime: "09:30:00",
+    endTime: "16:30:00",
+    scheduleLabel: "25 Sep 2026, 9:30 AM → 26 Sep 2026, 4:30 PM (2-Day Event)",
+  },
+};
+
 function slugify(text) {
   return text
     .toString()
@@ -363,6 +450,25 @@ async function main() {
     }
     if (coordEmails) {
       descriptionText += `\n[COORDINATOR_EMAILS: ${coordEmails}]`;
+    }
+
+    // Embed 2-day schedule metadata or single-day metadata
+    const twoDayInfo = TWO_DAY_EVENTS_MAP[baseSlug];
+    if (twoDayInfo) {
+      descriptionText += `\n[IS_TWO_DAY: true]`;
+      descriptionText += `\n[START_DATE: ${twoDayInfo.startDate}]`;
+      descriptionText += `\n[END_DATE: ${twoDayInfo.endDate}]`;
+      descriptionText += `\n[START_TIME: ${twoDayInfo.startTime}]`;
+      descriptionText += `\n[END_TIME: ${twoDayInfo.endTime}]`;
+      descriptionText += `\n[SCHEDULE_LABEL: ${twoDayInfo.scheduleLabel}]`;
+      eventDate = twoDayInfo.startDate;
+      startTime = twoDayInfo.startTime;
+      endTime = twoDayInfo.endTime;
+    } else {
+      descriptionText += `\n[IS_TWO_DAY: false]`;
+      descriptionText += `\n[START_DATE: ${eventDate}]`;
+      descriptionText += `\n[END_DATE: ${eventDate}]`;
+      descriptionText += `\n[SCHEDULE_LABEL: ${eventDate === "2026-09-25" ? "25 Sep 2026" : "26 Sep 2026"}]`;
     }
 
     eventsToInsert.push({

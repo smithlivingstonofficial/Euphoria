@@ -38,6 +38,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
+import { getEventSchedule } from "@/lib/schedule";
 import { useCart } from "@/context/cart-context";
 import { useRouter } from "next/navigation";
 import { claimSecondSlotAction } from "@/actions/passes";
@@ -403,23 +404,25 @@ export function EventCatalogExplorer({
     [initialEvents]
   );
 
-  // Date counts
+  // Date counts (Two-day events appear on both Day 1 and Day 2)
   const day1Count = useMemo(
     () =>
-      initialEvents.filter(
-        (e) =>
-          e.event_date &&
-          (e.event_date.startsWith("2026-09-25") || e.event_date.includes("-09-25"))
-      ).length,
+      initialEvents.filter((e) => {
+        const sched = getEventSchedule(e);
+        return sched.isTwoDay || sched.startDate === "2026-09-25";
+      }).length,
     [initialEvents]
   );
   const day2Count = useMemo(
     () =>
-      initialEvents.filter(
-        (e) =>
-          e.event_date &&
-          (e.event_date.startsWith("2026-09-26") || e.event_date.includes("-09-26"))
-      ).length,
+      initialEvents.filter((e) => {
+        const sched = getEventSchedule(e);
+        return sched.isTwoDay || sched.endDate === "2026-09-26";
+      }).length,
+    [initialEvents]
+  );
+  const bothDaysCount = useMemo(
+    () => initialEvents.filter((e) => getEventSchedule(e).isTwoDay).length,
     [initialEvents]
   );
 
@@ -446,11 +449,13 @@ export function EventCatalogExplorer({
 
       // 2. Date Filter
       if (selectedDate !== "all") {
-        const dateStr = String(evt.event_date || "");
+        const sched = getEventSchedule(evt);
         if (selectedDate === "2026-09-25") {
-          if (!dateStr.includes("-09-25") && !dateStr.includes("2026-09-25")) return false;
+          if (!sched.isTwoDay && sched.startDate !== "2026-09-25") return false;
         } else if (selectedDate === "2026-09-26") {
-          if (!dateStr.includes("-09-26") && !dateStr.includes("2026-09-26")) return false;
+          if (!sched.isTwoDay && sched.endDate !== "2026-09-26") return false;
+        } else if (selectedDate === "both") {
+          if (!sched.isTwoDay) return false;
         }
       }
 
@@ -642,6 +647,20 @@ export function EventCatalogExplorer({
                 }`}
               >
                 Day 2 ({day2Count})
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDate(selectedDate === "both" ? "all" : "both")
+                }
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedDate === "both"
+                    ? "bg-purple-600 text-white shadow-2xs font-bold"
+                    : "text-purple-700 hover:bg-purple-100/60"
+                }`}
+              >
+                <Sparkles className="h-3 w-3" />
+                <span>Both Days ({bothDaysCount})</span>
               </button>
             </div>
           </div>
@@ -856,6 +875,7 @@ export function EventCatalogExplorer({
               const isSelected = isEventSelected(evt.id);
               const isConfirmed = isEventConfirmed(evt.id);
               const validation = canSelectEvent(evt);
+              const sched = getEventSchedule(evt);
 
               return (
                 <div
@@ -899,9 +919,16 @@ export function EventCatalogExplorer({
                         )}
                       </div>
 
-                      <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
-                        Day {evt.event_date?.includes("2026-09-25") ? "1" : "2"}
-                      </span>
+                      {sched.isTwoDay ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-mono font-extrabold text-indigo-700 bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-md shrink-0 shadow-2xs">
+                          <Sparkles className="h-3 w-3 text-indigo-600" />
+                          <span>Day 1 &amp; 2</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
+                          Day {sched.startDate === "2026-09-25" ? "1" : "2"}
+                        </span>
+                      )}
                     </div>
 
                     {/* Title & Department */}
@@ -919,9 +946,17 @@ export function EventCatalogExplorer({
                     <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100/80">
                       <div className="flex items-center gap-2 font-medium">
                         <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                        <span>
-                          {evt.event_date ? formatDate(evt.event_date) : "Sept 25, 2026"} •{" "}
-                          {formatEventTimeRange(evt.start_time, evt.end_time)}
+                        <span className="leading-snug">
+                          {sched.isTwoDay ? (
+                            <span className="text-indigo-950 font-bold">
+                              {sched.displaySchedule}
+                            </span>
+                          ) : (
+                            <span>
+                              {formatDate(sched.startDate)} •{" "}
+                              {formatEventTimeRange(evt.start_time, evt.end_time)}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-slate-500 text-[11px]">
@@ -1076,9 +1111,19 @@ export function EventCatalogExplorer({
                     <span>REGULAR COMPETITION</span>
                   </span>
                 )}
-                <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-mono font-semibold">
-                  Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Sept 25)" : "2 (Sept 26)"}
-                </span>
+                {(() => {
+                  const modalSched = getEventSchedule(activeModalEvent);
+                  return modalSched.isTwoDay ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-xs px-3 py-1 text-[10px] font-mono font-extrabold uppercase tracking-wide border border-indigo-300/40">
+                      <Sparkles className="h-3 w-3" />
+                      <span>{modalSched.modalBadgeText}</span>
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-white/10 text-white backdrop-blur-md border border-white/20 px-3 py-1 text-[10px] font-mono font-semibold">
+                      Day {modalSched.startDate === "2026-09-25" ? "1 (Sept 25)" : "2 (Sept 26)"}
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* Close Button */}
@@ -1105,64 +1150,129 @@ export function EventCatalogExplorer({
 
             {/* 2. INNER SCROLLABLE CONTENT BODY */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
-              {/* Grid of 4 Key Information Metric Cards (2 Columns for Full Legibility, No Ellipsis Cutoff) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
-                {/* Metric 1: Date & Day */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                    Date &amp; Schedule
-                  </span>
-                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
-                    {formatDate(activeModalEvent.event_date)}
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-500 block">
-                    Festival Day {activeModalEvent.event_date?.includes("2026-09-25") ? "1 (Friday)" : "2 (Saturday)"}
-                  </span>
-                </div>
+              {/* 2-Day Highlight Alert Banner */}
+              {(() => {
+                const modalSched = getEventSchedule(activeModalEvent);
+                if (!modalSched.isTwoDay) return null;
+                return (
+                  <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 p-4 text-indigo-950 shadow-xs flex items-start sm:items-center gap-3.5 animate-in fade-in duration-200">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                      <Clock className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs sm:text-sm font-extrabold font-display text-indigo-950">
+                          2-Day Continuous Competition / Hackathon
+                        </h4>
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-indigo-200/80 text-indigo-800 tracking-wider">
+                          Day 1 &amp; 2
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-indigo-900/90 font-medium leading-relaxed">
+                        This event spans across both <strong>Festival Day 1 (Friday, 25 Sep)</strong> and <strong>Festival Day 2 (Saturday, 26 Sep)</strong>. Registered participants must attend and compete across both days according to the phase schedule below.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
-                {/* Metric 2: Timings */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                    Time Window
-                  </span>
-                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
-                    {formatEventTimeRange(activeModalEvent.start_time, activeModalEvent.end_time)}
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-500 block">
-                    Competition Duration
-                  </span>
-                </div>
+              {/* Grid of Key Information Metric Cards (Dual Dates for 2-Day Events) */}
+              {(() => {
+                const modalSched = getEventSchedule(activeModalEvent);
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+                    {modalSched.isTwoDay ? (
+                      <>
+                        {/* Metric 1: Starts At */}
+                        <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/50 p-3.5 text-xs space-y-1">
+                          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                            Starts At (Day 1)
+                          </span>
+                          <span className="font-extrabold text-indigo-950 block text-xs sm:text-sm leading-snug">
+                            {modalSched.startsAtFormatted}
+                          </span>
+                          <span className="text-[11px] font-semibold text-indigo-600/90 block">
+                            Festival Day 1 • Kickoff &amp; Phase 1
+                          </span>
+                        </div>
 
-                {/* Metric 3: Venue */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                    Venue Location
-                  </span>
-                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
-                    {activeModalEvent.venue || "Campus Labs & Spec Centers"}
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-500 block">
-                    KARE Main Campus, Krishnankoil
-                  </span>
-                </div>
+                        {/* Metric 2: Ends At */}
+                        <div className="rounded-2xl border border-purple-200/80 bg-purple-50/50 p-3.5 text-xs space-y-1">
+                          <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                            Ends At (Day 2)
+                          </span>
+                          <span className="font-extrabold text-purple-950 block text-xs sm:text-sm leading-snug">
+                            {modalSched.endsAtFormatted}
+                          </span>
+                          <span className="text-[11px] font-semibold text-purple-600/90 block">
+                            Festival Day 2 • Phase 2 &amp; Evaluation
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* Metric 1: Date & Day */}
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                            Date &amp; Schedule
+                          </span>
+                          <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
+                            {formatDate(modalSched.startDate)}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500 block">
+                            Festival Day {modalSched.startDate === "2026-09-25" ? "1 (Friday)" : "2 (Saturday)"}
+                          </span>
+                        </div>
 
-                {/* Metric 4: Capacity */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                    Target Capacity
-                  </span>
-                  <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
-                    {activeModalEvent.participant_limit || 100} Seats
-                  </span>
-                  <span className="text-[11px] font-semibold text-emerald-600 block font-mono font-bold">
-                    Registration Open
-                  </span>
-                </div>
-              </div>
+                        {/* Metric 2: Timings */}
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                            Time Window
+                          </span>
+                          <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
+                            {formatEventTimeRange(activeModalEvent.start_time, activeModalEvent.end_time)}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500 block">
+                            Competition Duration
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Metric 3: Venue */}
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        Venue Location
+                      </span>
+                      <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug break-words">
+                        {activeModalEvent.venue || "Campus Labs & Spec Centers"}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500 block">
+                        KARE Main Campus, Krishnankoil
+                      </span>
+                    </div>
+
+                    {/* Metric 4: Capacity */}
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        Target Capacity
+                      </span>
+                      <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
+                        {activeModalEvent.participant_limit || 100} Seats
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-600 block font-mono font-bold">
+                        Registration Open
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Extended Metadata: WhatsApp Group & Coordinator Info */}
               {(() => {
@@ -1553,20 +1663,35 @@ export function EventCatalogExplorer({
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{claimingSlot2Event.event_date ? formatDate(claimingSlot2Event.event_date) : "25 Sep 2026"}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span>{claimingSlot2Event.start_time ? formatTime(claimingSlot2Event.start_time) : "TBD"}</span>
-                    </div>
-                    <div className="col-span-2 flex items-center gap-1.5 truncate">
-                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{claimingSlot2Event.venue || "Campus Venue"}</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const slot2Sched = claimingSlot2Event ? getEventSchedule(claimingSlot2Event) : null;
+                    return (
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">
+                            {slot2Sched?.isTwoDay
+                              ? "25 Sep - 26 Sep (Day 1 & 2)"
+                              : slot2Sched?.startDate === "2026-09-25"
+                              ? "25 Sep 2026 (Day 1)"
+                              : "26 Sep 2026 (Day 2)"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">
+                            {slot2Sched?.isTwoDay
+                              ? `${slot2Sched.startTime} → ${slot2Sched.endTime}`
+                              : formatEventTimeRange(claimingSlot2Event.start_time, claimingSlot2Event.end_time)}
+                          </span>
+                        </div>
+                        <div className="col-span-2 flex items-center gap-1.5 truncate">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{claimingSlot2Event.venue || "Campus Venue"}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Locking Warning (Critical User Requirement) */}

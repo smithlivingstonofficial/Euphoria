@@ -15,8 +15,10 @@ import {
   ExternalLink,
   Plus,
   Star,
+  Sparkles,
 } from "lucide-react";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { getEventSchedule } from "@/lib/schedule";
 import { deleteEventAdmin, updateEventAdmin } from "@/actions/admin";
 
 interface EventItem {
@@ -24,6 +26,7 @@ interface EventItem {
   name: string;
   slug: string;
   short_description?: string;
+  description?: string;
   school_or_dept?: string;
   venue?: string;
   event_date?: string;
@@ -168,6 +171,7 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
                   const limit = evt.participant_limit || 100;
                   const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
                   const isPro = Boolean(evt.is_pro_event);
+                  const sched = getEventSchedule(evt);
 
                   return (
                     <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors">
@@ -194,13 +198,28 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
 
                       {/* Schedule & Venue */}
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-1 text-slate-700 font-medium">
-                          <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                          <span>
-                            {evt.event_date ? formatDate(evt.event_date) : "TBA"} • {evt.start_time ? formatTime(evt.start_time) : ""}
-                          </span>
+                        <div className="flex items-center gap-1.5 text-slate-700 font-medium text-xs">
+                          <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          {sched.isTwoDay ? (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-extrabold text-indigo-950">25 – 26 Sep</span>
+                                <span className="inline-flex items-center gap-0.5 rounded bg-purple-100 px-1.5 py-0.2 text-[9px] font-bold text-purple-700">
+                                  <Sparkles className="h-2.5 w-2.5" />
+                                  Day 1 &amp; 2
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-500 block font-normal">
+                                {sched.startTime} → {sched.endTime}
+                              </span>
+                            </div>
+                          ) : (
+                            <span>
+                              {sched.startDate ? formatDate(sched.startDate) : "TBA"} • {sched.startTime}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1">
                           <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
                           <span className="truncate max-w-[150px]">{evt.venue || "Campus Venue"}</span>
                         </div>
