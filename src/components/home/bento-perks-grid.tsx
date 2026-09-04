@@ -45,18 +45,18 @@ export function BentoPerksGrid() {
         <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-3 border-t border-amber-200/60 relative z-10 text-center">
           <div className="p-3 rounded-2xl bg-white/95 border border-amber-200/80 shadow-2xs group-hover:border-amber-300 transition-colors">
             <div className="text-base sm:text-lg font-black text-amber-900 leading-none">🥇 1st Place</div>
-            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Award</div>
-            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
+            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash Prize</div>
+            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Certificate</div>
           </div>
           <div className="p-3 rounded-2xl bg-white/95 border border-slate-200/80 shadow-2xs group-hover:border-slate-300 transition-colors">
             <div className="text-base sm:text-lg font-black text-slate-800 leading-none">🥈 2nd Place</div>
-            <div className="text-[10px] font-bold text-slate-700 mt-1">Cash / UPI + Award</div>
-            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
+            <div className="text-[10px] font-bold text-slate-700 mt-1">Cash Prize</div>
+            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Certificate</div>
           </div>
           <div className="p-3 rounded-2xl bg-white/95 border border-amber-100/80 shadow-2xs group-hover:border-amber-200 transition-colors">
             <div className="text-base sm:text-lg font-black text-amber-800 leading-none">🥉 3rd Place</div>
-            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Award</div>
-            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
+            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash Prize</div>
+            <div className="text-[9px] text-slate-400 font-medium mt-0.5">Certificate</div>
           </div>
         </div>
       </div>
