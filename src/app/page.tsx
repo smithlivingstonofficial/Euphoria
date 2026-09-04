@@ -8,7 +8,6 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
-  Trophy,
   Award,
   Ticket,
   Zap,
@@ -177,7 +176,7 @@ export default async function HomePage() {
                   </span>
                   <span className="text-slate-300 hidden sm:inline">•</span>
                   <span className="inline-flex items-center gap-1.5 text-amber-700">
-                    <Trophy className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                    <Award className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                     <span>₹15 Lakhs+ Cash Prize Pool</span>
                   </span>
                 </div>
@@ -246,7 +245,7 @@ export default async function HomePage() {
             {/* Stat 3: ₹15L+ Cash Prizes */}
             <div className="relative flex items-center gap-3 sm:gap-3.5 rounded-2xl border border-amber-200/90 bg-gradient-to-br from-white via-amber-50/40 to-amber-100/30 backdrop-blur-md p-3 sm:p-3.5 shadow-2xs hover:border-amber-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group text-left">
               <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-100 to-amber-200/70 text-amber-700 border border-amber-300/60 shadow-2xs group-hover:scale-105 transition-transform">
-                <Trophy className="h-5 w-5 text-amber-600" />
+                <Award className="h-5 w-5 text-amber-600" />
               </div>
               <div className="min-w-0">
                 <div className="text-lg sm:text-2xl font-black text-amber-950 tracking-tight font-mono leading-none">

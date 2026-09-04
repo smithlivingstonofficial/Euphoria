@@ -85,7 +85,7 @@ export function parseEventMetadata(event: PublicEvent) {
   let cleanDescription = description.replace(/\[[A-Z_]+:\s*[^\]]+\]/g, "").trim();
 
   if (!cleanDescription || cleanDescription.length < 15) {
-    cleanDescription = `${event.name} is an official technical competition organized by ${event.school_or_dept} during Euphoria 2026 at Kalasalingam Academy of Research and Education. Registered participants will compete for cash prizes, institutional trophies, and verified national digital credentials.`;
+    cleanDescription = `${event.name} is an official technical competition organized by ${event.school_or_dept} during Euphoria 2026 at Kalasalingam Academy of Research and Education. Registered participants will compete for cash prizes, institutional awards, and verified national digital credentials.`;
   }
 
   const namesList = namesMatch
@@ -521,7 +521,7 @@ export function EventCatalogExplorer({
                 1 Slot Remaining on Your Active Pass (+₹0 Extra)
               </h3>
               <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                Slot #1 is confirmed ({confirmedEvents[0]?.name}). Select 1 more normal event from the list below to claim your 2nd included slot for free!
+                Slot #1 is confirmed ({confirmedEvents[0]?.name}). Select 1 more normal event from the list below to claim your 2nd included slot!
               </p>
             </div>
           </div>

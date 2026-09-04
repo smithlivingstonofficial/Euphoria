@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Trophy,
   Award,
   Zap,
   QrCode,
@@ -25,7 +24,7 @@ export function BentoPerksGrid() {
         <div className="space-y-3 relative z-10">
           <div className="flex items-center justify-between">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
-              <Trophy className="h-5.5 w-5.5" />
+              <Award className="h-5.5 w-5.5" />
             </div>
             <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-amber-100/90 text-amber-900 border border-amber-300/80 shadow-2xs font-mono">
               ₹15 Lakhs+ Cash Pool
@@ -34,7 +33,7 @@ export function BentoPerksGrid() {
 
           <div>
             <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-display">
-              Podium Cash Prizes &amp; Institutional Trophies
+              Podium Cash Prizes &amp; Institutional Awards
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-1.5 max-w-lg">
               Immediate Cash / UPI awards and official merit certificates for 1st, 2nd, and 3rd place podium finishers across all 61 competitions and 14 academic schools.
@@ -46,17 +45,17 @@ export function BentoPerksGrid() {
         <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-3 border-t border-amber-200/60 relative z-10 text-center">
           <div className="p-3 rounded-2xl bg-white/95 border border-amber-200/80 shadow-2xs group-hover:border-amber-300 transition-colors">
             <div className="text-base sm:text-lg font-black text-amber-900 leading-none">🥇 1st Place</div>
-            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Trophy</div>
+            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Award</div>
             <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
           </div>
           <div className="p-3 rounded-2xl bg-white/95 border border-slate-200/80 shadow-2xs group-hover:border-slate-300 transition-colors">
             <div className="text-base sm:text-lg font-black text-slate-800 leading-none">🥈 2nd Place</div>
-            <div className="text-[10px] font-bold text-slate-700 mt-1">Cash / UPI + Trophy</div>
+            <div className="text-[10px] font-bold text-slate-700 mt-1">Cash / UPI + Award</div>
             <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
           </div>
           <div className="p-3 rounded-2xl bg-white/95 border border-amber-100/80 shadow-2xs group-hover:border-amber-200 transition-colors">
             <div className="text-base sm:text-lg font-black text-amber-800 leading-none">🥉 3rd Place</div>
-            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Shield</div>
+            <div className="text-[10px] font-bold text-amber-700 mt-1">Cash / UPI + Award</div>
             <div className="text-[9px] text-slate-400 font-medium mt-0.5">Merit Certificate</div>
           </div>
         </div>

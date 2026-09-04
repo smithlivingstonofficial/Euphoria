@@ -38,10 +38,10 @@ const STEPS = [
     id: 1,
     num: "02",
     label: "Choose Events",
-    title: "Pick Any 2 Competitions — Free",
+    title: "Pick Any 2 Competitions Included",
     subtitle: "Pick 2 Competitions",
     description:
-      "Your pass includes 2 free event slots — 1 for Day 1 (Sept 25) and 1 for Day 2 (Sept 26). Browse all 61 competitions across 14 academic schools and select what interests you.",
+      "Your pass includes 2 event slots — 1 for Day 1 (Sept 25) and 1 for Day 2 (Sept 26). Browse all 61 competitions across 14 academic schools and select what interests you.",
     ctaLabel: "Browse 61 Events",
     ctaHref: "/events",
     ctaColor: "bg-slate-900 hover:bg-primary shadow-slate-200",
@@ -410,7 +410,7 @@ export function InteractivePassJourney() {
                       <Layers className="h-3 w-3 text-violet-500" /> 61 Competitions
                     </span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-500" /> 2 Free Slots
+                      <CheckCircle2 className="h-3 w-3 text-emerald-500" /> 2 Included Slots
                     </span>
                   </>
                 )}

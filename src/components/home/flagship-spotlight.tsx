@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Trophy,
+  Award,
   Zap,
   Users,
   Clock,
@@ -203,7 +203,7 @@ export function FlagshipSpotlight() {
 
                   <div className="flex items-center gap-1.5">
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-black font-mono">
-                      <Trophy className="h-3 w-3 text-amber-600" />
+                      <Award className="h-3 w-3 text-amber-600" />
                       <span>{event.prizePool}</span>
                     </span>
                     <span className="px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-primary text-[10px] font-mono font-bold">

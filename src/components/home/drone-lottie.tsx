@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Lottie } from "lottie-react";
-import { Bot, Globe, Trophy, Radio, ShieldCheck, Sparkles, Cpu } from "lucide-react";
+import { Bot, Globe, Award, Radio, ShieldCheck, Sparkles, Cpu } from "lucide-react";
 
 interface DroneLottieProps {
   className?: string;
@@ -103,7 +103,7 @@ export function DroneLottie({ className = "", size = "lg" }: DroneLottieProps) {
       {/* 3. Mid/Bottom-Left: Prizes & Awards */}
       <div className="absolute bottom-16 -left-1 sm:-left-6 z-20 hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-white/95 backdrop-blur-md border border-amber-200/90 shadow-md animate-float-delayed hover:scale-105 transition-transform">
         <div className="flex h-6 w-6 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shrink-0">
-          <Trophy className="h-3.5 w-3.5" />
+          <Award className="h-3.5 w-3.5" />
         </div>
         <div className="text-left">
           <div className="text-[10px] font-black text-amber-950 tracking-tight leading-none">₹15 Lakhs+</div>

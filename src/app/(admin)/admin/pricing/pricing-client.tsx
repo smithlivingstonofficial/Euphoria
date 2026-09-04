@@ -222,7 +222,7 @@ export function AdminPricingClient({
               <div className="rounded-2xl border border-amber-200/70 bg-amber-50/60 p-3.5 text-xs text-amber-950 space-y-1.5">
                 <div className="font-bold flex items-center gap-1.5">
                   <Check className="h-3.5 w-3.5 text-amber-700" />
-                  <span>Includes 2nd Event for FREE (₹0 Extra)</span>
+                  <span>Includes 2nd Event (₹0 Extra)</span>
                 </div>
                 <p className="text-[11px] text-amber-800/90 leading-snug">
                   If a user registers 1 Flagship event now (pays ₹{settings.pro_pass_fee ?? 300}), they can return later to select their 2nd slot (1 Regular event) at ₹0 additional charge.
@@ -288,7 +288,7 @@ export function AdminPricingClient({
               <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/60 p-3.5 text-xs text-indigo-950 space-y-1.5">
                 <div className="font-bold flex items-center gap-1.5">
                   <Check className="h-3.5 w-3.5 text-primary" />
-                  <span>Includes 2nd Normal Event for FREE (₹0 Extra)</span>
+                  <span>Includes 2nd Normal Event (₹0 Extra)</span>
                 </div>
                 <p className="text-[11px] text-indigo-800/90 leading-snug">
                   If a user registers 1 Normal event now (pays ₹{settings.normal_pass_fee ?? 200}), they can return later to select their 2nd Normal event at ₹0 additional charge.
