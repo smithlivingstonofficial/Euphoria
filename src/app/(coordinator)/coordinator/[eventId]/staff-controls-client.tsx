@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Sparkles,
   GraduationCap,
+  Lock,
 } from "lucide-react";
 
 interface StudentCoordinator {
@@ -43,17 +44,24 @@ interface ProfileItem {
 
 export function StaffControlsClient({
   eventId,
+  eventName = "Event",
   initialWhatsappLink,
   initialBrochureUrl,
   initialStudentCoordinators,
   allProfiles,
+  roleType = "staff",
 }: {
   eventId: string;
+  eventName?: string;
   initialWhatsappLink: string;
   initialBrochureUrl: string;
   initialStudentCoordinators: StudentCoordinator[];
   allProfiles: ProfileItem[];
+  roleType?: "staff" | "student" | "admin";
 }) {
+  const isAdmin = roleType === "admin";
+  const [savedWhatsappLink, setSavedWhatsappLink] = useState(initialWhatsappLink);
+  const [savedBrochureUrl, setSavedBrochureUrl] = useState(initialBrochureUrl);
   const [whatsappLink, setWhatsappLink] = useState(initialWhatsappLink);
   const [brochureUrl, setBrochureUrl] = useState(initialBrochureUrl);
   const [studentCoordinators, setStudentCoordinators] = useState<StudentCoordinator[]>(
@@ -61,6 +69,7 @@ export function StaffControlsClient({
   );
 
   const [isSavingLinks, setIsSavingLinks] = useState(false);
+  const [isConfirmLinksModalOpen, setIsConfirmLinksModalOpen] = useState(false);
   const [linksSuccess, setLinksSuccess] = useState<string | null>(null);
   const [linksError, setLinksError] = useState<string | null>(null);
 
@@ -71,17 +80,27 @@ export function StaffControlsClient({
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
 
-  const handleSaveLinks = async (e: React.FormEvent) => {
+  const handleOpenConfirmLinks = (e: React.FormEvent) => {
     e.preventDefault();
+    setLinksSuccess(null);
+    setLinksError(null);
+    setIsConfirmLinksModalOpen(true);
+  };
+
+  const handleExecuteSaveLinks = async () => {
     setIsSavingLinks(true);
     setLinksSuccess(null);
     setLinksError(null);
 
     const res = await updateEventLinksStaff(eventId, whatsappLink, brochureUrl);
     if (res.success) {
+      setSavedWhatsappLink(whatsappLink);
+      setSavedBrochureUrl(brochureUrl);
       setLinksSuccess("Event communication links updated successfully!");
+      setIsConfirmLinksModalOpen(false);
     } else {
       setLinksError(res.error || "Failed to update links");
+      setIsConfirmLinksModalOpen(false);
     }
     setIsSavingLinks(false);
   };
@@ -165,9 +184,17 @@ export function StaffControlsClient({
                 Official Event Links
               </h4>
             </div>
-            <span className="rounded-full bg-indigo-50 text-indigo-700 px-2.5 py-0.5 text-[10px] font-bold border border-indigo-100">
-              Faculty Staff
-            </span>
+            {isAdmin ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 px-2.5 py-0.5 text-[10px] font-bold border border-purple-200">
+                <ShieldCheck className="h-3 w-3 text-purple-600" />
+                <span>Admin Control</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-[10px] font-bold border border-slate-200">
+                <Lock className="h-3 w-3 text-slate-500" />
+                <span>Admin Managed • Read Only</span>
+              </span>
+            )}
           </div>
 
           {linksSuccess && (
@@ -184,44 +211,132 @@ export function StaffControlsClient({
             </div>
           )}
 
-          <form onSubmit={handleSaveLinks} className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                WhatsApp Participant Group Link
-              </label>
-              <input
-                type="url"
-                value={whatsappLink}
-                onChange={(e) => setWhatsappLink(e.target.value)}
-                placeholder="https://chat.whatsapp.com/..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
-              />
-            </div>
+          {isAdmin ? (
+            /* Admin & Super Admin Edit Form */
+            <form onSubmit={handleOpenConfirmLinks} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  WhatsApp Participant Group Link
+                </label>
+                <input
+                  type="url"
+                  value={whatsappLink}
+                  onChange={(e) => setWhatsappLink(e.target.value)}
+                  placeholder="https://chat.whatsapp.com/..."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Event Brochure PDF Link
-              </label>
-              <input
-                type="url"
-                value={brochureUrl}
-                onChange={(e) => setBrochureUrl(e.target.value)}
-                placeholder="https://domain.com/brochure.pdf"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Event Brochure PDF Link
+                </label>
+                <input
+                  type="url"
+                  value={brochureUrl}
+                  onChange={(e) => setBrochureUrl(e.target.value)}
+                  placeholder="https://domain.com/brochure.pdf"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
+                />
+              </div>
 
-            <div className="pt-1 flex justify-end">
-              <button
-                type="submit"
-                disabled={isSavingLinks}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-all disabled:opacity-50 cursor-pointer w-full sm:w-auto"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                <span>{isSavingLinks ? "Saving Links..." : "Save Communication Links"}</span>
-              </button>
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSavingLinks}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-all disabled:opacity-50 cursor-pointer w-full sm:w-auto"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                  <span>{isSavingLinks ? "Saving Links..." : "Save Communication Links"}</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* Faculty Staff Coordinator Read-Only View */
+            <div className="space-y-3">
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold">Staff Coordinator Notice</p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Official brochure documents and WhatsApp participant group links are configured exclusively by Platform Administrators. Contact the Euphoria Admin team to modify them.
+                  </p>
+                </div>
+              </div>
+
+              {/* WhatsApp Read-Only Card */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    WhatsApp Group Link
+                  </span>
+                  {savedWhatsappLink ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5">
+                      Not Configured
+                    </span>
+                  )}
+                </div>
+                {savedWhatsappLink ? (
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="font-mono text-xs text-slate-800 truncate select-all">
+                      {savedWhatsappLink}
+                    </span>
+                    <a
+                      href={savedWhatsappLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1 transition-colors shrink-0 shadow-2xs"
+                    >
+                      <span>Open Link</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No WhatsApp group link has been added yet.</p>
+                )}
+              </div>
+
+              {/* Brochure Read-Only Card */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Event Brochure PDF
+                  </span>
+                  {savedBrochureUrl ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5">
+                      Available
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5">
+                      Not Uploaded
+                    </span>
+                  )}
+                </div>
+                {savedBrochureUrl ? (
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="font-mono text-xs text-slate-800 truncate select-all">
+                      {savedBrochureUrl}
+                    </span>
+                    <a
+                      href={savedBrochureUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-primary text-white text-[11px] font-bold px-2.5 py-1 transition-colors shrink-0 shadow-2xs"
+                    >
+                      <span>View Brochure</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No event brochure document has been linked yet.</p>
+                )}
+              </div>
             </div>
-          </form>
+          )}
         </div>
 
         {/* 2. MANAGE STUDENT COORDINATORS ROSTER (6 Cols) */}
@@ -397,6 +512,122 @@ export function StaffControlsClient({
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Close Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM COMMUNICATION LINKS UPDATE (Admin / Super Admin Only) */}
+      {isConfirmLinksModalOpen && isAdmin && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="border-b border-slate-100 p-5 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                    Confirm Official Links Update
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Administrator Review for {eventName}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsConfirmLinksModalOpen(false)}
+                disabled={isSavingLinks}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-5 space-y-3.5">
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  <strong>Caution:</strong> Updating these links will immediately affect all registered delegates on their digital passes, registration emails, and public event explorer pages.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50/80 p-4 border border-slate-200 space-y-3.5 text-xs">
+                {/* WhatsApp Diff */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700">WhatsApp Participant Group Link</span>
+                    {savedWhatsappLink !== whatsappLink ? (
+                      <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 border border-amber-200">
+                        Modified
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-200/80 text-slate-600 text-[10px] font-semibold px-2 py-0.5">
+                        Unchanged
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 text-[11px] font-mono">
+                    <div className="bg-rose-50/80 border border-rose-200/80 rounded-xl p-2.5 text-rose-900 break-all">
+                      <span className="font-bold text-rose-700 block text-[9px] uppercase font-sans tracking-wider">Current Value:</span>
+                      {savedWhatsappLink || <span className="italic text-slate-400 font-sans">None (Unconfigured)</span>}
+                    </div>
+                    <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-2.5 text-emerald-900 break-all">
+                      <span className="font-bold text-emerald-700 block text-[9px] uppercase font-sans tracking-wider">New Value:</span>
+                      {whatsappLink || <span className="italic text-slate-400 font-sans">Removed</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Brochure Diff */}
+                <div className="space-y-1.5 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700">Event Brochure PDF URL</span>
+                    {savedBrochureUrl !== brochureUrl ? (
+                      <span className="rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 border border-amber-200">
+                        Modified
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-200/80 text-slate-600 text-[10px] font-semibold px-2 py-0.5">
+                        Unchanged
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 text-[11px] font-mono">
+                    <div className="bg-rose-50/80 border border-rose-200/80 rounded-xl p-2.5 text-rose-900 break-all">
+                      <span className="font-bold text-rose-700 block text-[9px] uppercase font-sans tracking-wider">Current Value:</span>
+                      {savedBrochureUrl || <span className="italic text-slate-400 font-sans">None (Unconfigured)</span>}
+                    </div>
+                    <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-2.5 text-emerald-900 break-all">
+                      <span className="font-bold text-emerald-700 block text-[9px] uppercase font-sans tracking-wider">New Value:</span>
+                      {brochureUrl || <span className="italic text-slate-400 font-sans">Removed</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-100 p-4 bg-slate-50 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsConfirmLinksModalOpen(false)}
+                disabled={isSavingLinks}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteSaveLinks}
+                disabled={isSavingLinks}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                <span>{isSavingLinks ? "Saving Changes..." : "Confirm & Save Changes"}</span>
               </button>
             </div>
           </div>

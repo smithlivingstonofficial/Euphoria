@@ -66,10 +66,32 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
     .maybeSingle();
 
   const userEmail = (userProfile?.email || "").toLowerCase().trim();
+  const isRootSuperAdmin = userEmail === "smithlivingston2005@gmail.com";
 
-  // If specific eventId is provided, check event-specific DB assignments FIRST
+  // 1. Fetch user roles from user_role_assignments
+  const { data: roleAssignments } = await adminClient
+    .from("user_role_assignments")
+    .select("role_id")
+    .eq("user_id", userId);
+
+  const assignedRoles = new Set((roleAssignments || []).map((r) => r.role_id));
+
+  // 2. First check if Admin or Super Admin (Level >= 3)
+  if (
+    isRootSuperAdmin ||
+    assignedRoles.has("super_admin") ||
+    assignedRoles.has("admin") ||
+    (userEmail &&
+      (userEmail.includes("admin") ||
+        userEmail.includes("smith") ||
+        userEmail === process.env.ADMIN_EMAIL))
+  ) {
+    return "admin";
+  }
+
+  // 3. If specific eventId is provided, check event-specific DB assignments
   if (eventId) {
-    // 1. Check Staff Event Assignment table
+    // Check Staff Event Assignment table
     const { data: staffAssign } = await adminClient
       .from("staff_event_assignments")
       .select("id")
@@ -79,7 +101,7 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
 
     if (staffAssign) return "staff";
 
-    // 2. Check Student Coordinator Assignment table
+    // Check Student Coordinator Assignment table
     const { data: studentAssign } = await adminClient
       .from("student_coordinator_assignments")
       .select("id")
@@ -89,7 +111,7 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
 
     if (studentAssign) return "student";
 
-    // 3. Check event description tag for coordinator emails
+    // Check event description tag for coordinator emails
     if (userEmail) {
       const { data: evt } = await adminClient
         .from("events")
@@ -107,33 +129,9 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
     }
   }
 
-  // 4. Check global Admin role or admin email
-  const { data: adminRole } = await adminClient
-    .from("user_role_assignments")
-    .select("role_id")
-    .eq("user_id", userId)
-    .eq("role_id", "admin")
-    .maybeSingle();
-
-  if (
-    adminRole ||
-    (userEmail &&
-      (userEmail.includes("admin") ||
-        userEmail.includes("smith") ||
-        userEmail === process.env.ADMIN_EMAIL))
-  ) {
-    return "admin";
-  }
-
-  // 5. Check global role assignments in user_role_assignments
-  const { data: roles } = await adminClient
-    .from("user_role_assignments")
-    .select("role_id")
-    .eq("user_id", userId);
-
-  const roleList = (roles || []).map((r) => r.role_id);
-  if (roleList.includes("staff_coordinator") || roleList.includes("faculty")) return "staff";
-  if (roleList.includes("student_coordinator") || roleList.includes("coordinator")) return "student";
+  // 4. Check global role assignments in user_role_assignments
+  if (assignedRoles.has("staff_coordinator") || assignedRoles.has("faculty")) return "staff";
+  if (assignedRoles.has("student_coordinator") || assignedRoles.has("coordinator")) return "student";
 
   return "unauthorized";
 }
@@ -792,7 +790,7 @@ export async function updateEventOperationsStaff(
   }
 }
 
-// 6. Update WhatsApp & Brochure Links (Faculty Staff Coordinator & Admin Only)
+// 6. Update WhatsApp & Brochure Links (Admin & Super Admin Only)
 export async function updateEventLinksStaff(
   eventId: string,
   whatsappLink: string,
@@ -807,10 +805,10 @@ export async function updateEventLinksStaff(
     if (!user) return { success: false, error: "Unauthorized. Please log in." };
 
     const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
-    if (roleType !== "staff" && roleType !== "admin") {
+    if (roleType !== "admin") {
       return {
         success: false,
-        error: "Forbidden: Only Faculty Staff Coordinators or Administrators can edit event communication links.",
+        error: "Forbidden: Only Platform Administrators and Super Administrators have permission to modify event brochure and WhatsApp links.",
       };
     }
 

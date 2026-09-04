@@ -6,7 +6,6 @@ import {
 } from "@/actions/coordinator";
 import { Navbar } from "@/components/navbar";
 import { EventRosterClient } from "./roster-client";
-import { StaffControlsClient } from "./staff-controls-client";
 import {
   ArrowLeft,
   Calendar,
