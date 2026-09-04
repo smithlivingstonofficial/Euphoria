@@ -30,6 +30,7 @@ import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import {
   createEasebuzzOrderAction,
   verifyEasebuzzPaymentAction,
+  bypassTestRegisterAction,
   EasebuzzVerifyPayload,
 } from "@/actions/payments";
 
@@ -60,6 +61,7 @@ export function CartDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isTestPaymentMode, setIsTestPaymentMode] = useState(false);
+  const [isBypassMode, setIsBypassMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     masterCode: string;
@@ -198,6 +200,43 @@ export function CartDrawer({
       // Hosted redirect fallback if iFrame script is blocked
       const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
       window.location.href = hostedUrl;
+    }
+  };
+
+  const handleSkipPaymentTest = async () => {
+    if (!user) {
+      window.location.href = `/login?redirect=/events`;
+      return;
+    }
+
+    if (selectedEvents.length === 0) return;
+
+    setIsSubmitting(true);
+    setIsBypassMode(true);
+    setErrorMessage(null);
+    setSuccessResult(null);
+
+    try {
+      const eventIds = selectedEvents.map((e) => e.id);
+      const res = await bypassTestRegisterAction(eventIds, needsAccommodation);
+
+      if (!res.success) {
+        setErrorMessage(res.error || "Failed to complete test bypass registration.");
+      } else {
+        setSuccessResult({
+          masterCode: res.masterCode || "CONFIRMED",
+          totalRegistered: res.totalRegistered || eventIds.length,
+          totalPayable: 0,
+          paymentId: res.paymentId || "TEST-BYPASS",
+        });
+        clearCart();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Test bypass registration failed";
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+      setIsBypassMode(false);
     }
   };
 
@@ -524,6 +563,26 @@ export function CartDrawer({
               )}
             </button>
 
+            {/* Dedicated Test Option: Skip Payment & Complete Registration Directly */}
+            <button
+              type="button"
+              onClick={handleSkipPaymentTest}
+              disabled={isSubmitting}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 bg-emerald-50/80 hover:bg-emerald-100 active:scale-[0.99] py-2.5 text-xs font-bold text-emerald-950 shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {isSubmitting && isBypassMode ? (
+                <span>Bypassing Payment &amp; Registering...</span>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Skip Payment &amp; Register Directly</span>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/90 px-1.5 py-0.5 rounded-md">
+                    Test Mode (₹0)
+                  </span>
+                </>
+              )}
+            </button>
+
             <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
               <button
                 onClick={clearCart}
@@ -737,6 +796,21 @@ export function CartDrawer({
                     : `Confirm & Pay ${formatCurrency(pricing.totalAmount)}`}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Optional Skip Payment Test Action in Modal */}
+            <div className="text-center pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmModalOpen(false);
+                  handleSkipPaymentTest();
+                }}
+                disabled={isSubmitting}
+                className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 underline cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                <span>🧪 Test Option: Skip payment &amp; complete registration directly (₹0)</span>
               </button>
             </div>
           </div>

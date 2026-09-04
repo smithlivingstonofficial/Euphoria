@@ -405,3 +405,159 @@ export async function verifyEasebuzzPaymentAction(
     return { success: false, error: msg };
   }
 }
+
+// 3. Dev Test Option: Skip Payment and Complete Event Registration Directly
+export async function bypassTestRegisterAction(
+  eventIds: string[],
+  needsAccommodation: boolean = false
+): Promise<VerifyEasebuzzPaymentResult> {
+  try {
+    if (!eventIds || eventIds.length === 0) {
+      return { success: false, error: "No events specified for registration." };
+    }
+
+    if (eventIds.length > 2) {
+      return { success: false, error: "A festival pass allows at most 2 events." };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Authentication required.", redirect: "/login" };
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
+      return { success: false, error: "Please complete your profile before registering." };
+    }
+
+    // Check user's current confirmed registrations
+    const { data: confirmedRegs } = await supabase
+      .from("event_registrations")
+      .select("id, event_id")
+      .eq("user_id", user.id)
+      .eq("status", "confirmed");
+
+    const activeRegs = confirmedRegs || [];
+    if (activeRegs.length >= 2) {
+      return {
+        success: false,
+        error: "You have already registered for the maximum limit of 2 events per pass.",
+      };
+    }
+
+    // Fetch selected events to calculate pass tier
+    const { data: selectedEvts } = await supabase
+      .from("events")
+      .select("id, name, is_pro_event")
+      .in("id", eventIds);
+
+    const hasProEvent = selectedEvts?.some((e) => Boolean(e.is_pro_event)) || false;
+    const testTxnid = `EUPH26-TESTBYPASS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    // Execute atomic PostgreSQL function to issue pass & register events directly
+    const { data: checkoutData, error: checkoutError } = await supabase.rpc(
+      "fn_checkout_pass_atomic",
+      {
+        p_user_id: user.id,
+        p_event_ids: eventIds,
+        p_payment_provider: "test_bypass",
+        p_order_metadata: {
+          test_txnid: testTxnid,
+          participant_type: profile.participant_type,
+          needs_accommodation: Boolean(needsAccommodation),
+          accommodation_status: needsAccommodation ? "requested" : "none",
+          accommodation_payment: "in_person_on_campus",
+          source: "dev_test_bypass_button",
+          is_test_bypass: true,
+          actual_amount_paid: 0,
+          pass_tier: hasProEvent ? "Euphoria 2026 Flagship Pass" : "Euphoria 2026 Regular Pass",
+          timestamp: new Date().toISOString(),
+        },
+      }
+    );
+
+    if (checkoutError || !checkoutData?.success) {
+      return {
+        success: false,
+        error: checkoutData?.message || checkoutError?.message || "Pass registration failed",
+      };
+    }
+
+    // Persist accommodation requirement and order update
+    try {
+      const adminClient = await createAdminClient();
+      if (checkoutData.order_id) {
+        await adminClient
+          .from("orders")
+          .update({
+            gateway_order_id: testTxnid,
+            amount: 0,
+            status: "paid",
+            provider: "test_bypass",
+            metadata: {
+              test_txnid: testTxnid,
+              productinfo: hasProEvent ? "Euphoria 2026 Flagship Pass (Test Bypass)" : "Euphoria 2026 Regular Pass (Test Bypass)",
+              purpose: "Test Registration (Bypass Payment)",
+              udf6_candidate_id: profile.register_number || user.id,
+              udf7_audit_key: "Euphoria 2026",
+              candidate_regn: profile.register_number || null,
+              college_name: profile.college_name || null,
+              participant_type: profile.participant_type,
+              needs_accommodation: Boolean(needsAccommodation),
+              accommodation_status: needsAccommodation ? "requested" : "none",
+              is_test_bypass: true,
+              actual_amount_paid: 0,
+              timestamp: new Date().toISOString(),
+            },
+          })
+          .eq("id", checkoutData.order_id);
+
+        await adminClient
+          .from("delegate_passes")
+          .update({
+            amount_paid: 0,
+          })
+          .eq("order_id", checkoutData.order_id);
+      }
+
+      await adminClient
+        .from("profiles")
+        .update({
+          needs_accommodation: Boolean(needsAccommodation),
+        })
+        .eq("id", user.id);
+    } catch (profErr) {
+      console.warn("Notice: Test bypass accommodation/order sync:", profErr);
+    }
+
+    revalidateTag("public-events");
+    revalidatePath("/", "layout");
+    revalidatePath("/dashboard", "page");
+    revalidatePath("/events", "page");
+    revalidatePath("/dashboard/passes", "page");
+
+    return {
+      success: true,
+      masterCode: checkoutData.pass_code,
+      passTier: checkoutData.pass_tier,
+      totalRegistered: checkoutData.slots_used,
+      totalPayable: 0,
+      paymentId: testTxnid,
+      orderId: checkoutData.order_id,
+      orderNumber: checkoutData.order_number,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to execute test bypass registration";
+    console.error("bypassTestRegisterAction error:", err);
+    return { success: false, error: msg };
+  }
+}
