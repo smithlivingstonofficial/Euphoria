@@ -975,6 +975,21 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
       categoryMap.set(c.slug.toLowerCase().trim(), c.id);
     });
 
+    const SCHOOL_TO_CATEGORY_SLUG: Record<string, string> = {
+      "Kalasalingam School of Agriculture and Horticulture (KSAH)": "agriculture-horticulture",
+      "Kalasalingam School of Architecture (KSoA)": "architecture-design",
+      "School of Mechanical, Aero, Auto and Civil Engineering": "mechanical-civil",
+      "School of Bio, Chemical and Processing Engineering": "biotechnology-chemical",
+      "School of Computing (SoC)": "computing-ai",
+      "School of Electronics, Electrical and Biomedical Technology (SEET)": "electrical-electronics",
+      "School of Advanced Sciences (SAS)": "sciences-mathematics",
+      "Kalasalingam Business School (KBS)": "management-commerce",
+      "School of Liberal Arts and Special Education (SLASE)": "arts-media-literature",
+      "Kalasalingam School of Allied And Health Sciences": "allied-health-sciences",
+      "Kalasalingam School of Law (KSoL)": "law-debating",
+      "First Year Engineering & Foundation (FE)": "first-year-engineering",
+    };
+
     let insertedCount = 0;
     const errors: string[] = [];
 
@@ -984,7 +999,12 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
       const categoryName = (evt.category || "Technical Competitions").trim();
       let categoryId = categoryMap.get(categoryName.toLowerCase());
 
-      // If category doesn't exist, create it
+      // If not directly matched, check if school maps to an existing category
+      if (!categoryId && evt.school && SCHOOL_TO_CATEGORY_SLUG[evt.school]) {
+        categoryId = categoryMap.get(SCHOOL_TO_CATEGORY_SLUG[evt.school]);
+      }
+
+      // If category still doesn't exist, create it
       if (!categoryId) {
         const catSlug = categoryName
           .toLowerCase()

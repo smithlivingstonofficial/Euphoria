@@ -34,6 +34,7 @@ interface ParsedEventRow {
   short_description?: string;
   rules?: string;
   status?: string;
+  is_pro_event?: boolean;
 }
 
 export function BulkUploadEvents({
@@ -108,18 +109,26 @@ export function BulkUploadEvents({
             rowObj[h] = row[idx] || "";
           });
 
+          const schoolName = rowObj["school"] || rowObj["department"] || "KARE";
+          const rawDate = rowObj["event_date"] || rowObj["event date"] || rowObj["date"] || "";
+          const eventDate = rawDate.includes("26") ? "2026-09-26" : "2026-09-25";
+          const isFlagship =
+            (rowObj["event type"] || rowObj["type"] || "").toLowerCase().includes("flagship") ||
+            (rowObj["event type"] || rowObj["type"] || "").toLowerCase().includes("pro");
+
           parsed.push({
             name: rowObj["name"] || rowObj["event name"] || rowObj["title"] || "",
-            school: rowObj["school"] || rowObj["department"] || "KARE",
-            category: rowObj["category"] || rowObj["track"] || "Technical",
-            event_date: rowObj["event_date"] || rowObj["date"] || "2026-09-25",
+            school: schoolName,
+            category: rowObj["category"] || rowObj["track"] || schoolName || "Technical",
+            event_date: eventDate,
             start_time: rowObj["start_time"] || rowObj["start time"] || "09:30",
             end_time: rowObj["end_time"] || rowObj["end time"] || "16:30",
-            venue: rowObj["venue"] || rowObj["location"] || "Main Campus Hall",
+            venue: rowObj["venue"] || rowObj["location"] || "Campus Academic Center & Spec Labs",
             registration_fee: rowObj["registration_fee"] || rowObj["fee"] || 0,
-            participant_limit: rowObj["participant_limit"] || rowObj["capacity"] || 100,
+            participant_limit: rowObj["participant_limit"] || rowObj["target capacity"] || rowObj["capacity"] || 100,
             min_team_size: rowObj["min_team_size"] || 1,
             max_team_size: rowObj["max_team_size"] || 1,
+            is_pro_event: isFlagship,
             short_description: rowObj["short_description"] || rowObj["description"] || "",
             rules: rowObj["rules"] || "",
             status: "registration_open",

@@ -66,30 +66,71 @@ function slugify(text) {
     .replace(/\-\-+/g, "-");
 }
 
+const SCHOOL_TO_CATEGORY_SLUG = {
+  "Kalasalingam School of Agriculture and Horticulture (KSAH)": "agriculture-horticulture",
+  "Kalasalingam School of Architecture (KSoA)": "architecture-design",
+  "School of Mechanical, Aero, Auto and Civil Engineering": "mechanical-civil",
+  "School of Bio, Chemical and Processing Engineering": "biotechnology-chemical",
+  "School of Computing (SoC)": "computing-ai",
+  "School of Electronics, Electrical and Biomedical Technology (SEET)": "electrical-electronics",
+  "School of Advanced Sciences (SAS)": "sciences-mathematics",
+  "Kalasalingam Business School (KBS)": "management-commerce",
+  "School of Liberal Arts and Special Education (SLASE)": "arts-media-literature",
+  "Kalasalingam School of Allied And Health Sciences": "allied-health-sciences",
+  "Kalasalingam School of Law (KSoL)": "law-debating",
+  "First Year Engineering & Foundation (FE)": "first-year-engineering",
+};
+
 function parseDate(dateStr) {
   if (!dateStr) return "2026-09-25";
-  if (dateStr.includes("26.09")) return "2026-09-26";
+  const s = dateStr.trim();
+  if (s === "2026-09-26" || s.startsWith("2026-09-26")) return "2026-09-26";
+  if (s === "2026-09-25" || s.startsWith("2026-09-25")) return "2026-09-25";
+  if (s.includes("26.09")) return "2026-09-26";
+  if (s.includes("25.09")) return "2026-09-25";
   return "2026-09-25";
 }
 
 function parseTimes(timeStr) {
   if (!timeStr) return { start: "09:30:00", end: "16:30:00" };
   const lower = timeStr.toLowerCase();
-  
+
   let start = "09:30:00";
   let end = "16:30:00";
 
-  if (lower.includes("10.00 am") || lower.includes("10:00 am") || lower.includes("10 am")) {
+  // Start time detection
+  if (lower.includes("10.30 am") || lower.includes("10:30 am")) {
+    start = "10:30:00";
+  } else if (lower.includes("10.00 am") || lower.includes("10:00 am") || lower.includes("10 am") || lower.includes("10.00am") || lower.includes("10am")) {
     start = "10:00:00";
-  } else if (lower.includes("9.00 am") || lower.includes("9am") || lower.includes("9.30 am")) {
+  } else if (lower.includes("9.30 am") || lower.includes("9:30 am") || lower.includes("9.30") || lower.includes("9:30")) {
     start = "09:30:00";
-  } else if (lower.includes("1.30 pm") || lower.includes("2.00 pm") || lower.includes("2 pm")) {
+  } else if (lower.includes("9.00 am") || lower.includes("9:00 am") || lower.includes("9am") || lower.includes("9 am")) {
+    start = "09:00:00";
+  } else if (lower.includes("11.00 am") || lower.includes("11:00 am") || lower.includes("11 am")) {
+    start = "11:00:00";
+  } else if (lower.includes("1.30 pm") || lower.includes("1:30 pm")) {
+    start = "13:30:00";
+  } else if (lower.includes("2.00 pm") || lower.includes("2:00 pm") || lower.includes("2 pm") || lower.includes("2.00")) {
     start = "14:00:00";
   }
 
-  if (lower.includes("1.00 pm") || lower.includes("12 pm") || lower.includes("12.00 pm")) {
+  // End time detection
+  if (lower.includes("11.30 am") || lower.includes("11:30 am")) {
+    end = "11:30:00";
+  } else if (lower.includes("12.00 pm") || lower.includes("12:00 pm") || lower.includes("12 pm") || lower.includes("12:00pm") || lower.includes("12pm") || lower.includes("12.30 pm")) {
+    end = "12:30:00";
+  } else if (lower.includes("1.00 pm") || lower.includes("1:00 pm") || lower.includes("1 pm") || lower.includes("01.00 pm")) {
     end = "13:00:00";
-  } else if (lower.includes("4.00 pm") || lower.includes("4.30 pm") || lower.includes("4 pm") || lower.includes("5.00 pm") || lower.includes("5pm")) {
+  } else if (lower.includes("2.00 pm") || lower.includes("2:00 pm") || lower.includes("2pm") || lower.includes("2 pm")) {
+    end = "14:00:00";
+  } else if (lower.includes("3.00 pm") || lower.includes("3:00 pm") || lower.includes("3 pm") || lower.includes("3.30 pm")) {
+    end = "15:30:00";
+  } else if (lower.includes("4.00 pm") || lower.includes("4:00 pm") || lower.includes("4 pm") || lower.includes("4.00pm")) {
+    end = "16:00:00";
+  } else if (lower.includes("4.30 pm") || lower.includes("4:30 pm")) {
+    end = "16:30:00";
+  } else if (lower.includes("5.00 pm") || lower.includes("5:00 pm") || lower.includes("5 pm") || lower.includes("5pm")) {
     end = "17:00:00";
   }
 
@@ -202,9 +243,8 @@ async function runIngestion() {
     const eventDate = parseDate(eventDateRaw);
     const { start: startTime, end: endTime } = parseTimes(eventTimeRaw);
     const participantLimit = parseInt(targetCountRaw, 10) || 100;
-    const baseSlug = slugify(eventName);
-
-    let matchedCat = categories.find(c => c.name.toLowerCase().includes(currentSchool.split(" ")[0].toLowerCase())) || categories[0];
+    const targetCatSlug = SCHOOL_TO_CATEGORY_SLUG[currentSchool];
+    let matchedCat = categories.find(c => c.slug === targetCatSlug) || categories[0];
 
     let descriptionText = `${eventName.trim()} is an official competition organized by ${currentSchool} during Euphoria 2026 at Kalasalingam Academy of Research and Education. Join the official WhatsApp group for real-time announcements, team coordination, and venue guidelines.`;
 
