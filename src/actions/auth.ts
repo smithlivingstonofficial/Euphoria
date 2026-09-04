@@ -156,7 +156,7 @@ export async function saveParticipantProfile(profileData: {
       register_number:
         profileData.participantType === "internal"
           ? profileData.registerNumber?.trim().toUpperCase()
-          : (profileData.registerNumber?.trim().toUpperCase() || null),
+          : null,
       school: profileData.participantType === "internal" ? profileData.school : null,
       college_name:
         profileData.participantType === "external"

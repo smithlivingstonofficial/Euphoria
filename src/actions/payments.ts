@@ -19,7 +19,8 @@ export type { CreateEasebuzzOrderResult, EasebuzzVerifyPayload, VerifyEasebuzzPa
 // 1. Create Easebuzz Payment Order Server Action
 export async function createEasebuzzOrderAction(
   eventIds: string[],
-  needsAccommodation?: boolean
+  needsAccommodation?: boolean,
+  isTestPayment?: boolean
 ): Promise<CreateEasebuzzOrderResult> {
   try {
     if (!eventIds || eventIds.length === 0) {
@@ -82,9 +83,9 @@ export async function createEasebuzzOrderAction(
       return { success: false, error: "Invalid events selected." };
     }
 
-    // Determine pass price server-side: Pro Pass = ₹300, Standard Pass = ₹200
+    // Determine pass price server-side: Pro Pass = ₹300, Standard Pass = ₹200. Test mode = ₹1.00
     const hasProEvent = selectedEvts.some((e) => Boolean(e.is_pro_event));
-    const passAmountRupees = hasProEvent ? 300 : 200;
+    const passAmountRupees = isTestPayment ? 1 : (hasProEvent ? 300 : 200);
 
     const { key, salt, env, subMerchantId, baseUrl } = getEasebuzzCredentials();
 
@@ -97,10 +98,12 @@ export async function createEasebuzzOrderAction(
     }
 
     // Unique Transaction ID (max 40 alphanumeric characters)
-    const txnid = `EBZ-26-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const txnid = `EBZ-26-${isTestPayment ? "TEST-" : ""}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const userPhone = profile.mobile_number || profile.phone || "9999999999";
     const userName = profile.full_name || "Delegate";
-    const productInfo = hasProEvent ? "EUPHORIA PRO PASS" : "EUPHORIA STANDARD PASS";
+    const productInfo = isTestPayment
+      ? (hasProEvent ? "EUPHORIA PRO PASS TEST" : "EUPHORIA PASS TEST")
+      : (hasProEvent ? "EUPHORIA PRO PASS" : "EUPHORIA STANDARD PASS");
 
     // Call Easebuzz Initiate Payment API
     const initRes = await initiateEasebuzzPayment(
@@ -115,7 +118,7 @@ export async function createEasebuzzOrderAction(
         surl: `${baseUrl}/api/payments/easebuzz/callback?status=success`,
         furl: `${baseUrl}/api/payments/easebuzz/callback?status=failure`,
         udf1: user.id,
-        udf2: hasProEvent ? "pro_pass" : "standard_pass",
+        udf2: isTestPayment ? "test_pass" : (hasProEvent ? "pro_pass" : "standard_pass"),
         udf3: eventIds.join(","),
         udf4: needsAccommodation ? "yes" : "no",
         udf5: txnid,
@@ -149,6 +152,7 @@ export async function createEasebuzzOrderAction(
         metadata: {
           event_ids: eventIds,
           pass_tier: hasProEvent ? "pro_pass" : "standard_pass",
+          is_test_payment: Boolean(isTestPayment),
           needs_accommodation: Boolean(needsAccommodation),
           accommodation_status: needsAccommodation ? "requested" : "none",
           easebuzz_access_key: accessKey,
@@ -168,6 +172,7 @@ export async function createEasebuzzOrderAction(
       currency: "INR",
       key,
       env,
+      isTestPayment: Boolean(isTestPayment),
       userProfile: {
         name: userName,
         email: user.email || "",
@@ -186,7 +191,9 @@ export async function verifyEasebuzzPaymentAction(
   payload: EasebuzzVerifyPayload
 ): Promise<VerifyEasebuzzPaymentResult> {
   try {
-    const { easepayid, txnid, status, hash, amount, eventIds, needsAccommodation, rawPayload } = payload;
+    const { easepayid, txnid, status, hash, amount, eventIds, needsAccommodation, isTestPayment, rawPayload } = payload;
+    const isTest = Boolean(isTestPayment || Number(amount) === 1 || (txnid && txnid.includes("TEST")));
+    const actualChargedAmount = Number(amount) || (isTest ? 1 : 200);
 
     if (!eventIds || eventIds.length === 0) {
       return { success: false, error: "No events specified for registration." };
@@ -273,6 +280,8 @@ export async function verifyEasebuzzPaymentAction(
           accommodation_status: needsAccommodation ? "requested" : "none",
           accommodation_payment: "in_person_on_campus",
           source: "easebuzz_web_checkout",
+          is_test_payment: isTest,
+          actual_amount_paid: actualChargedAmount,
           timestamp: new Date().toISOString(),
         },
       }
@@ -291,6 +300,7 @@ export async function verifyEasebuzzPaymentAction(
       if (checkoutData.order_id) {
         await adminClient.from("orders").update({
           gateway_order_id: txnid,
+          amount: actualChargedAmount,
           status: "paid",
           metadata: {
             easebuzz_pay_id: easepayid || `ebz_pay_${Date.now()}`,
@@ -299,9 +309,17 @@ export async function verifyEasebuzzPaymentAction(
             needs_accommodation: Boolean(needsAccommodation),
             accommodation_status: needsAccommodation ? "requested" : "none",
             accommodation_payment: "in_person_on_campus",
+            is_test_payment: isTest,
+            actual_amount_paid: actualChargedAmount,
             timestamp: new Date().toISOString(),
           },
         }).eq("id", checkoutData.order_id);
+
+        if (isTest) {
+          await adminClient.from("delegate_passes").update({
+            amount_paid: actualChargedAmount,
+          }).eq("order_id", checkoutData.order_id);
+        }
       }
       await adminClient.from("profiles").update({
         needs_accommodation: Boolean(needsAccommodation),
@@ -321,7 +339,7 @@ export async function verifyEasebuzzPaymentAction(
       masterCode: checkoutData.pass_code,
       passTier: checkoutData.pass_tier,
       totalRegistered: checkoutData.slots_used,
-      totalPayable: checkoutData.amount_paid,
+      totalPayable: actualChargedAmount,
       paymentId: easepayid || txnid || `ebz_${Date.now()}`,
       orderId: checkoutData.order_id,
       orderNumber: checkoutData.order_number,

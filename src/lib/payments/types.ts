@@ -75,6 +75,7 @@ export interface EasebuzzVerifyPayload {
   hash: string;
   eventIds: string[];
   needsAccommodation?: boolean;
+  isTestPayment?: boolean;
   rawPayload?: Record<string, unknown>;
 }
 
@@ -86,6 +87,7 @@ export interface CreateEasebuzzOrderResult {
   currency?: string;
   key?: string;
   env?: "test" | "prod";
+  isTestPayment?: boolean;
   userProfile?: {
     name: string;
     email: string;

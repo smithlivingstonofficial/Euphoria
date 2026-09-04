@@ -35,7 +35,9 @@ export default async function CompleteProfilePage() {
   }
 
   const userEmail = user.email || "";
-  const isInternal = userEmail.toLowerCase().endsWith("@klu.ac.in");
+  const isInternal =
+    profile?.participant_type === "internal" ||
+    (profile?.participant_type !== "external" && userEmail.toLowerCase().endsWith("@klu.ac.in"));
 
   const userData = {
     id: user.id,

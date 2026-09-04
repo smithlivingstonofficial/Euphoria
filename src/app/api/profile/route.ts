@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       register_number:
         participantType === "internal"
           ? registerNumber.trim().toUpperCase()
-          : (registerNumber ? registerNumber.trim().toUpperCase() : null),
+          : null,
       school: participantType === "internal" ? school : null,
       college_name:
         participantType === "external"
