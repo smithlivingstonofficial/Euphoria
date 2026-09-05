@@ -616,7 +616,7 @@ export async function updateRegistrationStatus(
   }
 }
 
-// 9. Coordinator Management
+// 9. Coordinator Management (Strict Single-Event Scoping)
 export async function getAllCoordinatorsAdmin() {
   try {
     const adminClient = await createAdminClient();
@@ -634,7 +634,7 @@ export async function getAllCoordinatorsAdmin() {
         user_id,
         created_at,
         user:profiles!staff_event_assignments_user_id_fkey (id, full_name, email, mobile_number, department),
-        event:events (id, name, school_or_dept)
+        event:events (id, name, school_or_dept, venue, event_date, start_time, end_time)
       `),
       adminClient.from("student_coordinator_assignments").select(`
         id,
@@ -642,7 +642,7 @@ export async function getAllCoordinatorsAdmin() {
         user_id,
         created_at,
         user:profiles!student_coordinator_assignments_user_id_fkey (id, full_name, email, mobile_number, register_number, department),
-        event:events (id, name, school_or_dept)
+        event:events (id, name, school_or_dept, venue, event_date, start_time, end_time)
       `),
       adminClient.from("user_role_assignments").select(`
         id,
@@ -651,69 +651,42 @@ export async function getAllCoordinatorsAdmin() {
         created_at,
         user:profiles!user_role_assignments_user_id_fkey (id, full_name, email, mobile_number, department)
       `),
-      adminClient.from("profiles").select("id, full_name, email, mobile_number, participant_type"),
-      adminClient.from("events").select("id, name, description, school_or_dept"),
+      adminClient.from("profiles").select("id, full_name, email, mobile_number, department, participant_type"),
+      adminClient.from("events").select("id, name, description, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
     ]);
 
     const profileMapByEmail = new Map();
+    const profileMapById = new Map();
     (profiles || []).forEach((p: any) => {
-      if (p.email) profileMapByEmail.set(p.email.toLowerCase(), p);
+      if (p.email) profileMapByEmail.set(p.email.toLowerCase().trim(), p);
+      if (p.id) profileMapById.set(p.id, p);
     });
 
+    // 1. Strict single-event mapping for Staff Coordinators (keyed by user_id or email)
     const staffMap = new Map<string, any>();
-    const studentMap = new Map<string, any>();
+    const assignedStaffUserIds = new Set<string>();
 
-    // 1. Explicit DB staff assignments
+    // Priority A: Explicit DB staff assignments (definitive single-event source)
     (staffAssignments || []).forEach((s: any) => {
       const u = Array.isArray(s.user) ? s.user[0] : s.user;
       const e = Array.isArray(s.event) ? s.event[0] : s.event;
-      if (u && e) {
-        staffMap.set(`${s.user_id}_${s.event_id}`, { ...s, user: u, event: e });
+      if (u && e && !staffMap.has(s.user_id)) {
+        staffMap.set(s.user_id, {
+          id: s.id,
+          event_id: s.event_id,
+          user_id: s.user_id,
+          created_at: s.created_at,
+          user: u,
+          event: e,
+          isDbRecord: true,
+          isUnassigned: false,
+        });
+        assignedStaffUserIds.add(s.user_id);
+        if (u.email) assignedStaffUserIds.add(u.email.toLowerCase().trim());
       }
     });
 
-    // 2. Explicit DB student assignments
-    (studentAssignments || []).forEach((s: any) => {
-      const u = Array.isArray(s.user) ? s.user[0] : s.user;
-      const e = Array.isArray(s.event) ? s.event[0] : s.event;
-      if (u && e) {
-        studentMap.set(`${s.user_id}_${s.event_id}`, { ...s, user: u, event: e });
-      }
-    });
-
-    // 3. User role assignments (staff_coordinator / student_coordinator)
-    (userRoles || []).forEach((r: any) => {
-      const u = Array.isArray(r.user) ? r.user[0] : r.user;
-      if (u) {
-        if (r.role_id === "staff_coordinator") {
-          const key = `${r.user_id}_global`;
-          if (!staffMap.has(key)) {
-            staffMap.set(key, {
-              id: r.id,
-              event_id: "global",
-              user_id: r.user_id,
-              created_at: r.created_at || new Date().toISOString(),
-              user: u,
-              event: { id: "global", name: "All Competitions", school_or_dept: "University-Wide" },
-            });
-          }
-        } else if (r.role_id === "student_coordinator") {
-          const key = `${r.user_id}_global`;
-          if (!studentMap.has(key)) {
-            studentMap.set(key, {
-              id: r.id,
-              event_id: "global",
-              user_id: r.user_id,
-              created_at: r.created_at || new Date().toISOString(),
-              user: u,
-              event: { id: "global", name: "All Competitions", school_or_dept: "University-Wide" },
-            });
-          }
-        }
-      }
-    });
-
-    // 4. Event description metadata assignments
+    // Priority B: Event description metadata assignments (from sheet import)
     (events || []).forEach((evt: any) => {
       if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
         const emailMatch = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
@@ -728,24 +701,102 @@ export async function getAllCoordinatorsAdmin() {
           emails.forEach((email: string, idx: number) => {
             const userProf = profileMapByEmail.get(email);
             const userId = userProf ? userProf.id : `email_${email}`;
-            const key = `${userId}_${evt.id}`;
-            if (!staffMap.has(key)) {
-              staffMap.set(key, {
-                id: `sheet_${evt.id}_${email}`,
-                event_id: evt.id,
-                user_id: userId,
-                created_at: new Date().toISOString(),
-                user: userProf || {
-                  id: userId,
-                  full_name: names[idx] || email.split("@")[0],
-                  email,
-                  mobile_number: mobiles[idx] || undefined,
-                  department: evt.school_or_dept,
-                },
-                event: { id: evt.id, name: evt.name, school_or_dept: evt.school_or_dept },
-              });
+
+            // Check if this coordinator is already assigned in Priority A
+            if (assignedStaffUserIds.has(userId) || assignedStaffUserIds.has(email) || staffMap.has(userId)) {
+              return;
             }
+
+            staffMap.set(userId, {
+              id: `sheet_${evt.id}_${email}`,
+              event_id: evt.id,
+              user_id: userId,
+              created_at: new Date().toISOString(),
+              user: userProf || {
+                id: userId,
+                full_name: names[idx] || email.split("@")[0],
+                email,
+                mobile_number: mobiles[idx] || undefined,
+                department: evt.school_or_dept,
+              },
+              event: {
+                id: evt.id,
+                name: evt.name,
+                school_or_dept: evt.school_or_dept,
+                venue: evt.venue,
+                event_date: evt.event_date,
+                start_time: evt.start_time,
+                end_time: evt.end_time,
+              },
+              isDbRecord: false,
+              isSheetRecord: true,
+              isUnassigned: false,
+            });
+            assignedStaffUserIds.add(userId);
+            assignedStaffUserIds.add(email);
           });
+        }
+      }
+    });
+
+    // Priority C: Users with role staff_coordinator who have NO event assignment yet.
+    // Returned cleanly as Unassigned / Pending Assignment (NEVER "All Competitions"!)
+    (userRoles || []).forEach((r: any) => {
+      if (r.role_id === "staff_coordinator" && !staffMap.has(r.user_id) && !assignedStaffUserIds.has(r.user_id)) {
+        const u = (Array.isArray(r.user) ? r.user[0] : r.user) || profileMapById.get(r.user_id);
+        if (u) {
+          staffMap.set(r.user_id, {
+            id: r.id,
+            event_id: null,
+            user_id: r.user_id,
+            created_at: r.created_at || new Date().toISOString(),
+            user: u,
+            event: null,
+            isDbRecord: true,
+            isUnassigned: true,
+          });
+          assignedStaffUserIds.add(r.user_id);
+        }
+      }
+    });
+
+    // 2. Strict single-event mapping for Student Coordinators (keyed by user_id)
+    const studentMap = new Map<string, any>();
+    const assignedStudentUserIds = new Set<string>();
+
+    (studentAssignments || []).forEach((s: any) => {
+      const u = Array.isArray(s.user) ? s.user[0] : s.user;
+      const e = Array.isArray(s.event) ? s.event[0] : s.event;
+      if (u && e && !studentMap.has(s.user_id)) {
+        studentMap.set(s.user_id, {
+          id: s.id,
+          event_id: s.event_id,
+          user_id: s.user_id,
+          created_at: s.created_at,
+          user: u,
+          event: e,
+          isDbRecord: true,
+          isUnassigned: false,
+        });
+        assignedStudentUserIds.add(s.user_id);
+      }
+    });
+
+    (userRoles || []).forEach((r: any) => {
+      if (r.role_id === "student_coordinator" && !studentMap.has(r.user_id) && !assignedStudentUserIds.has(r.user_id)) {
+        const u = (Array.isArray(r.user) ? r.user[0] : r.user) || profileMapById.get(r.user_id);
+        if (u) {
+          studentMap.set(r.user_id, {
+            id: r.id,
+            event_id: null,
+            user_id: r.user_id,
+            created_at: r.created_at || new Date().toISOString(),
+            user: u,
+            event: null,
+            isDbRecord: true,
+            isUnassigned: true,
+          });
+          assignedStudentUserIds.add(r.user_id);
         }
       }
     });
@@ -785,15 +836,28 @@ export async function assignCoordinatorAdmin(
       return { success: false, error: "Hierarchy Violation: Only Staff Coordinators or higher can assign Student Coordinators." };
     }
 
+    if (!eventId || eventId === "global") {
+      return { success: false, error: "Invalid competition. Coordinators must be assigned to a specific single event." };
+    }
+
     const adminClient = await createAdminClient();
+
+    // STRICT 1-EVENT ENFORCEMENT:
+    // A coordinator can ONLY be assigned to ONE event.
+    // Atomically clear any existing event assignments for this user across both coordinator assignment tables
+    await Promise.all([
+      adminClient.from("staff_event_assignments").delete().eq("user_id", userId),
+      adminClient.from("student_coordinator_assignments").delete().eq("user_id", userId),
+    ]);
 
     if (type === "staff") {
       // 1. Assign in staff_event_assignments
-      await adminClient.from("staff_event_assignments").insert({
+      const { error: insertErr } = await adminClient.from("staff_event_assignments").insert({
         event_id: eventId,
         user_id: userId,
         assigned_by: authInfo.user.id,
       });
+      if (insertErr) throw insertErr;
 
       // 2. Grant role
       await adminClient.from("user_role_assignments").upsert(
@@ -806,11 +870,12 @@ export async function assignCoordinatorAdmin(
       );
     } else {
       // 1. Assign in student_coordinator_assignments
-      await adminClient.from("student_coordinator_assignments").insert({
+      const { error: insertErr } = await adminClient.from("student_coordinator_assignments").insert({
         event_id: eventId,
         user_id: userId,
         assigned_by: authInfo.user.id,
       });
+      if (insertErr) throw insertErr;
 
       // 2. Grant role
       await adminClient.from("user_role_assignments").upsert(
@@ -824,6 +889,7 @@ export async function assignCoordinatorAdmin(
     }
 
     revalidatePath("/admin/coordinators", "page");
+    revalidatePath("/coordinator", "page");
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to assign coordinator";
@@ -852,13 +918,67 @@ export async function revokeCoordinatorAdmin(
 
     const adminClient = await createAdminClient();
 
-    if (type === "staff") {
-      await adminClient.from("staff_event_assignments").delete().eq("id", assignmentId);
+    if (assignmentId.startsWith("sheet_")) {
+      // It's a sheet coordinator extracted from event description:
+      // Pattern: "sheet_{eventId}_{email}"
+      const parts = assignmentId.split("_");
+      const eventId = parts[1];
+      const emailToRemove = parts.slice(2).join("_").toLowerCase();
+      if (eventId && emailToRemove) {
+        const { data: evt } = await adminClient.from("events").select("description").eq("id", eventId).maybeSingle();
+        if (evt?.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+          const emailMatch = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+          const nameMatch = evt.description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
+          const mobileMatch = evt.description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
+
+          if (emailMatch) {
+            const emails = emailMatch[1].split(/,|&|\//).map((s: string) => s.trim());
+            const names = nameMatch ? nameMatch[1].split(/,|&|\//).map((s: string) => s.trim()) : [];
+            const mobiles = mobileMatch ? mobileMatch[1].split(/,|&|\//).map((s: string) => s.trim()) : [];
+
+            const keepIdxs: number[] = [];
+            emails.forEach((em: string, idx: number) => {
+              if (em.toLowerCase() !== emailToRemove) keepIdxs.push(idx);
+            });
+
+            const newEmails = keepIdxs.map((i: number) => emails[i]).join(", ");
+            const newNames = keepIdxs.map((i: number) => names[i] || "").join(", ");
+            const newMobiles = keepIdxs.map((i: number) => mobiles[i] || "").join(", ");
+
+            const newDesc = evt.description
+              .replace(/\[COORDINATOR_EMAILS:\s*[^\]]+\]/, newEmails ? `[COORDINATOR_EMAILS: ${newEmails}]` : "")
+              .replace(/\[COORDINATOR_NAMES:\s*[^\]]+\]/, newNames ? `[COORDINATOR_NAMES: ${newNames}]` : "")
+              .replace(/\[COORDINATOR_MOBILES:\s*[^\]]+\]/, newMobiles ? `[COORDINATOR_MOBILES: ${newMobiles}]` : "");
+
+            await adminClient.from("events").update({ description: newDesc }).eq("id", eventId);
+          }
+        }
+      }
     } else {
-      await adminClient.from("student_coordinator_assignments").delete().eq("id", assignmentId);
+      if (type === "staff") {
+        await adminClient.from("staff_event_assignments").delete().eq("id", assignmentId);
+      } else {
+        await adminClient.from("student_coordinator_assignments").delete().eq("id", assignmentId);
+      }
+    }
+
+    // Clean up role if user has no remaining coordinator assignments and is not admin
+    if (userId && !userId.startsWith("email_")) {
+      const [{ data: staffLeft }, { data: studLeft }] = await Promise.all([
+        adminClient.from("staff_event_assignments").select("id").eq("user_id", userId).limit(1),
+        adminClient.from("student_coordinator_assignments").select("id").eq("user_id", userId).limit(1),
+      ]);
+      if ((!staffLeft || staffLeft.length === 0) && (!studLeft || studLeft.length === 0)) {
+        await adminClient
+          .from("user_role_assignments")
+          .delete()
+          .eq("user_id", userId)
+          .in("role_id", ["staff_coordinator", "student_coordinator"]);
+      }
     }
 
     revalidatePath("/admin/coordinators", "page");
+    revalidatePath("/coordinator", "page");
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to revoke coordinator";

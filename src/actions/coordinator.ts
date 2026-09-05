@@ -127,9 +127,13 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
         }
       }
     }
+
+    // Strict Enforcement: If eventId was specified and user is not assigned to it, access is denied.
+    // Coordinators are restricted ONLY to their single assigned event.
+    return "unauthorized";
   }
 
-  // 4. Check global role assignments in user_role_assignments
+  // 4. If NO specific eventId was passed (e.g. general role inquiry), return general role if assigned
   if (assignedRoles.has("staff_coordinator") || assignedRoles.has("faculty")) return "staff";
   if (assignedRoles.has("student_coordinator") || assignedRoles.has("coordinator")) return "student";
 
