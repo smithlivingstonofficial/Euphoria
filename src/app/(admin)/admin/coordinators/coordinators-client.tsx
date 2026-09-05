@@ -29,6 +29,7 @@ import {
   SlidersHorizontal,
   ChevronRight,
   UserPlus,
+  Check,
 } from "lucide-react";
 
 export interface CoordinatorItem {
@@ -108,6 +109,8 @@ export function CoordinatorsAdminClient({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"staff" | "student">("staff");
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -145,6 +148,23 @@ export function CoordinatorsAdminClient({
     return map;
   }, [allCoordinatorsCombined]);
 
+  // Autocomplete suggestions for user selection in modal
+  const filteredModalProfiles = useMemo(() => {
+    const q = userSearchQuery.trim().toLowerCase();
+    if (!q) {
+      return allProfiles.slice(0, 15);
+    }
+    return allProfiles
+      .filter((u) => {
+        const name = (u.full_name || "").toLowerCase();
+        const email = (u.email || "").toLowerCase();
+        const dept = (u.department || "").toLowerCase();
+        const mobile = (u.mobile_number || "").toLowerCase();
+        return name.includes(q) || email.includes(q) || dept.includes(q) || mobile.includes(q);
+      })
+      .slice(0, 20);
+  }, [allProfiles, userSearchQuery]);
+
   // Event Coverage Matrix: For each of the 61 events, map assigned staff & students
   const eventsMatrix = useMemo(() => {
     return allEvents.map((evt) => {
@@ -177,7 +197,7 @@ export function CoordinatorsAdminClient({
     const coveragePct = totalEvents > 0 ? Math.round((coveredEvents / totalEvents) * 100) : 0;
 
     const activeStaff = staffList.filter((s) => s.event_id && !s.isUnassigned).length;
-    const activeStudents = studentList.filter((s) => s.event_id && !s.isUnassigned).length;
+    const activeStudents = studentList.filter((st) => st.event_id && !st.isUnassigned).length;
     const unassignedCoordinators = allCoordinatorsCombined.filter((c) => !c.event_id || c.isUnassigned).length;
 
     return {
@@ -196,15 +216,12 @@ export function CoordinatorsAdminClient({
   // Filtered Event Matrix (for Competitions View)
   const filteredEventsMatrix = useMemo(() => {
     return eventsMatrix.filter((item) => {
-      // School filter
       if (eventSchoolFilter !== "all" && item.event.school_or_dept !== eventSchoolFilter) {
         return false;
       }
-      // Status filter
       if (eventStatusFilter !== "all" && item.status !== eventStatusFilter) {
         return false;
       }
-      // Search filter
       const q = eventSearch.trim().toLowerCase();
       if (!q) return true;
 
@@ -250,13 +267,15 @@ export function CoordinatorsAdminClient({
     });
   }, [allCoordinatorsCombined, coordTab, coordSearch]);
 
-  // Trigger Modal to Assign
+  // Trigger Modal to Assign fresh
   const openAssignModal = (preselectedEventId?: string, preselectedType?: "staff" | "student") => {
     setActionError(null);
     setActionSuccess(null);
     setModalType(preselectedType || "staff");
     setSelectedEventId(preselectedEventId || allEvents[0]?.id || "");
     setSelectedUserId("");
+    setUserSearchQuery("");
+    setIsUserDropdownOpen(false);
     setIsModalOpen(true);
   };
 
@@ -266,6 +285,9 @@ export function CoordinatorsAdminClient({
     setActionSuccess(null);
     setModalType(coord.type);
     setSelectedUserId(coord.user_id);
+    const u = coord.user || allProfiles.find((p) => p.id === coord.user_id);
+    setUserSearchQuery(u ? `${u.full_name} (${u.email})` : "");
+    setIsUserDropdownOpen(false);
     setSelectedEventId(coord.event_id || allEvents[0]?.id || "");
     setIsModalOpen(true);
   };
@@ -356,128 +378,142 @@ export function CoordinatorsAdminClient({
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          1. COMPACT UNIFIED TOP HEADER BAR (MODERN UI/UX)
+          ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+              Coordinator Operations &amp; Scoping
+            </h1>
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700 shadow-2xs">
+              <ShieldCheck className="h-3 w-3" />
+              <span>Strict 1-Event Bound</span>
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            61 competitions • 1 coordinator per event • Gate scan &amp; roster access strictly single-event
+          </p>
+        </div>
+
+        {/* Action Toolbar */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <a
+            href="/admin/events"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+          >
+            Manage Events (61)
+          </a>
+          <a
+            href="/admin/reports"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+          >
+            Export Roster
+          </a>
+          <button
+            onClick={() => openAssignModal()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span>Assign Coordinator</span>
+          </button>
+        </div>
+      </div>
+
       {/* Alert Notices */}
       {actionSuccess && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4 text-xs text-emerald-950 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-xs text-emerald-950 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-1">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
             <div>
-              <span className="font-extrabold block text-sm">Action Complete</span>
-              <span className="text-emerald-700">{actionSuccess}</span>
+              <span className="font-extrabold text-xs mr-1.5">Action Complete:</span>
+              <span className="text-emerald-800">{actionSuccess}</span>
             </div>
           </div>
           <button
             onClick={() => setActionSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900 p-1 rounded-lg"
+            className="text-emerald-700 hover:text-emerald-900 p-0.5 rounded-md cursor-pointer"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
 
-      {/* Strict Security Policy Notice */}
-      <div className="rounded-3xl border border-indigo-200/70 bg-gradient-to-r from-indigo-50/80 via-white to-sky-50/70 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="h-10 w-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-600/30">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-extrabold text-slate-900">
-                Strict 1-Event Coordinator Access Enforced
-              </h3>
-              <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-bold text-indigo-800 border border-indigo-200">
-                Single-Event Bound
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 max-w-3xl leading-relaxed">
-              Coordinators are strictly restricted to their designated competition for QR scanning, check-in, and participant roster access. Global access across all 61 competitions is exclusively reserved for Super Admin and Administrators.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => openAssignModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/25 hover:bg-indigo-700 active:scale-[0.98] transition-all cursor-pointer shrink-0"
-        >
-          <UserPlus className="h-4 w-4" />
-          <span>Assign Coordinator</span>
-        </button>
-      </div>
-
-      {/* KPI Operations Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          2. COMPACT KPI OPERATIONS CARDS
+          ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {/* Total Competitions & Coverage */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">
               Competitions
             </span>
-            <div className="p-1.5 rounded-xl bg-slate-100 text-slate-700">
-              <Calendar className="h-4 w-4" />
+            <div className="p-1 rounded-lg bg-slate-100 text-slate-600">
+              <Calendar className="h-3.5 w-3.5" />
             </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
               {stats.coveredEvents}
             </span>
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-xs font-semibold text-slate-400">
               / {stats.totalEvents} Staffed
             </span>
           </div>
-          {/* Progress bar */}
-          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
             <div
-              className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
+              className="bg-indigo-600 h-1 rounded-full transition-all duration-500"
               style={{ width: `${stats.coveragePct}%` }}
             />
           </div>
-          <div className="text-[11px] font-semibold text-slate-500">
-            {stats.coveragePct}% events have active lead
+          <div className="text-[10px] font-semibold text-slate-500">
+            {stats.coveragePct}% coverage active
           </div>
         </div>
 
         {/* Faculty Staff Leads */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">
               Faculty Leads
             </span>
-            <div className="p-1.5 rounded-xl bg-indigo-50 text-indigo-700">
-              <Users className="h-4 w-4" />
+            <div className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
+              <Users className="h-3.5 w-3.5" />
             </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-indigo-900">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-black text-indigo-900">
               {stats.activeStaff}
             </span>
             <span className="text-xs font-bold text-indigo-600/80">Faculty Members</span>
           </div>
-          <p className="text-[11px] text-slate-500">
+          <div className="text-[10px] text-slate-500">
             1 faculty coordinator per event
-          </p>
+          </div>
         </div>
 
         {/* Student Coordinators */}
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">
               Student Leads
             </span>
-            <div className="p-1.5 rounded-xl bg-purple-50 text-purple-700">
-              <GraduationCap className="h-4 w-4" />
+            <div className="p-1 rounded-lg bg-purple-50 text-purple-600">
+              <GraduationCap className="h-3.5 w-3.5" />
             </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-purple-900">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-black text-purple-900">
               {stats.activeStudents}
             </span>
             <span className="text-xs font-bold text-purple-600/80">Student Leads</span>
           </div>
-          <p className="text-[11px] text-slate-500">
-            Assigned for on-ground verification
-          </p>
+          <div className="text-[10px] text-slate-500">
+            Assigned for check-in scanning
+          </div>
         </div>
 
         {/* Attention Required / Unstaffed */}
@@ -486,29 +522,29 @@ export function CoordinatorsAdminClient({
             setViewMode("events");
             setEventStatusFilter(stats.unstaffed > 0 ? "unstaffed" : "needs_student");
           }}
-          className={`rounded-3xl border p-4 sm:p-5 shadow-xs space-y-2 cursor-pointer transition-all hover:scale-[1.01] ${
+          className={`rounded-2xl border p-3 sm:p-3.5 shadow-2xs space-y-1.5 cursor-pointer transition-all hover:scale-[1.01] ${
             stats.unstaffed > 0
-              ? "border-rose-200 bg-rose-50/50 hover:bg-rose-50"
-              : "border-amber-200 bg-amber-50/50 hover:bg-amber-50"
+              ? "border-rose-200 bg-rose-50/60 hover:bg-rose-50"
+              : "border-amber-200 bg-amber-50/60 hover:bg-amber-50"
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
               Needs Attention
             </span>
             <div
-              className={`p-1.5 rounded-xl ${
+              className={`p-1 rounded-lg ${
                 stats.unstaffed > 0
                   ? "bg-rose-100 text-rose-700"
                   : "bg-amber-100 text-amber-700"
               }`}
             >
-              <AlertTriangle className="h-4 w-4" />
+              <AlertTriangle className="h-3.5 w-3.5" />
             </div>
           </div>
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-1.5">
             <span
-              className={`text-2xl sm:text-3xl font-black ${
+              className={`text-xl sm:text-2xl font-black ${
                 stats.unstaffed > 0 ? "text-rose-900" : "text-amber-900"
               }`}
             >
@@ -518,43 +554,43 @@ export function CoordinatorsAdminClient({
               {stats.unstaffed > 0 ? "Unstaffed Events" : "Need Student Lead"}
             </span>
           </div>
-          <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+          <div className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
             <span>Click to filter events</span>
             <ChevronRight className="h-3 w-3 inline" />
-          </p>
+          </div>
         </div>
       </div>
 
       {/* Navigation View Switcher (By Competitions vs By Coordinators) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2.5">
         <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200/80">
           <button
             onClick={() => setViewMode("events")}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
               viewMode === "events"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-500 hover:text-slate-900"
             }`}
           >
-            <Layers className="h-4 w-4 text-indigo-600" />
+            <Layers className="h-3.5 w-3.5 text-indigo-600" />
             <span>Competitions Operations Matrix ({allEvents.length})</span>
           </button>
           <button
             onClick={() => setViewMode("coordinators")}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
               viewMode === "coordinators"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-500 hover:text-slate-900"
             }`}
           >
-            <Users className="h-4 w-4 text-purple-600" />
+            <Users className="h-3.5 w-3.5 text-purple-600" />
             <span>Coordinator Directory ({allCoordinatorsCombined.length})</span>
           </button>
         </div>
 
         <div className="text-xs font-semibold text-slate-500 flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span>Real-time Event Scoping Active</span>
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Strict 1-Event Scoping Active</span>
         </div>
       </div>
 
@@ -562,19 +598,19 @@ export function CoordinatorsAdminClient({
           VIEW 1: COMPETITIONS OPERATIONS MATRIX (EVENT-CENTRIC)
           ───────────────────────────────────────────────────────────────────────────── */}
       {viewMode === "events" && (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {/* Filters Bar */}
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs space-y-2.5">
+            <div className="flex flex-col md:flex-row md:items-center gap-2.5">
               {/* Search */}
               <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   value={eventSearch}
                   onChange={(e) => setEventSearch(e.target.value)}
                   placeholder="Search competition by title, school, venue, or coordinator name..."
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:outline-none transition-all"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:outline-none transition-all"
                 />
               </div>
 
@@ -625,18 +661,18 @@ export function CoordinatorsAdminClient({
 
             {/* School / Department Filter Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
                 School:
               </span>
               <button
                 onClick={() => setEventSchoolFilter("all")}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`rounded-lg px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                   eventSchoolFilter === "all"
                     ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                     : "text-slate-500 hover:text-slate-900"
                 }`}
               >
-                All Departments ({allEvents.length})
+                All ({allEvents.length})
               </button>
               {schools.map((school) => {
                 const count = allEvents.filter((e) => e.school_or_dept === school).length;
@@ -644,7 +680,7 @@ export function CoordinatorsAdminClient({
                   <button
                     key={school}
                     onClick={() => setEventSchoolFilter(school)}
-                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`rounded-lg px-2.5 py-0.5 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       eventSchoolFilter === school
                         ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                         : "text-slate-500 hover:text-slate-900"
@@ -658,17 +694,17 @@ export function CoordinatorsAdminClient({
           </div>
 
           {/* Competitions Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {filteredEventsMatrix.length > 0 ? (
               filteredEventsMatrix.map(({ event: evt, assignedStaff, assignedStudents, status }) => (
                 <div
                   key={evt.id}
-                  className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-indigo-200 hover:shadow-md transition-all"
+                  className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3 hover:border-indigo-200 hover:shadow-md transition-all"
                 >
                   {/* Top: Event Identity & Status */}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="inline-block rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 border border-slate-200 max-w-[200px] truncate">
+                      <span className="inline-block rounded-lg bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 border border-slate-200 max-w-[190px] truncate">
                         {evt.school_or_dept}
                       </span>
                       {status === "fully_staffed" && (
@@ -859,14 +895,14 @@ export function CoordinatorsAdminClient({
           VIEW 2: COORDINATOR DIRECTORY (PERSON-CENTRIC)
           ───────────────────────────────────────────────────────────────────────────── */}
       {viewMode === "coordinators" && (
-        <div className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
           {/* Action Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Filter Tabs */}
             <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200/80 shrink-0">
               <button
                 onClick={() => setCoordTab("all")}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   coordTab === "all"
                     ? "bg-white text-slate-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
@@ -876,7 +912,7 @@ export function CoordinatorsAdminClient({
               </button>
               <button
                 onClick={() => setCoordTab("staff")}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   coordTab === "staff"
                     ? "bg-white text-indigo-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
@@ -886,7 +922,7 @@ export function CoordinatorsAdminClient({
               </button>
               <button
                 onClick={() => setCoordTab("student")}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   coordTab === "student"
                     ? "bg-white text-purple-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
@@ -896,7 +932,7 @@ export function CoordinatorsAdminClient({
               </button>
               <button
                 onClick={() => setCoordTab("unassigned")}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                   coordTab === "unassigned"
                     ? "bg-white text-amber-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
@@ -908,16 +944,16 @@ export function CoordinatorsAdminClient({
 
             <button
               onClick={() => openAssignModal()}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition-all cursor-pointer shrink-0"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               <span>Assign New Coordinator</span>
             </button>
           </div>
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
               value={coordSearch}
@@ -932,11 +968,11 @@ export function CoordinatorsAdminClient({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/80 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100">
                 <tr>
-                  <th className="px-5 py-3.5">Coordinator Details</th>
-                  <th className="px-5 py-3.5">Designated Role</th>
-                  <th className="px-5 py-3.5">Assigned Single Competition</th>
-                  <th className="px-5 py-3.5">Verification Source</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
+                  <th className="px-4 py-3">Coordinator Details</th>
+                  <th className="px-4 py-3">Designated Role</th>
+                  <th className="px-4 py-3">Assigned Single Competition</th>
+                  <th className="px-4 py-3">Verification Source</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -944,7 +980,7 @@ export function CoordinatorsAdminClient({
                   filteredCoordinators.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                       {/* Coordinator Identity */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3">
                         <div className="font-extrabold text-slate-900 text-sm">
                           {item.user?.full_name || "Coordinator"}
                         </div>
@@ -962,7 +998,7 @@ export function CoordinatorsAdminClient({
                       </td>
 
                       {/* Role Type */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold border ${
                             item.type === "staff"
@@ -985,7 +1021,7 @@ export function CoordinatorsAdminClient({
                       </td>
 
                       {/* Competition Assignment (Strictly 1) */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3">
                         {item.event && item.event.name ? (
                           <div className="space-y-0.5">
                             <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
@@ -1015,7 +1051,7 @@ export function CoordinatorsAdminClient({
                       </td>
 
                       {/* Source */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3">
                         <span className="text-[11px] font-medium text-slate-500">
                           {item.isSheetRecord
                             ? "Department Schedule"
@@ -1024,14 +1060,14 @@ export function CoordinatorsAdminClient({
                       </td>
 
                       {/* Actions */}
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-4 py-3 text-right">
                         <div className="inline-flex items-center gap-1.5">
                           <button
                             onClick={() => openReassignModal(item)}
                             title="Reassign Event"
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
                           >
-                            <RefreshCw className="h-4 w-4" />
+                            <RefreshCw className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() =>
@@ -1046,7 +1082,7 @@ export function CoordinatorsAdminClient({
                             title="Revoke Role"
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </td>
@@ -1066,11 +1102,11 @@ export function CoordinatorsAdminClient({
       )}
 
       {/* ─────────────────────────────────────────────────────────────────────────────
-          ASSIGN / REASSIGN COORDINATOR MODAL (ENFORCING STRICT 1-EVENT POLICY)
+          3. ASSIGN / REASSIGN COORDINATOR MODAL WITH SEARCHABLE AUTOCOMPLETE INPUT
           ───────────────────────────────────────────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 sm:p-7 shadow-2xl space-y-5 my-8">
+          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl space-y-4 my-8">
             <button
               onClick={() => setIsModalOpen(false)}
               className="absolute right-5 top-5 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
@@ -1083,7 +1119,7 @@ export function CoordinatorsAdminClient({
                 <ShieldCheck className="h-3.5 w-3.5" />
                 <span>Single-Event Scoping Policy</span>
               </div>
-              <h2 className="text-lg font-extrabold text-slate-900">
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
                 {activeSelectedUserExisting
                   ? "Reassign Coordinator Event"
                   : "Assign Event Coordinator"}
@@ -1093,7 +1129,7 @@ export function CoordinatorsAdminClient({
               </p>
             </div>
 
-            <form onSubmit={handleAssignSubmit} className="space-y-4 pt-1">
+            <form onSubmit={handleAssignSubmit} className="space-y-3.5 pt-1">
               {/* Coordinator Role Type */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
@@ -1103,7 +1139,7 @@ export function CoordinatorsAdminClient({
                   <button
                     type="button"
                     onClick={() => setModalType("staff")}
-                    className={`rounded-2xl p-3 border text-xs font-bold transition-all cursor-pointer text-left ${
+                    className={`rounded-2xl p-2.5 border text-xs font-bold transition-all cursor-pointer text-left ${
                       modalType === "staff"
                         ? "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-2xs"
                         : "border-slate-200 bg-slate-50/70 text-slate-600 hover:bg-slate-100"
@@ -1118,7 +1154,7 @@ export function CoordinatorsAdminClient({
                   <button
                     type="button"
                     onClick={() => setModalType("student")}
-                    className={`rounded-2xl p-3 border text-xs font-bold transition-all cursor-pointer text-left ${
+                    className={`rounded-2xl p-2.5 border text-xs font-bold transition-all cursor-pointer text-left ${
                       modalType === "student"
                         ? "bg-purple-50 border-purple-600 text-purple-900 shadow-2xs"
                         : "border-slate-200 bg-slate-50/70 text-slate-600 hover:bg-slate-100"
@@ -1132,33 +1168,125 @@ export function CoordinatorsAdminClient({
                 </div>
               </div>
 
-              {/* User Selection */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Select User Account
-                </label>
-                <select
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-600 focus:outline-none shadow-2xs"
-                  required
-                >
-                  <option value="">-- Choose registered user --</option>
-                  {allProfiles.map((u) => {
-                    const current = userCurrentAssignment.get(u.id);
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} ({u.email})
-                        {current?.event?.name ? ` [Assigned: ${current.event.name}]` : " [Unassigned]"}
-                      </option>
-                    );
-                  })}
-                </select>
+              {/* SEARCHABLE AUTOCOMPLETE TEXT BOX FOR COORDINATOR */}
+              <div className="space-y-1.5 relative">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Coordinator User Account
+                  </label>
+                  {selectedUserId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUserId("");
+                        setUserSearchQuery("");
+                        setIsUserDropdownOpen(true);
+                      }}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                    >
+                      Clear &amp; Change
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => {
+                      setUserSearchQuery(e.target.value);
+                      setIsUserDropdownOpen(true);
+                      if (selectedUserId) setSelectedUserId("");
+                    }}
+                    onFocus={() => setIsUserDropdownOpen(true)}
+                    placeholder="Type name, email, or department to search..."
+                    className={`w-full rounded-2xl border bg-white pl-10 pr-9 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none shadow-2xs transition-all ${
+                      selectedUserId
+                        ? "border-emerald-500/80 bg-emerald-50/20 font-semibold"
+                        : "border-slate-200"
+                    }`}
+                    required
+                  />
+                  {userSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserSearchQuery("");
+                        setSelectedUserId("");
+                        setIsUserDropdownOpen(false);
+                      }}
+                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Autocomplete Dropdown List */}
+                {isUserDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setIsUserDropdownOpen(false)}
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-20 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl space-y-1">
+                      {filteredModalProfiles.length > 0 ? (
+                        filteredModalProfiles.map((u) => {
+                          const current = userCurrentAssignment.get(u.id);
+                          const isSelected = selectedUserId === u.id;
+                          return (
+                            <div
+                              key={u.id}
+                              onClick={() => {
+                                setSelectedUserId(u.id);
+                                setUserSearchQuery(`${u.full_name} (${u.email})`);
+                                setIsUserDropdownOpen(false);
+                              }}
+                              className={`rounded-xl p-2 text-xs transition-colors cursor-pointer flex items-center justify-between gap-2 ${
+                                isSelected
+                                  ? "bg-indigo-50 border border-indigo-200 text-indigo-950"
+                                  : "hover:bg-slate-50 text-slate-800"
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="font-extrabold flex items-center gap-1.5 truncate">
+                                  <span>{u.full_name}</span>
+                                  {isSelected && (
+                                    <Check className="h-3.5 w-3.5 text-indigo-600 inline" />
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 truncate">
+                                  {u.email} {u.department ? `• ${u.department}` : ""}
+                                </div>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                {current?.event?.name ? (
+                                  <span className="inline-block rounded-md bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 text-[9px] font-bold max-w-[140px] truncate">
+                                    Assigned: {current.event.name}
+                                  </span>
+                                ) : (
+                                  <span className="inline-block rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold">
+                                    Available
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                          No matching registered users found. Try another search keyword.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Reassignment Warning Banner */}
               {activeSelectedUserExisting && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 flex items-start gap-2.5">
                   <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
                     <span className="font-bold block">1-Event Scoping Notice:</span>
@@ -1204,7 +1332,7 @@ export function CoordinatorsAdminClient({
               )}
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2.5 pt-2.5 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -1215,7 +1343,7 @@ export function CoordinatorsAdminClient({
                 <button
                   type="submit"
                   disabled={isSubmitting || !selectedUserId || !selectedEventId}
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <span>Assigning...</span>
