@@ -652,7 +652,7 @@ export async function getAllCoordinatorsAdmin() {
         user:profiles!user_role_assignments_user_id_fkey (id, full_name, email, mobile_number, department)
       `),
       adminClient.from("profiles").select("id, full_name, email, mobile_number, department, participant_type"),
-      adminClient.from("events").select("id, name, description, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
+      adminClient.from("events").select("id, name, description, coordinator_emails, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
     ]);
 
     const profileMapByEmail = new Map();
@@ -686,56 +686,67 @@ export async function getAllCoordinatorsAdmin() {
       }
     });
 
-    // Priority B: Event description metadata assignments (from sheet import)
+    // Priority B: Event description metadata assignments (from sheet import or coordinator_emails)
     (events || []).forEach((evt: any) => {
+      let emails: string[] = [];
+      let names: string[] = [];
+      let mobiles: string[] = [];
+
+      if (evt.coordinator_emails) {
+        emails = evt.coordinator_emails.split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+      }
+
       if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
         const emailMatch = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
         const nameMatch = evt.description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
         const mobileMatch = evt.description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
 
         if (emailMatch) {
-          const emails = emailMatch[1].split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-          const names = nameMatch ? nameMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
-          const mobiles = mobileMatch ? mobileMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
-
-          emails.forEach((email: string, idx: number) => {
-            const userProf = profileMapByEmail.get(email);
-            const userId = userProf ? userProf.id : `email_${email}`;
-
-            // Check if this coordinator is already assigned in Priority A
-            if (assignedStaffUserIds.has(userId) || assignedStaffUserIds.has(email) || staffMap.has(userId)) {
-              return;
-            }
-
-            staffMap.set(userId, {
-              id: `sheet_${evt.id}_${email}`,
-              event_id: evt.id,
-              user_id: userId,
-              created_at: new Date().toISOString(),
-              user: userProf || {
-                id: userId,
-                full_name: names[idx] || email.split("@")[0],
-                email,
-                mobile_number: mobiles[idx] || undefined,
-                department: evt.school_or_dept,
-              },
-              event: {
-                id: evt.id,
-                name: evt.name,
-                school_or_dept: evt.school_or_dept,
-                venue: evt.venue,
-                event_date: evt.event_date,
-                start_time: evt.start_time,
-                end_time: evt.end_time,
-              },
-              isDbRecord: false,
-              isSheetRecord: true,
-              isUnassigned: false,
-            });
-            assignedStaffUserIds.add(userId);
-            assignedStaffUserIds.add(email);
-          });
+          const descEmails = emailMatch[1].split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+          emails = Array.from(new Set([...emails, ...descEmails]));
+          names = nameMatch ? nameMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
+          mobiles = mobileMatch ? mobileMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
         }
+      }
+
+      if (emails.length > 0) {
+        emails.forEach((email: string, idx: number) => {
+          const userProf = profileMapByEmail.get(email);
+          const userId = userProf ? userProf.id : `email_${email}`;
+
+          // Check if this coordinator is already assigned in Priority A
+          if (assignedStaffUserIds.has(userId) || assignedStaffUserIds.has(email) || staffMap.has(userId)) {
+            return;
+          }
+
+          staffMap.set(userId, {
+            id: `sheet_${evt.id}_${email}`,
+            event_id: evt.id,
+            user_id: userId,
+            created_at: new Date().toISOString(),
+            user: userProf || {
+              id: userId,
+              full_name: names[idx] || email.split("@")[0],
+              email,
+              mobile_number: mobiles[idx] || undefined,
+              department: evt.school_or_dept,
+            },
+            event: {
+              id: evt.id,
+              name: evt.name,
+              school_or_dept: evt.school_or_dept,
+              venue: evt.venue,
+              event_date: evt.event_date,
+              start_time: evt.start_time,
+              end_time: evt.end_time,
+            },
+            isDbRecord: false,
+            isSheetRecord: true,
+            isUnassigned: false,
+          });
+          assignedStaffUserIds.add(userId);
+          assignedStaffUserIds.add(email);
+        });
       }
     });
 

@@ -111,19 +111,37 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
 
     if (studentAssign) return "student";
 
-    // Check event description tag for coordinator emails
+    // Check event coordinator_emails column or description tag for coordinator emails
     if (userEmail) {
       const { data: evt } = await adminClient
         .from("events")
-        .select("description")
+        .select("id, description, coordinator_emails")
         .eq("id", eventId)
         .maybeSingle();
 
-      if (evt?.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-        const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-        if (match) {
-          const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-          if (emails.includes(userEmail)) return "staff";
+      if (evt) {
+        let isMatch = false;
+        if (evt.coordinator_emails) {
+          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+          if (directEmails.includes(userEmail)) {
+            isMatch = true;
+          }
+        }
+        if (!isMatch && evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+          if (match) {
+            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+            if (emails.includes(userEmail)) isMatch = true;
+          }
+        }
+
+        if (isMatch) {
+          // Auto-heal DB assignment so future queries hit staff_event_assignments directly
+          await adminClient.from("staff_event_assignments").upsert(
+            { user_id: userId, event_id: eventId },
+            { onConflict: "user_id,event_id" }
+          );
+          return "staff";
         }
       }
     }
@@ -214,9 +232,58 @@ export async function getCoordinatorWorkspaceData() {
 
     const staffEventIds = new Set(staffAssigned.map((s) => s.event_id));
     const studentEventIds = new Set(studentAssigned.map((s) => s.event_id));
-    const allAssignedIds = Array.from(new Set([...Array.from(staffEventIds), ...Array.from(studentEventIds)]));
+    let allAssignedIds = Array.from(new Set([...Array.from(staffEventIds), ...Array.from(studentEventIds)]));
+    const userEmail = (user.email || "").toLowerCase().trim();
 
-    if (!isAdmin && !isStaff && !isStudentCoord && allAssignedIds.length === 0) {
+    // If not admin and no explicit assignments found in tables, check if assigned via event metadata/email
+    if (!isAdmin && allAssignedIds.length === 0 && userEmail) {
+      const { data: eventsList } = await adminClient
+        .from("events")
+        .select("id, description, coordinator_emails");
+
+      if (eventsList) {
+        for (const evt of eventsList) {
+          let matched = false;
+          if (evt.coordinator_emails) {
+            const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+            if (directEmails.includes(userEmail)) {
+              matched = true;
+            }
+          }
+          if (!matched && evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
+            const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
+            if (match) {
+              const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+              if (emails.includes(userEmail)) {
+                matched = true;
+              }
+            }
+          }
+
+          if (matched) {
+            // Auto-heal DB assignment and ensure staff role in DB
+            await adminClient.from("staff_event_assignments").upsert(
+              { user_id: user.id, event_id: evt.id },
+              { onConflict: "user_id,event_id" }
+            );
+            if (!roles.includes("staff_coordinator")) {
+              await adminClient.from("user_role_assignments").upsert(
+                { user_id: user.id, role_id: "staff_coordinator" },
+                { onConflict: "user_id,role_id" }
+              );
+              roles.push("staff_coordinator");
+            }
+            staffEventIds.add(evt.id);
+            allAssignedIds.push(evt.id);
+            // Strictly single-event bound: coordinators manage 1 competition
+            break;
+          }
+        }
+      }
+    }
+
+    const hasAnyRole = roles.includes("staff_coordinator") || roles.includes("student_coordinator") || roles.includes("faculty") || roles.includes("coordinator");
+    if (!isAdmin && !hasAnyRole && allAssignedIds.length === 0) {
       return {
         success: false,
         error: "Access denied. You are not assigned as an event coordinator.",
@@ -745,14 +812,14 @@ export async function revokeAttendanceCoordinator({
   }
 }
 
-// 5. Update Event Operational Notes & Venue (Faculty Staff / Admin Only)
+// 5. Update Event Operational Settings (Venue, Brochure Link, Rules & Guidelines - Staff & Admin)
 export async function updateEventOperationsStaff(
   eventId: string,
   payload: {
     venue?: string;
+    brochureUrl?: string;
+    rules?: string | string[];
     status?: string;
-    contactPhone?: string;
-    instructions?: string;
   }
 ) {
   try {
@@ -761,24 +828,59 @@ export async function updateEventOperationsStaff(
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return { success: false, error: "Unauthorized" };
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
 
     const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
     if (roleType !== "staff" && roleType !== "admin") {
       return {
         success: false,
-        error: "Access denied. Only Faculty Staff Coordinators can update event operations.",
+        error: "Access denied. Only Faculty Staff Coordinators or Admins can update event configuration.",
       };
     }
 
     const adminClient = await createAdminClient();
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (payload.venue !== undefined) {
+      updatePayload.venue = payload.venue.trim();
+    }
+
+    if (payload.rules !== undefined) {
+      updatePayload.rules = Array.isArray(payload.rules)
+        ? payload.rules.map((r) => r.trim()).filter(Boolean).join("\n")
+        : payload.rules.trim();
+    }
+
+    // Status can strictly ONLY be changed by Admin, NOT staff coordinators
+    if (roleType === "admin" && payload.status) {
+      updatePayload.status = payload.status;
+    }
+
+    // Update brochure link in description if provided
+    if (payload.brochureUrl !== undefined) {
+      const { data: eventData } = await adminClient
+        .from("events")
+        .select("description")
+        .eq("id", eventId)
+        .single();
+
+      if (eventData) {
+        let cleanDesc = (eventData.description || "")
+          .replace(/\[(BROCHURE_URL|BROCHURE_LINK):\s*[^\]]+\]/g, "")
+          .trim();
+
+        if (payload.brochureUrl.trim()) {
+          cleanDesc += `\n[BROCHURE_URL: ${payload.brochureUrl.trim()}]`;
+        }
+        updatePayload.description = cleanDesc;
+      }
+    }
+
     const { error } = await adminClient
       .from("events")
-      .update({
-        venue: payload.venue,
-        status: payload.status,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", eventId);
 
     if (error) throw error;
@@ -786,15 +888,16 @@ export async function updateEventOperationsStaff(
     revalidatePath("/coordinator", "page");
     revalidatePath(`/coordinator/${eventId}`, "page");
     revalidatePath("/events", "page");
+    revalidatePath("/dashboard", "page");
 
     return { success: true };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to update operations";
+    const msg = err instanceof Error ? err.message : "Failed to update event operations";
     return { success: false, error: msg };
   }
 }
 
-// 6. Update WhatsApp & Brochure Links (Admin & Super Admin Only)
+// 6. Update WhatsApp & Brochure Links (Staff & Admin)
 export async function updateEventLinksStaff(
   eventId: string,
   whatsappLink: string,
@@ -809,10 +912,10 @@ export async function updateEventLinksStaff(
     if (!user) return { success: false, error: "Unauthorized. Please log in." };
 
     const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
-    if (roleType !== "admin") {
+    if (roleType !== "admin" && roleType !== "staff") {
       return {
         success: false,
-        error: "Forbidden: Only Platform Administrators and Super Administrators have permission to modify event brochure and WhatsApp links.",
+        error: "Forbidden: Only Assigned Coordinators and Administrators have permission to modify event brochure and WhatsApp links.",
       };
     }
 

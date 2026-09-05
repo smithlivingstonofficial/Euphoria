@@ -25,29 +25,47 @@ export async function getCurrentUser() {
     ] = await Promise.all([
       adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
       adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
-      adminClient.from("staff_event_assignments").select("id").eq("user_id", user.id).limit(1),
-      adminClient.from("student_coordinator_assignments").select("id").eq("user_id", user.id).limit(1),
-      adminClient.from("events").select("id, description"),
+      adminClient.from("staff_event_assignments").select("id, event_id").eq("user_id", user.id).limit(1),
+      adminClient.from("student_coordinator_assignments").select("id, event_id").eq("user_id", user.id).limit(1),
+      adminClient.from("events").select("id, description, coordinator_emails"),
     ]);
 
     const roles = (roleAssignments || []).map((r) => r.role_id);
     const userEmail = (user.email || "").toLowerCase().trim();
 
-    // Check if user is listed in any event's [COORDINATOR_EMAILS:] tag
+    // Check if user is listed in any event's coordinator_emails or [COORDINATOR_EMAILS:] tag
     let isEventEmailStaff = false;
+    let matchedEventId: string | null = null;
     if (userEmail && eventsData) {
       for (const evt of eventsData) {
+        if (evt.coordinator_emails) {
+          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+          if (directEmails.includes(userEmail)) {
+            isEventEmailStaff = true;
+            matchedEventId = evt.id;
+            break;
+          }
+        }
         if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
           const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
           if (match) {
             const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
             if (emails.includes(userEmail)) {
               isEventEmailStaff = true;
+              matchedEventId = evt.id;
               break;
             }
           }
         }
       }
+    }
+
+    // Auto-heal DB assignment if user matches an event but has no DB row yet
+    if (matchedEventId && (!staffAssignments || staffAssignments.length === 0)) {
+      adminClient.from("staff_event_assignments").upsert(
+        { user_id: user.id, event_id: matchedEventId },
+        { onConflict: "user_id,event_id" }
+      ).then();
     }
 
     const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0) || isEventEmailStaff;
@@ -73,7 +91,9 @@ export async function getCurrentUser() {
     const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment;
 
     // Verify profile completeness - if any fields are empty/null, rectify is_profile_completed to false
-    const actuallyComplete = isProfileComplete(profile);
+    // Staff/faculty coordinators and admins are exempt from student fields
+    const isExemptStaffOrAdmin = isStaff || isAdmin;
+    const actuallyComplete = isExemptStaffOrAdmin || isProfileComplete(profile);
     if (profile) {
       if (profile.is_profile_completed && !actuallyComplete) {
         profile.is_profile_completed = false;
@@ -259,29 +279,47 @@ export async function ensureStaffAccountAndRole(user: any) {
       { data: existingProfile },
     ] = await Promise.all([
       adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
-      adminClient.from("staff_event_assignments").select("id").eq("user_id", user.id).limit(1),
-      adminClient.from("student_coordinator_assignments").select("id").eq("user_id", user.id).limit(1),
-      adminClient.from("events").select("id, description"),
+      adminClient.from("staff_event_assignments").select("id, event_id").eq("user_id", user.id),
+      adminClient.from("student_coordinator_assignments").select("id, event_id").eq("user_id", user.id),
+      adminClient.from("events").select("id, description, coordinator_emails"),
       adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     ]);
 
     const roles = (roleAssignments || []).map((r) => r.role_id);
 
-    // 2. Check if listed in any event's [COORDINATOR_EMAILS:] tag
+    // 2. Check if listed in any event's coordinator_emails or [COORDINATOR_EMAILS:] tag
     let isEventEmailStaff = false;
+    let matchedEventId: string | null = null;
     if (userEmail && eventsData) {
       for (const evt of eventsData) {
+        if (evt.coordinator_emails) {
+          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
+          if (directEmails.includes(userEmail)) {
+            isEventEmailStaff = true;
+            matchedEventId = evt.id;
+            break;
+          }
+        }
         if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
           const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
           if (match) {
             const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
             if (emails.includes(userEmail)) {
               isEventEmailStaff = true;
+              matchedEventId = evt.id;
               break;
             }
           }
         }
       }
+    }
+
+    // Auto-heal DB staff_event_assignments if user matches an event but has no DB row yet
+    if (matchedEventId && (!staffAssignments || staffAssignments.length === 0)) {
+      await adminClient.from("staff_event_assignments").upsert(
+        { user_id: user.id, event_id: matchedEventId },
+        { onConflict: "user_id,event_id" }
+      );
     }
 
     const isAdmin =
@@ -308,8 +346,9 @@ export async function ensureStaffAccountAndRole(user: any) {
 
       const isInternal = userEmail.endsWith("@klu.ac.in");
 
-      // Verify whether existing profile genuinely has all required fields completed
+      // Staff coordinators and admins shouldn't be blocked by student fields
       const isActuallyComplete = isProfileComplete(existingProfile);
+      const markCompleted = isStaff || isAdmin || isActuallyComplete;
 
       const profilePayload = {
         id: user.id,
@@ -320,25 +359,34 @@ export async function ensureStaffAccountAndRole(user: any) {
         college_name: isInternal
           ? "Kalasalingam Academy of Research and Education"
           : existingProfile?.college_name || null,
-        is_profile_completed: isActuallyComplete,
+        is_profile_completed: markCompleted,
         updated_at: new Date().toISOString(),
       };
 
       if (!existingProfile) {
         await adminClient.from("profiles").insert(profilePayload);
-      } else if (existingProfile.is_profile_completed !== isActuallyComplete) {
-        await adminClient.from("profiles").update({ is_profile_completed: isActuallyComplete }).eq("id", user.id);
+      } else if (existingProfile.is_profile_completed !== markCompleted) {
+        await adminClient.from("profiles").update({ is_profile_completed: markCompleted }).eq("id", user.id);
       }
 
       // Ensure staff role assignment exists in DB
       if (isAdmin && !roles.includes("admin")) {
-        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "admin" });
+        await adminClient.from("user_role_assignments").upsert(
+          { user_id: user.id, role_id: "admin" },
+          { onConflict: "user_id,role_id" }
+        );
       }
       if (isStaff && !roles.includes("staff_coordinator")) {
-        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "staff_coordinator" });
+        await adminClient.from("user_role_assignments").upsert(
+          { user_id: user.id, role_id: "staff_coordinator" },
+          { onConflict: "user_id,role_id" }
+        );
       }
       if (hasStudentAssignment && !roles.includes("student_coordinator")) {
-        await adminClient.from("user_role_assignments").upsert({ user_id: user.id, role_id: "student_coordinator" });
+        await adminClient.from("user_role_assignments").upsert(
+          { user_id: user.id, role_id: "student_coordinator" },
+          { onConflict: "user_id,role_id" }
+        );
       }
     }
 

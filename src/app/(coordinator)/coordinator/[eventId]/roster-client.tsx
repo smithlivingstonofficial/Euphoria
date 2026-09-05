@@ -39,6 +39,11 @@ import {
   Link as LinkIcon,
   Users,
   ExternalLink,
+  ListChecks,
+  FileText,
+  Save,
+  Loader2,
+  BookOpen,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 
@@ -65,6 +70,7 @@ export function EventRosterClient({
   eventId,
   eventName,
   eventVenue,
+  eventRules,
   eventStatus,
   roleType = "student",
   initialAttendees,
@@ -73,6 +79,7 @@ export function EventRosterClient({
   eventId: string;
   eventName: string;
   eventVenue?: string;
+  eventRules?: string | string[] | null;
   eventStatus?: string;
   roleType?: "staff" | "student" | "admin";
   initialAttendees: CoordinatorAttendeeItem[];
@@ -98,17 +105,46 @@ export function EventRosterClient({
   const [confirmRevokeItem, setConfirmRevokeItem] = useState<CoordinatorAttendeeItem | null>(null);
   const [isActionProcessing, setIsActionProcessing] = useState(false);
 
-  // Staff Venue & Operations State
+  // Staff Venue, Brochure & Rules State
+  const initialRulesFormatted = Array.isArray(eventRules)
+    ? eventRules.join("\n")
+    : typeof eventRules === "string"
+    ? eventRules
+    : "";
   const [venueInput, setVenueInput] = useState(eventVenue || "");
-  const [statusInput, setStatusInput] = useState(eventStatus || "published");
+  const [brochureUrl, setBrochureUrl] = useState(staffDetails?.brochureUrl || "");
+  const [savedBrochureUrl, setSavedBrochureUrl] = useState(staffDetails?.brochureUrl || "");
+  const [rulesInput, setRulesInput] = useState(initialRulesFormatted);
   const [isSavingOps, setIsSavingOps] = useState(false);
   const [opsFeedback, setOpsFeedback] = useState<string | null>(null);
+  const [opsError, setOpsError] = useState<string | null>(null);
 
-  // Links State
+  // Rules Line Counter & Starter Template
+  const rulesCount = useMemo(() => {
+    return rulesInput
+      .split("\n")
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0).length;
+  }, [rulesInput]);
+
+  const handleInsertStandardTemplate = () => {
+    const template = [
+      "1. Valid physical College ID card is mandatory for campus entry and competition verification.",
+      "2. Participants must report to the venue 15 minutes prior to the scheduled start time.",
+      "3. All necessary development environments and workstations will be provided; participants may also bring their personal laptops.",
+      "4. Decisions rendered by the jury and evaluation committee are final and binding.",
+    ].join("\n");
+
+    if (!rulesInput.trim()) {
+      setRulesInput(template);
+    } else {
+      setRulesInput((prev) => prev.trim() + "\n" + template);
+    }
+  };
+
+  // Official WhatsApp Link State (Admin Controlled)
   const [savedWhatsappLink, setSavedWhatsappLink] = useState(staffDetails?.whatsappLink || "");
-  const [savedBrochureUrl, setSavedBrochureUrl] = useState(staffDetails?.brochureUrl || "");
   const [whatsappLink, setWhatsappLink] = useState(staffDetails?.whatsappLink || "");
-  const [brochureUrl, setBrochureUrl] = useState(staffDetails?.brochureUrl || "");
   const [isSavingLinks, setIsSavingLinks] = useState(false);
   const [isConfirmLinksModalOpen, setIsConfirmLinksModalOpen] = useState(false);
   const [linksSuccess, setLinksSuccess] = useState<string | null>(null);
@@ -214,21 +250,24 @@ export function EventRosterClient({
     setIsActionProcessing(false);
   };
 
-  // 2. STAFF OPERATIONS UPDATE
-  const handleSaveOperations = async (e: React.FormEvent) => {
+  // 2. STAFF EVENT CONFIGURATION UPDATE (Venue, Brochure Link, Rules & Guidelines)
+  const handleSaveEventSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingOps(true);
     setOpsFeedback(null);
+    setOpsError(null);
 
     const res = await updateEventOperationsStaff(eventId, {
       venue: venueInput,
-      status: statusInput,
+      brochureUrl: brochureUrl,
+      rules: rulesInput,
     });
 
     if (res.success) {
-      setOpsFeedback("Event venue and operational status updated successfully!");
+      setSavedBrochureUrl(brochureUrl);
+      setOpsFeedback("Competition venue, brochure link, and rules updated successfully!");
     } else {
-      setOpsFeedback("Failed to update: " + (res.error || "Unknown error"));
+      setOpsError("Failed to update: " + (res.error || "Unknown error"));
     }
     setIsSavingOps(false);
   };
@@ -793,74 +832,287 @@ export function EventRosterClient({
           VIEW 2: STAFF OPERATIONS & CONTROLS
          ========================================== */}
       {activeTab === "controls" && isStaffOrAdmin && (
-        <div className="space-y-5">
-          {/* Section 1: Venue & Operational Status Controls */}
-          <div className="rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                Venue &amp; Competition Status
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Update venue location, hall room numbers, and competition status.
+        <div className="space-y-6">
+          {/* Top Info Banner & Read-Only Status Badge */}
+          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+                  Event Operations &amp; Guidelines Control
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500">
+                Staff coordinator workspace for venue assignment, official brochure documentation, and competition rules.
               </p>
             </div>
 
-            {opsFeedback && (
-              <div className="p-3.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200 font-semibold text-xs">
-                {opsFeedback}
+            {/* Read-Only Status Indicator (Status cannot be changed by coordinators) */}
+            <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 border border-slate-200/80 px-3.5 py-2 shrink-0">
+              <span className={`h-2.5 w-2.5 rounded-full ${
+                eventStatus === "ongoing" || eventStatus === "registration_open"
+                  ? "bg-emerald-500 animate-pulse"
+                  : eventStatus === "completed"
+                  ? "bg-slate-400"
+                  : "bg-amber-500"
+              }`} />
+              <div className="text-left leading-tight">
+                <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-400 block">
+                  Current Status
+                </span>
+                <span className="text-xs font-bold text-slate-800">
+                  {eventStatus === "registration_open"
+                    ? "Registration Open"
+                    : eventStatus === "ongoing"
+                    ? "Live / In-Progress"
+                    : eventStatus === "completed"
+                    ? "Completed"
+                    : "Scheduled / Published"}
+                </span>
               </div>
-            )}
+              <span className="text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-0.5 ml-1">
+                Central Admin Managed
+              </span>
+            </div>
+          </div>
 
-            <form onSubmit={handleSaveOperations} className="space-y-3.5 max-w-xl">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  Venue / Hall / Room Location
-                </label>
-                <input
-                  type="text"
-                  value={venueInput}
-                  onChange={(e) => setVenueInput(e.target.value)}
-                  placeholder="e.g., Mechanical Block - Seminar Hall 2 (Room 304)"
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:border-slate-900 focus:outline-none"
-                />
+          {/* Feedback Toasts */}
+          {opsFeedback && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-900 border border-emerald-200 font-semibold text-xs flex items-center gap-2 shadow-xs">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>{opsFeedback}</span>
+            </div>
+          )}
+          {opsError && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 text-rose-900 border border-rose-200 font-semibold text-xs flex items-center gap-2 shadow-xs">
+              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+              <span>{opsError}</span>
+            </div>
+          )}
+
+          {/* Main Edit Form for Venue, Brochure, Rules */}
+          <form onSubmit={handleSaveEventSettings} className="space-y-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+              {/* Card 1: Venue Configuration */}
+              <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          Competition Venue Location
+                        </h4>
+                        <p className="text-[11px] text-slate-500">Hall, lab room, or building venue</p>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 text-indigo-700 px-2 py-0.5 text-[10px] font-bold border border-indigo-200">
+                      Editable
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                      Venue / Hall / Lab Details
+                    </label>
+                    <input
+                      type="text"
+                      value={venueInput}
+                      onChange={(e) => setVenueInput(e.target.value)}
+                      placeholder="e.g., Mechanical Block - Seminar Hall 2 (Room 304)"
+                      required
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-indigo-600 focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Quick Venue Suggestions */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Quick suggestions (tap to fill):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Seminar Hall 1",
+                        "Seminar Hall 2",
+                        "Main Auditorium",
+                        "Mech Block Lab 3",
+                        "CSE Central Lab",
+                        "Online / Virtual",
+                      ].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setVenueInput(s)}
+                          className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors cursor-pointer"
+                        >
+                          + {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-100 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                  <span>Synchronizes live across attendee digital passes &amp; festival event catalog.</span>
+                </p>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  Competition Status
-                </label>
-                <select
-                  value={statusInput}
-                  onChange={(e) => setStatusInput(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-slate-900 focus:outline-none cursor-pointer"
+              {/* Card 2: Brochure Document Link */}
+              <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          Official Event Brochure PDF
+                        </h4>
+                        <p className="text-[11px] text-slate-500">Google Drive or PDF document URL</p>
+                      </div>
+                    </div>
+                    {brochureUrl ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[10px] font-bold border border-emerald-200">
+                        Linked
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-medium border border-slate-200">
+                        Not Set
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                      Brochure URL / Drive Link
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={brochureUrl}
+                        onChange={(e) => setBrochureUrl(e.target.value)}
+                        placeholder="https://drive.google.com/... or https://domain.com/brochure.pdf"
+                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-purple-600 focus:outline-none transition-colors"
+                      />
+                      {brochureUrl.trim() && (
+                        <a
+                          href={brochureUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-primary text-white text-xs font-bold px-3 py-2.5 transition-colors shrink-0 shadow-2xs cursor-pointer"
+                          title="Verify link in new tab"
+                        >
+                          <span>Test</span>
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 text-[11px] text-slate-600 border border-slate-100 space-y-1">
+                    <p className="font-semibold text-slate-800">Where this appears:</p>
+                    <p className="text-slate-500 leading-relaxed">
+                      Unlocks the prominent <strong className="text-purple-700">&quot;View Brochure PDF&quot;</strong> button on the event&apos;s public page so participants can read the problem statements and rubrics.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-100 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                  <span>Publicly accessible directly without requiring manual admin intervention.</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Card 3: Rules & Competition Instructions */}
+            <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                    <ListChecks className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                        Competition Rules &amp; Guidelines
+                      </h4>
+                      <span className="rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5">
+                        {rulesCount} {rulesCount === 1 ? "Rule" : "Rules"} Active
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Enter each rule or instruction on a separate line (one rule per line)
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleInsertStandardTemplate}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors cursor-pointer w-full sm:w-auto"
                 >
-                  <option value="published">Published / Scheduled</option>
-                  <option value="registration_open">Registration Open</option>
-                  <option value="ongoing">Live / In-Progress</option>
-                  <option value="completed">Completed / Judging Concluded</option>
-                </select>
+                  <BookOpen className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Insert Standard Template</span>
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <textarea
+                  rows={6}
+                  value={rulesInput}
+                  onChange={(e) => setRulesInput(e.target.value)}
+                  placeholder={`1. Valid college ID card is mandatory for campus entry.\n2. Reporting time is 15 minutes before the competition start time.\n3. Standard lab workstations will be provided; participants may bring personal laptops.\n4. Decision of the evaluation jury and judges is final.`}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-xs text-slate-900 font-mono leading-relaxed focus:bg-white focus:border-emerald-600 focus:outline-none transition-colors"
+                />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-400 gap-1">
+                  <span>Each line will be rendered with verified checklist bullet points in the public catalog modal.</span>
+                  <span className="font-mono">{rulesInput.length} characters</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Sticky/Floating Save Action Bar */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-500 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>Changes update the live database and revalidate all public participant pages instantly.</span>
               </div>
 
               <button
                 type="submit"
                 disabled={isSavingOps}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary disabled:opacity-50 transition-colors cursor-pointer w-full sm:w-auto"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-primary disabled:opacity-50 transition-all cursor-pointer w-full sm:w-auto"
               >
-                <Edit3 className="h-4 w-4" />
-                <span>{isSavingOps ? "Saving Changes..." : "Save Operational Updates"}</span>
+                {isSavingOps ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-300" />
+                    <span>Saving Changes...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 text-emerald-400" />
+                    <span>Save Event Configuration</span>
+                  </>
+                )}
               </button>
-            </form>
-          </div>
+            </div>
+          </form>
 
-          {/* Section 2: Official Communication Links */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Section 2: Official WhatsApp Link & Student Coordinators */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start pt-2">
+            {/* WhatsApp Participant Link (Admin Controlled) */}
             <div className="lg:col-span-6 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
                   <LinkIcon className="h-4 w-4 text-primary" />
                   <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                    Official Event Links
+                    Official WhatsApp Group
                   </h4>
                 </div>
                 {isAdmin ? (
@@ -871,7 +1123,7 @@ export function EventRosterClient({
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-[10px] font-bold border border-slate-200">
                     <Lock className="h-3 w-3 text-slate-500" />
-                    <span>Admin Managed • Read Only</span>
+                    <span>Admin Managed</span>
                   </span>
                 )}
               </div>
@@ -891,7 +1143,6 @@ export function EventRosterClient({
               )}
 
               {isAdmin ? (
-                /* Admin & Super Admin Edit Form */
                 <form onSubmit={handleOpenConfirmLinks} className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -906,19 +1157,6 @@ export function EventRosterClient({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Event Brochure PDF Link
-                    </label>
-                    <input
-                      type="url"
-                      value={brochureUrl}
-                      onChange={(e) => setBrochureUrl(e.target.value)}
-                      placeholder="https://domain.com/brochure.pdf"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none transition-colors"
-                    />
-                  </div>
-
                   <div className="pt-1 flex justify-end">
                     <button
                       type="submit"
@@ -926,24 +1164,12 @@ export function EventRosterClient({
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-all disabled:opacity-50 cursor-pointer w-full sm:w-auto"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                      <span>{isSavingLinks ? "Saving Links..." : "Save Communication Links"}</span>
+                      <span>{isSavingLinks ? "Saving..." : "Save WhatsApp Link"}</span>
                     </button>
                   </div>
                 </form>
               ) : (
-                /* Faculty Staff Coordinator Read-Only View */
                 <div className="space-y-3">
-                  <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
-                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="space-y-0.5">
-                      <p className="font-bold">Staff Coordinator Notice</p>
-                      <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Official brochure documents and WhatsApp participant group links are configured exclusively by Platform Administrators. Contact the Euphoria Admin team to modify them.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* WhatsApp Read-Only Card */}
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -975,43 +1201,7 @@ export function EventRosterClient({
                         </a>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400 italic">No WhatsApp group link has been added yet.</p>
-                    )}
-                  </div>
-
-                  {/* Brochure Read-Only Card */}
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        Event Brochure PDF
-                      </span>
-                      {savedBrochureUrl ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5">
-                          Available
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium px-2 py-0.5">
-                          Not Uploaded
-                        </span>
-                      )}
-                    </div>
-                    {savedBrochureUrl ? (
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <span className="font-mono text-xs text-slate-800 truncate select-all">
-                          {savedBrochureUrl}
-                        </span>
-                        <a
-                          href={savedBrochureUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-primary text-white text-[11px] font-bold px-2.5 py-1 transition-colors shrink-0 shadow-2xs"
-                        >
-                          <span>View Brochure</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">No event brochure document has been linked yet.</p>
+                      <p className="text-xs text-slate-400 italic">No WhatsApp group link has been configured yet.</p>
                     )}
                   </div>
                 </div>
