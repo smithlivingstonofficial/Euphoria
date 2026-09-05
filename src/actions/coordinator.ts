@@ -15,6 +15,9 @@ export interface CoordinatorEventItem {
   participant_limit: number;
   status: string;
   is_pro_event?: boolean;
+  description?: string;
+  brochure_url?: string;
+  brochureUrl?: string | null;
   category?: {
     name: string;
   } | null;
@@ -218,6 +221,8 @@ export async function getCoordinatorWorkspaceData() {
               participant_limit,
               status,
               is_pro_event,
+              description,
+              brochure_url,
               category:event_categories (name)
             `).order("event_date", { ascending: true })
           : Promise.resolve({ data: [] }),
@@ -310,6 +315,8 @@ export async function getCoordinatorWorkspaceData() {
           participant_limit,
           status,
           is_pro_event,
+          description,
+          brochure_url,
           category:event_categories (name)
         `)
         .in("id", allAssignedIds);
@@ -379,9 +386,13 @@ export async function getCoordinatorWorkspaceData() {
       }
 
       const isStudent = roleType === "student";
+      const desc = evt.description || "";
+      const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
+      const brochureUrl = evt.brochure_url || (brochureMatch ? brochureMatch[2].trim() : null);
 
       return {
         ...evt,
+        brochureUrl: brochureUrl || null,
         totalRegistrations: regCountMap[evt.id] || 0,
         totalAttended: attendCountMap[evt.id] || 0,
         firstSlotCount: isStudent ? undefined : (firstSlotCountMap[evt.id] || 0),
@@ -616,7 +627,8 @@ export async function recordAttendanceCoordinator({
           id,
           name,
           school_or_dept,
-          venue
+          venue,
+          event_date
         )
       `);
 
@@ -666,7 +678,8 @@ export async function recordAttendanceCoordinator({
               id,
               name,
               school_or_dept,
-              venue
+              venue,
+              event_date
             )
           `)
           .eq("user_id", passMatches.user_id);
@@ -677,7 +690,7 @@ export async function recordAttendanceCoordinator({
 
         const { data: passRegs } = await passRegQuery;
         if (passRegs && passRegs.length > 0) {
-          return processAttendanceRecord(passRegs[0], user.id, scanMethod, roleType, eventId);
+          return processAttendanceRecord(passRegs[0], user.id, scanMethod, roleType, cleanCode, eventId);
         }
       }
 
@@ -687,7 +700,7 @@ export async function recordAttendanceCoordinator({
       };
     }
 
-    return processAttendanceRecord(matches[0], user.id, scanMethod, roleType, eventId);
+    return processAttendanceRecord(matches[0], user.id, scanMethod, roleType, cleanCode, eventId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Attendance check-in failed";
     return { success: false, error: msg };
@@ -700,11 +713,46 @@ async function processAttendanceRecord(
   coordinatorUserId: string,
   scanMethod: string,
   roleType: string,
+  cleanCode: string,
   eventId?: string
 ): Promise<RecordAttendanceResponse> {
   const adminClient = await createAdminClient();
   const rawStudent = Array.isArray(targetReg.user) ? targetReg.user[0] : targetReg.user;
   const eventDetails = Array.isArray(targetReg.event) ? targetReg.event[0] : targetReg.event;
+
+  // 1. EVENT DAY ENFORCEMENT:
+  // Scanning is active ONLY on the day of the competition (Indian Standard Time Asia/Kolkata)
+  const todayIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const eventDate = eventDetails?.event_date;
+  const isSuperOrPlatformAdmin = roleType === "admin";
+
+  // If scan is attempted on a non-event day by coordinators (staff or student):
+  if (!isSuperOrPlatformAdmin && scanMethod !== "staff_override") {
+    if (eventDate && eventDate !== todayIST) {
+      return {
+        success: false,
+        error: `Attendance scanning for "${eventDetails?.name || "this competition"}" is locked. Scanning opens exclusively on the day of the event (${eventDate}).`,
+      };
+    }
+  }
+
+  // 2. SUPERVISOR MANUAL OVERRIDE VALIDATION:
+  // Must verify that the typed code matches the participant's unique pass ID
+  if (scanMethod === "staff_override") {
+    const rawTargetCode = (targetReg.registration_code || "").trim().toUpperCase();
+    if (cleanCode && cleanCode !== rawTargetCode) {
+      return {
+        success: false,
+        error: `Pass verification mismatch: Typed code "${cleanCode}" does not match delegate pass ID "${rawTargetCode}".`,
+      };
+    }
+  }
 
   // Sanitize student preview for student volunteers
   const studentProfile = {

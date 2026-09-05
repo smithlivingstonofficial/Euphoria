@@ -61,6 +61,14 @@ export default async function CoordinatorEventRosterPage({
     }
   }
 
+  const todayIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const isLiveToday = event.event_date === todayIST;
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar />
@@ -107,6 +115,12 @@ export default async function CoordinatorEventRosterPage({
             >
               <QrCode className="h-4 w-4" />
               <span>Open Event Scanner</span>
+              {isLiveToday && (
+                <span className="relative flex h-2 w-2 ml-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+              )}
             </Link>
           </div>
         </div>

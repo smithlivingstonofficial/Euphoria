@@ -876,6 +876,7 @@ export function EventCatalogExplorer({
               const isConfirmed = isEventConfirmed(evt.id);
               const validation = canSelectEvent(evt);
               const sched = getEventSchedule(evt);
+              const meta = parseEventMetadata(evt);
 
               return (
                 <div
@@ -978,12 +979,27 @@ export function EventCatalogExplorer({
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        {/* Quick View Event Brochure - Icon Only */}
+                        {meta.brochureUrl ? (
+                          <a
+                            href={meta.brochureUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50/80 p-2 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 hover:text-indigo-900 transition-all cursor-pointer shadow-2xs shrink-0"
+                            title="Quick View Official Brochure (PDF)"
+                            aria-label={`View brochure for ${evt.name}`}
+                          >
+                            <FileText className="h-3.5 w-3.5 text-indigo-600" />
+                          </a>
+                        ) : null}
+
                         {/* View Details Modal Trigger */}
                         <button
                           type="button"
                           onClick={() => setActiveModalEvent(evt)}
-                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
                           title="View event guidelines & details"
                         >
                           <span>Details</span>

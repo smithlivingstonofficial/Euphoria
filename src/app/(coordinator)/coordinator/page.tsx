@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Building,
   Zap,
+  FileText,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 
@@ -270,19 +271,34 @@ export default async function CoordinatorDashboardPage() {
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <Link
                         href={`/coordinator/${evt.id}`}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline py-1"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline py-1 truncate"
                       >
                         <span>Manage Roster &amp; Attendance</span>
-                        <ArrowRight className="h-3.5 w-3.5" />
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0" />
                       </Link>
 
-                      <Link
-                        href={`/coordinator/scanner?event=${evt.id}`}
-                        title="Open Scanner for this event"
-                        className="rounded-xl bg-slate-100 p-2.5 text-slate-700 hover:bg-primary hover:text-white transition-colors shrink-0"
-                      >
-                        <QrCode className="h-4 w-4" />
-                      </Link>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {evt.brochureUrl ? (
+                          <a
+                            href={evt.brochureUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Quick View Official Brochure (PDF)"
+                            aria-label={`View brochure for ${evt.name}`}
+                            className="rounded-xl bg-indigo-50 border border-indigo-200/80 p-2.5 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-900 transition-colors"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </a>
+                        ) : null}
+
+                        <Link
+                          href={`/coordinator/scanner?event=${evt.id}`}
+                          title="Open Scanner for this event"
+                          className="rounded-xl bg-slate-100 p-2.5 text-slate-700 hover:bg-primary hover:text-white transition-colors"
+                        >
+                          <QrCode className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 );

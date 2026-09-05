@@ -103,6 +103,8 @@ export function EventRosterClient({
   // Modal Confirmations for Staff / Admin
   const [confirmCheckInItem, setConfirmCheckInItem] = useState<CoordinatorAttendeeItem | null>(null);
   const [confirmRevokeItem, setConfirmRevokeItem] = useState<CoordinatorAttendeeItem | null>(null);
+  const [typedOverrideCode, setTypedOverrideCode] = useState("");
+  const [overrideError, setOverrideError] = useState<string | null>(null);
   const [isActionProcessing, setIsActionProcessing] = useState(false);
 
   // Staff Venue, Brochure & Rules State
@@ -198,7 +200,16 @@ export function EventRosterClient({
   const handleExecuteConfirmedCheckIn = async () => {
     if (!confirmCheckInItem) return;
 
+    const targetCode = confirmCheckInItem.registration_code.trim().toUpperCase();
+    const entered = typedOverrideCode.trim().toUpperCase();
+
+    if (entered !== targetCode) {
+      setOverrideError(`Pass Code mismatch. Please enter "${targetCode}" exactly as shown on the pass.`);
+      return;
+    }
+
     setIsActionProcessing(true);
+    setOverrideError(null);
     const res = await recordAttendanceCoordinator({
       eventId,
       registrationCode: confirmCheckInItem.registration_code,
@@ -219,6 +230,10 @@ export function EventRosterClient({
         )
       );
       setConfirmCheckInItem(null);
+      setTypedOverrideCode("");
+      setOverrideError(null);
+    } else {
+      setOverrideError(res.error || "Failed to record manual check-in.");
     }
     setIsActionProcessing(false);
   };
@@ -802,7 +817,11 @@ export function EventRosterClient({
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => setConfirmCheckInItem(item)}
+                                  onClick={() => {
+                                    setConfirmCheckInItem(item);
+                                    setTypedOverrideCode("");
+                                    setOverrideError(null);
+                                  }}
                                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors cursor-pointer"
                                 >
                                   <Check className="h-3 w-3" />
@@ -1319,7 +1338,7 @@ export function EventRosterClient({
                   <span className="font-mono font-bold text-slate-800">{confirmCheckInItem.user.register_number || "N/A"}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Pass Code</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Required Pass ID</span>
                   <span className="font-mono font-bold text-primary">{confirmCheckInItem.registration_code}</span>
                 </div>
               </div>
@@ -1329,14 +1348,70 @@ export function EventRosterClient({
               </div>
             </div>
 
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Are you sure you want to manually mark this participant present for <strong>{eventName}</strong> without a QR scan?
-            </p>
+            {/* Verification Pass Code Input Prompt */}
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-xs font-bold text-slate-800">
+                Type Delegate Event Pass ID to Confirm:
+              </label>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                To prevent accidental overrides, inspect the delegate&apos;s physical pass or digital pass and type the unique code:
+              </p>
+              <div className="relative pt-1">
+                <input
+                  type="text"
+                  value={typedOverrideCode}
+                  onChange={(e) => {
+                    setTypedOverrideCode(e.target.value.toUpperCase());
+                    setOverrideError(null);
+                  }}
+                  placeholder={`e.g. ${confirmCheckInItem.registration_code}`}
+                  className={`w-full rounded-xl border px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-colors focus:outline-none ${
+                    typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase()
+                      ? "border-emerald-500 bg-emerald-50/40 text-emerald-950 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500"
+                      : typedOverrideCode.trim().length > 0
+                      ? "border-amber-400 bg-amber-50/30 text-slate-900 focus:border-amber-500"
+                      : "border-slate-300 bg-slate-50/50 text-slate-900 focus:border-slate-900 focus:bg-white"
+                  }`}
+                  autoFocus
+                />
+                {typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase() && (
+                  <div className="absolute right-3 top-3.5 text-emerald-600">
+                    <Check className="h-4 w-4" />
+                  </div>
+                )}
+              </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {/* Status Validation Feedback */}
+              {typedOverrideCode.trim().length > 0 && typedOverrideCode.trim().toUpperCase() !== confirmCheckInItem.registration_code.trim().toUpperCase() && (
+                <p className="text-[10px] font-semibold text-amber-700 flex items-center gap-1 pt-0.5">
+                  <AlertCircle className="h-3 w-3 shrink-0 text-amber-600" />
+                  <span>Code does not match yet. Expected: {confirmCheckInItem.registration_code}</span>
+                </p>
+              )}
+
+              {typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase() && (
+                <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 pt-0.5">
+                  <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" />
+                  <span>Pass ID verified! Ready to confirm manual check-in.</span>
+                </p>
+              )}
+
+              {overrideError && (
+                <p className="text-[10px] font-bold text-rose-600 flex items-center gap-1 pt-0.5">
+                  <AlertCircle className="h-3 w-3 shrink-0 text-rose-500" />
+                  <span>{overrideError}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setConfirmCheckInItem(null)}
+                onClick={() => {
+                  setConfirmCheckInItem(null);
+                  setTypedOverrideCode("");
+                  setOverrideError(null);
+                }}
                 disabled={isActionProcessing}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
               >
@@ -1345,11 +1420,14 @@ export function EventRosterClient({
               <button
                 type="button"
                 onClick={handleExecuteConfirmedCheckIn}
-                disabled={isActionProcessing}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition-colors cursor-pointer"
+                disabled={
+                  isActionProcessing ||
+                  typedOverrideCode.trim().toUpperCase() !== confirmCheckInItem.registration_code.trim().toUpperCase()
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 <Check className="h-4 w-4" />
-                <span>{isActionProcessing ? "Recording..." : "Yes, Confirm Check-In"}</span>
+                <span>{isActionProcessing ? "Recording..." : "Confirm Manual Check-In"}</span>
               </button>
             </div>
           </div>
