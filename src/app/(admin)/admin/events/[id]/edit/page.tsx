@@ -13,9 +13,10 @@ export default async function EditEventPage({
 }) {
   const adminClient = await createAdminClient();
 
-  const [{ data: event }, { data: categories }] = await Promise.all([
+  const [{ data: event }, { data: categories }, { count: registrationCount }] = await Promise.all([
     adminClient.from("events").select("*").eq("id", params.id).single(),
     adminClient.from("event_categories").select("id, name").order("display_order", { ascending: true }),
+    adminClient.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", params.id),
   ]);
 
   if (!event) {
@@ -40,6 +41,7 @@ export default async function EditEventPage({
 
   const initialData = {
     id: event.id,
+    slug: event.slug,
     categoryId: event.category_id,
     name: event.name,
     shortDescription: event.short_description,
@@ -56,31 +58,12 @@ export default async function EditEventPage({
     maxTeamSize: Number(event.max_team_size || 1),
     isProEvent: Boolean(event.is_pro_event),
     status: event.status,
+    brochureUrl: event.brochure_url,
+    registrationCount: registrationCount || 0,
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin/events"
-            className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Edit Event: {event.name}
-            </h1>
-            <p className="text-xs text-slate-500">
-              Update timings, capacity, rules or status controls
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Form */}
+    <div className="w-full">
       <EventForm categories={safeCategories} initialData={initialData} isEdit={true} />
     </div>
   );

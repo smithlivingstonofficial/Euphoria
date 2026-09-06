@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { ShoppingBag, ArrowRight, Sparkles } from "lucide-react";
 import { useCart } from "@/context/cart-context";
 import { formatCurrency } from "@/lib/utils";
@@ -9,7 +10,13 @@ export function FloatingCartPill({
 }: {
   user?: { participantType?: "internal" | "external" | null } | null;
 }) {
+  const pathname = usePathname();
   const { selectedEvents, openCart, calculatePricing } = useCart();
+
+  // Suppress participant cart widget inside Admin Console and Coordinator Workspace
+  if (pathname?.startsWith("/admin") || pathname?.startsWith("/coordinator")) {
+    return null;
+  }
 
   if (selectedEvents.length === 0) return null;
 
