@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 export interface CoordinatorEventItem {
@@ -388,7 +388,7 @@ export async function getCoordinatorWorkspaceData() {
       const isStudent = roleType === "student";
       const desc = evt.description || "";
       const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
-      const brochureUrl = evt.brochure_url || (brochureMatch ? brochureMatch[2].trim() : null);
+      const brochureUrl = (brochureMatch ? brochureMatch[2].trim() : null) || evt.brochure_url || null;
 
       return {
         ...evt,
@@ -1238,8 +1238,11 @@ export async function updateEventOperationsStaff(
       updatePayload.status = payload.status;
     }
 
-    // Update brochure link in description if provided
+    // Update brochure link in description AND brochure_url column if provided
     if (payload.brochureUrl !== undefined) {
+      const cleanUrl = payload.brochureUrl.trim() || null;
+      updatePayload.brochure_url = cleanUrl;
+
       const { data: eventData } = await adminClient
         .from("events")
         .select("description")
@@ -1251,8 +1254,8 @@ export async function updateEventOperationsStaff(
           .replace(/\[(BROCHURE_URL|BROCHURE_LINK):\s*[^\]]+\]/g, "")
           .trim();
 
-        if (payload.brochureUrl.trim()) {
-          cleanDesc += `\n[BROCHURE_URL: ${payload.brochureUrl.trim()}]`;
+        if (cleanUrl) {
+          cleanDesc += `\n[BROCHURE_URL: ${cleanUrl}]`;
         }
         updatePayload.description = cleanDesc;
       }
@@ -1265,10 +1268,13 @@ export async function updateEventOperationsStaff(
 
     if (error) throw error;
 
+    revalidateTag("public-events");
     revalidatePath("/coordinator", "page");
     revalidatePath(`/coordinator/${eventId}`, "page");
     revalidatePath("/events", "page");
+    revalidatePath("/events", "layout");
     revalidatePath("/dashboard", "page");
+    revalidatePath("/admin/events", "page");
 
     return { success: true };
   } catch (err: unknown) {
@@ -1318,23 +1324,29 @@ export async function updateEventLinksStaff(
     if (whatsappLink.trim()) {
       cleanDesc += `\n[WHATSAPP_LINK: ${whatsappLink.trim()}]`;
     }
-    if (brochureUrl.trim()) {
-      cleanDesc += `\n[BROCHURE_URL: ${brochureUrl.trim()}]`;
+    const cleanBrochure = brochureUrl.trim() || null;
+    if (cleanBrochure) {
+      cleanDesc += `\n[BROCHURE_URL: ${cleanBrochure}]`;
     }
 
     const { error: updateErr } = await adminClient
       .from("events")
       .update({
         description: cleanDesc,
+        brochure_url: cleanBrochure,
         updated_at: new Date().toISOString(),
       })
       .eq("id", eventId);
 
     if (updateErr) throw updateErr;
 
+    revalidateTag("public-events");
+    revalidatePath("/coordinator", "page");
     revalidatePath(`/coordinator/${eventId}`, "page");
     revalidatePath("/events", "page");
+    revalidatePath("/events", "layout");
     revalidatePath("/dashboard", "page");
+    revalidatePath("/admin/events", "page");
 
     return { success: true };
   } catch (err: unknown) {
@@ -1465,7 +1477,7 @@ export async function getEventStaffDetails(eventId: string) {
       { data: studentAssigns },
       { data: profilesData }
     ] = await Promise.all([
-      adminClient.from("events").select("id, name, description").eq("id", eventId).single(),
+      adminClient.from("events").select("id, name, description, brochure_url").eq("id", eventId).single(),
       adminClient.from("student_coordinator_assignments").select(`
         id,
         user_id,
@@ -1496,7 +1508,7 @@ export async function getEventStaffDetails(eventId: string) {
       success: true,
       roleType,
       whatsappLink: whatsappMatch ? whatsappMatch[1].trim() : "",
-      brochureUrl: brochureMatch ? brochureMatch[2].trim() : "",
+      brochureUrl: (brochureMatch ? brochureMatch[2].trim() : null) || eventData?.brochure_url || "",
       studentCoordinators,
       allProfiles: profilesData || [],
     };

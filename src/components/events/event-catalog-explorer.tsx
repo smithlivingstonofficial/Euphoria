@@ -125,7 +125,7 @@ export function parseEventMetadata(event: PublicEvent) {
     names: namesMatch ? namesMatch[1].trim() : null,
     mobiles: mobilesMatch ? mobilesMatch[1].trim() : null,
     emails: emailsMatch ? emailsMatch[1].trim() : null,
-    brochureUrl: event.brochure_url || (brochureMatch ? brochureMatch[2].trim() : null),
+    brochureUrl: (brochureMatch ? brochureMatch[2].trim() : null) || event.brochure_url || null,
     cleanDescription,
     namesList,
     mobilesList,

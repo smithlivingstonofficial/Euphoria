@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
 
@@ -307,7 +307,12 @@ export async function createEventAdmin(formData: {
     };
 
     if (formData.brochureUrl !== undefined) {
-      newEvent.brochure_url = formData.brochureUrl.trim() || null;
+      const cleanBrochure = formData.brochureUrl.trim() || null;
+      newEvent.brochure_url = cleanBrochure;
+      const descStr = String(newEvent.description || "");
+      if (cleanBrochure && !descStr.includes("[BROCHURE_URL:")) {
+        newEvent.description = descStr.trim() + `\n[BROCHURE_URL: ${cleanBrochure}]`;
+      }
     }
 
     let { data, error } = await adminClient.from("events").insert(newEvent).select().single();
@@ -323,9 +328,13 @@ export async function createEventAdmin(formData: {
 
     if (error) throw error;
 
+    revalidateTag("public-events");
     revalidatePath("/", "layout");
+    revalidatePath("/events", "page");
+    revalidatePath("/events", "layout");
     revalidatePath("/admin", "layout");
     revalidatePath("/admin/events", "page");
+    revalidatePath("/coordinator", "page");
 
     return { success: true, event: data };
   } catch (err: unknown) {
@@ -392,7 +401,26 @@ export async function updateEventAdmin(
     if (formData.isProEvent !== undefined) updates.is_pro_event = Boolean(formData.isProEvent);
     if (formData.status !== undefined) updates.status = formData.status;
     if (formData.brochureUrl !== undefined) {
-      updates.brochure_url = formData.brochureUrl.trim() || null;
+      const cleanBrochure = formData.brochureUrl.trim() || null;
+      updates.brochure_url = cleanBrochure;
+
+      // Keep [BROCHURE_URL: ...] synchronized in description
+      let currentDesc = formData.description;
+      if (currentDesc === undefined) {
+        const { data: existingEvt } = await adminClient
+          .from("events")
+          .select("description")
+          .eq("id", eventId)
+          .single();
+        currentDesc = existingEvt?.description || "";
+      }
+      let cleanDesc = (currentDesc || "")
+        .replace(/\[(BROCHURE_URL|BROCHURE_LINK):\s*[^\]]+\]/g, "")
+        .trim();
+      if (cleanBrochure) {
+        cleanDesc += `\n[BROCHURE_URL: ${cleanBrochure}]`;
+      }
+      updates.description = cleanDesc;
     }
 
     let { data, error } = await adminClient
@@ -418,9 +446,14 @@ export async function updateEventAdmin(
 
     if (error) throw error;
 
+    revalidateTag("public-events");
     revalidatePath("/", "layout");
+    revalidatePath("/events", "page");
+    revalidatePath("/events", "layout");
     revalidatePath("/admin", "layout");
     revalidatePath("/admin/events", "page");
+    revalidatePath("/coordinator", "page");
+    revalidatePath(`/coordinator/${eventId}`, "page");
 
     return { success: true, event: data };
   } catch (err: unknown) {
