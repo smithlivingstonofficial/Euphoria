@@ -486,7 +486,12 @@ export function EventCatalogExplorer({
   };
 
   // Determine if we are in School Directory mode (Level 1: Cards only) or Event Grid mode (Level 2)
-  const isSchoolDirectoryLevel = showSchoolCards && selectedSchool === "all";
+  const isSchoolDirectoryLevel =
+    showSchoolCards &&
+    selectedSchool === "all" &&
+    searchQuery.trim() === "" &&
+    selectedTier === "all" &&
+    selectedDate === "all";
 
   return (
     <div className="space-y-6">
@@ -541,209 +546,236 @@ export function EventCatalogExplorer({
         </div>
       ) : null}
 
-      {/* SEARCH & FILTER CONTROLS BAR */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-3 sm:p-4 shadow-xs space-y-3">
-        {/* Desktop Single-Row & Mobile Multi-Row Responsive Layout */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-3.5">
-          {/* 1. Search Input */}
+      {/* SEARCH & FILTER CONTROLS BAR (Single-Row Unified Layout with Balanced Sizing & Highlights) */}
+      <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-2.5 sm:p-3 shadow-xs space-y-2.5">
+        {/* Desktop Single-Row & Mobile Responsive Wrap */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2 sm:gap-2.5">
+          {/* 1. Search Input (Occupies primary expanding focus) */}
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search competitions by title, department, or venue..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition-all"
+              placeholder="Search competitions by title, department, venue..."
+              className="w-full h-10 rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 transition-all font-medium"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-2.5 p-1 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
                 title="Clear search"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          {/* 2. Filter Segment Chips (Tier & Days) */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-none shrink-0">
-            {/* Tier Filters */}
-            <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
-              <button
-                type="button"
-                onClick={() => setSelectedTier("all")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedTier === "all"
-                    ? "bg-white text-slate-900 shadow-2xs font-bold"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+          {/* Secondary Controls Group (Fixed & Balanced Widths) */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+            {/* 2. Tier Dropdown (Controlled width: 155px) */}
+            <div className="relative w-full sm:w-[155px] shrink-0">
+              <select
+                value={selectedTier}
+                onChange={(e) => setSelectedTier(e.target.value as "all" | "pro" | "normal")}
+                className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
+                  selectedTier !== "all"
+                    ? selectedTier === "pro"
+                      ? "border-amber-400 bg-amber-50/90 text-amber-950 ring-1 ring-amber-300"
+                      : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
+                    : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
+                } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
               >
-                All ({initialEvents.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedTier(selectedTier === "pro" ? "all" : "pro")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  selectedTier === "pro"
-                    ? "bg-amber-500 text-white shadow-2xs"
-                    : "text-amber-800 hover:bg-amber-100/60"
-                }`}
-              >
-                <Star className="h-3 w-3 fill-current" />
-                <span>Flagship ({proCount})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedTier(selectedTier === "normal" ? "all" : "normal")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedTier === "normal"
-                    ? "bg-white text-slate-900 shadow-2xs font-bold"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Regular ({normalCount})
-              </button>
+                <option value="all">All Tiers ({initialEvents.length})</option>
+                <option value="pro">Flagship ({proCount})</option>
+                <option value="normal">Regular ({normalCount})</option>
+              </select>
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                {selectedTier === "pro" ? (
+                  <Star className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
+                ) : selectedTier === "normal" ? (
+                  <Zap className="h-3.5 w-3.5 text-indigo-600" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                )}
+              </span>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             </div>
 
-            <div className="h-4 w-px bg-slate-200 shrink-0" />
-
-            {/* Date Filters */}
-            <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
-              <button
-                type="button"
-                onClick={() => setSelectedDate("all")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "all"
-                    ? "bg-white text-slate-900 shadow-2xs font-bold"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+            {/* 3. Schedule / Days Dropdown (Controlled width: 155px) */}
+            <div className="relative w-full sm:w-[155px] shrink-0">
+              <select
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
+                  selectedDate !== "all"
+                    ? selectedDate === "both"
+                      ? "border-purple-400 bg-purple-50/90 text-purple-950 ring-1 ring-purple-300"
+                      : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
+                    : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
+                } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
               >
-                All Days
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDate(selectedDate === "2026-09-25" ? "all" : "2026-09-25")
-                }
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "2026-09-25"
-                    ? "bg-indigo-600 text-white shadow-2xs font-bold"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Day 1 ({day1Count})
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDate(selectedDate === "2026-09-26" ? "all" : "2026-09-26")
-                }
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  selectedDate === "2026-09-26"
-                    ? "bg-indigo-600 text-white shadow-2xs font-bold"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Day 2 ({day2Count})
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDate(selectedDate === "both" ? "all" : "both")
-                }
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  selectedDate === "both"
-                    ? "bg-purple-600 text-white shadow-2xs font-bold"
-                    : "text-purple-700 hover:bg-purple-100/60"
-                }`}
-              >
-                <Sparkles className="h-3 w-3" />
-                <span>Both Days ({bothDaysCount})</span>
-              </button>
+                <option value="all">All Dates ({initialEvents.length})</option>
+                <option value="2026-09-25">Day 1 • Sep 25 ({day1Count})</option>
+                <option value="2026-09-26">Day 2 • Sep 26 ({day2Count})</option>
+                <option value="both">Both Days ({bothDaysCount})</option>
+              </select>
+              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             </div>
-          </div>
 
-          {/* 3. School / Department Dropdown (Only visible when School Directory mode is OFF) */}
-          {!showSchoolCards && (
-            <div className="relative shrink-0 min-w-[190px] lg:max-w-[220px]">
-              <GraduationCap className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            {/* 4. School / Department Dropdown (Controlled width: 190px) */}
+            <div className="relative w-full sm:w-[190px] shrink-0">
               <select
                 value={selectedSchool}
                 onChange={(e) => setSelectedSchool(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-600 focus:bg-white focus:outline-none appearance-none truncate cursor-pointer shadow-2xs"
+                title={selectedSchool !== "all" ? selectedSchool : "All 14 Departments"}
+                className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
+                  selectedSchool !== "all"
+                    ? "border-primary/40 bg-primary/5 text-primary ring-1 ring-primary/20"
+                    : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
+                } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
               >
-                <option value="all">All 14 Schools &amp; Depts</option>
-                {schoolsList.map((school) => (
-                  <option key={school} value={school}>
-                    {school}
+                <option value="all">All 14 Departments</option>
+                {schoolsData.map((sch) => (
+                  <option key={sch.name} value={sch.name}>
+                    {sch.name} ({sch.count})
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" />
+              <GraduationCap className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             </div>
-          )}
 
-          {/* 4. Modern View Mode Segmented Slider Toggle */}
-          <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setShowSchoolCards(true);
-                setSelectedSchool("all");
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                showSchoolCards
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <Building className="h-3.5 w-3.5" />
-              <span>By School</span>
-            </button>
+            {/* 5. View Mode Switcher: By School vs All Events */}
+            <div className="inline-flex p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 h-10 items-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSchoolCards(true);
+                  setSelectedSchool("all");
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  showSchoolCards
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Browse by School directory"
+              >
+                <Building className="h-3.5 w-3.5" />
+                <span>By School</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowSchoolCards(false)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                !showSchoolCards
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              <span>All Events</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowSchoolCards(false)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  !showSchoolCards
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="View all events list"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>All Events</span>
+              </button>
+            </div>
+
+            {/* 6. Quick Reset Button (Visible when filters are active) */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="h-10 inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/90 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shrink-0 cursor-pointer shadow-2xs"
+                title="Reset all filters"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Reset</span>
+              </button>
+            )}
           </div>
-
-          {/* Reset Action */}
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors shrink-0 cursor-pointer"
-              title="Reset all active filters"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>Reset</span>
-            </button>
-          )}
         </div>
 
-        {/* Result Stats Footer */}
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-          <div>
-            Showing <strong className="text-slate-900 font-bold">{filteredEvents.length}</strong> of{" "}
-            {initialEvents.length} competitions
+        {/* Active Filters & Counter Sub-bar */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>
+              Showing <strong className="text-slate-900 font-bold">{filteredEvents.length}</strong> of{" "}
+              {initialEvents.length} competitions
+            </span>
+
+            {/* Active filter badges */}
+            {selectedTier !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-900">
+                <span>{selectedTier === "pro" ? "⭐ Flagship" : "⚡ Regular"}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTier("all")}
+                  className="hover:text-amber-700 ml-0.5 cursor-pointer"
+                  title="Remove tier filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedDate !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-900">
+                <span>
+                  {selectedDate === "2026-09-25"
+                    ? "Day 1 (Sep 25)"
+                    : selectedDate === "2026-09-26"
+                    ? "Day 2 (Sep 26)"
+                    : "Both Days"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate("all")}
+                  className="hover:text-indigo-700 ml-0.5 cursor-pointer"
+                  title="Remove date filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedSchool !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-[11px] font-bold text-primary max-w-[220px] truncate">
+                <span className="truncate">{selectedSchool}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSchool("all")}
+                  className="hover:text-primary-hover ml-0.5 cursor-pointer shrink-0"
+                  title="Remove school filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {searchQuery.trim() !== "" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-700">
+                <span>&ldquo;{searchQuery.trim()}&rdquo;</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="hover:text-slate-900 ml-0.5 cursor-pointer"
+                  title="Clear search query"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
           </div>
+
           {hasActiveFilters && (
             <button
               type="button"
               onClick={clearAllFilters}
-              className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              className="font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer text-xs"
             >
-              Clear filters ({filteredEvents.length} matches)
+              Clear all filters ({filteredEvents.length} results)
             </button>
           )}
         </div>
@@ -857,6 +889,36 @@ export function EventCatalogExplorer({
 
           <span className="rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300 px-3 py-1 text-xs font-extrabold font-mono shrink-0 self-start sm:self-auto">
             {filteredEvents.length} Competitions
+          </span>
+        </div>
+      )}
+
+      {/* FILTER/SEARCH MATCHES BREADCRUMB (When in By School mode but searching/filtering across all schools) */}
+      {showSchoolCards && selectedSchool === "all" && hasActiveFilters && (
+        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/50 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3.5 py-2 text-xs font-extrabold text-primary shadow-2xs hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0"
+              title="Return to School Directory Cards"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to Schools Directory</span>
+            </button>
+
+            <div className="min-w-0">
+              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                Search &amp; Filter Results
+              </span>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 font-display truncate leading-tight">
+                Matching Competitions across All Departments
+              </h3>
+            </div>
+          </div>
+
+          <span className="rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300 px-3 py-1 text-xs font-extrabold font-mono shrink-0 self-start sm:self-auto">
+            {filteredEvents.length} Matches Found
           </span>
         </div>
       )}
@@ -1444,16 +1506,21 @@ export function EventCatalogExplorer({
                   <ul className="space-y-2 text-xs text-slate-700">
                     {activeModalEvent.rules ? (
                       (typeof activeModalEvent.rules === "string"
-                        ? activeModalEvent.rules.split(";")
+                        ? (activeModalEvent.rules.includes("\n")
+                            ? activeModalEvent.rules.split("\n")
+                            : activeModalEvent.rules.split(";"))
                         : Array.isArray(activeModalEvent.rules)
                         ? activeModalEvent.rules
                         : []
-                      ).map((r, i) => (
-                        <li key={i} className="flex items-start gap-2 leading-relaxed">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>{r.trim()}</span>
-                        </li>
-                      ))
+                      )
+                        .map((r) => r.trim())
+                        .filter(Boolean)
+                        .map((r, i) => (
+                          <li key={i} className="flex items-start gap-2 leading-relaxed">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            <span className="whitespace-pre-line">{r}</span>
+                          </li>
+                        ))
                     ) : (
                       <>
                         <li className="flex items-start gap-2 leading-relaxed">

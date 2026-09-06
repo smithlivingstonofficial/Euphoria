@@ -415,7 +415,7 @@ export async function getCoordinatorWorkspaceData() {
   }
 }
 
-// 2. Get Event Attendees Roster for Coordinator (With Role-Based Privacy Masking)
+// 2. Get Event Attendees Initial Data & Telemetry for Coordinator (Low-Egress Slicing)
 export async function getEventAttendeesForCoordinator(eventId: string) {
   try {
     const supabase = await createClient();
@@ -438,15 +438,32 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
 
     const adminClient = await createAdminClient();
 
-    const [{ data: event }, { data: registrations }] = await Promise.all([
+    // Fetch event metadata, exact counts (head: true), and first 10 attendees in parallel
+    const [
+      { data: event },
+      { count: totalCount },
+      { count: attendedCount },
+      { count: firstSlotCountRaw },
+      { data: registrations },
+    ] = await Promise.all([
       adminClient
         .from("events")
-        .select(`
-          *,
-          category:event_categories (name)
-        `)
+        .select(`*, category:event_categories (name)`)
         .eq("id", eventId)
         .single(),
+      adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId),
+      adminClient
+        .from("attendance")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId),
+      adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("slot_number", 1),
       adminClient
         .from("event_registrations")
         .select(`
@@ -483,7 +500,8 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
           )
         `)
         .eq("event_id", eventId)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .range(0, 9), // Strictly first 10 for Page 1!
     ]);
 
     if (!event) {
@@ -492,7 +510,7 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
 
     const isStudentCoord = roleType === "student";
 
-    const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r) => {
+    const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r: any) => {
       const isAttended = Array.isArray(r.attendance)
         ? r.attendance.length > 0
         : Boolean(r.attendance);
@@ -502,8 +520,6 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
 
       const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
 
-      // PRIVACY MASKING FOR STUDENT COORDINATORS
-      // Redact phone number and mask personal email for student volunteers
       const sanitizedUser = {
         ...userObj,
         mobile_number: isStudentCoord ? undefined : userObj?.mobile_number,
@@ -527,22 +543,338 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
       };
     });
 
-    const firstSlotCount = isStudentCoord
-      ? undefined
-      : attendees.filter((a) => a.slot_number === 1).length;
+    const firstSlotCount = isStudentCoord ? undefined : (firstSlotCountRaw ?? 0);
 
     return {
       success: true,
       roleType,
       event,
-      attendees,
-      totalCount: attendees.length,
-      attendedCount: attendees.filter((a) => a.isAttended).length,
+      attendees, // 10 items for Page 1
+      totalCount: totalCount ?? 0,
+      attendedCount: attendedCount ?? 0,
       firstSlotCount,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch event attendees";
     return { success: false, error: msg, attendees: [] };
+  }
+}
+
+// 2b. Fetch Paginated Attendees with Filters (10 per page, Low Bandwidth Egress)
+export async function getPaginatedEventAttendees(
+  eventId: string,
+  options: {
+    page?: number;
+    pageSize?: number;
+    searchQuery?: string;
+    filterTab?: "all" | "attended" | "pending";
+    tierFilter?: "all" | "pro_pass" | "standard_pass";
+  } = {}
+) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in.", attendees: [], totalCount: 0, totalPages: 0 };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType === "unauthorized") {
+      return {
+        success: false,
+        error: "Access denied. You are not assigned to coordinate this event.",
+        attendees: [],
+        totalCount: 0,
+        totalPages: 0,
+      };
+    }
+
+    const adminClient = await createAdminClient();
+    const page = Math.max(1, options.page || 1);
+    const pageSize = options.pageSize || 10;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = adminClient
+      .from("event_registrations")
+      .select(`
+        id,
+        slot_number,
+        registration_code,
+        status,
+        payment_status,
+        created_at,
+        pass:delegate_passes (
+          id,
+          pass_code,
+          pass_tier,
+          amount_paid,
+          slots_used
+        ),
+        user:profiles (
+          id,
+          full_name,
+          email,
+          mobile_number,
+          register_number,
+          college_name,
+          department,
+          course,
+          year_of_study,
+          participant_type
+        ),
+        attendance (
+          id,
+          scanned_at,
+          scan_method,
+          scanned_by
+        )
+      `, { count: "exact" })
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false });
+
+    // 1. Filter by Pass Tier if specified
+    if (options.tierFilter && options.tierFilter !== "all") {
+      const { data: matchedPasses } = await adminClient
+        .from("delegate_passes")
+        .select("id")
+        .eq("pass_tier", options.tierFilter);
+      const passIds = (matchedPasses || []).map((p) => p.id);
+      if (passIds.length > 0) {
+        query = query.in("pass_id", passIds);
+      } else {
+        return { success: true, attendees: [], totalCount: 0, totalPages: 0, page, pageSize };
+      }
+    }
+
+    // 2. Filter by Attendance Status if specified
+    if (options.filterTab === "attended" || options.filterTab === "pending") {
+      const { data: attendanceList } = await adminClient
+        .from("attendance")
+        .select("registration_id")
+        .eq("event_id", eventId);
+      const attendedRegIds = Array.from(
+        new Set((attendanceList || []).map((a) => a.registration_id).filter(Boolean))
+      );
+
+      if (options.filterTab === "attended") {
+        if (attendedRegIds.length > 0) {
+          query = query.in("id", attendedRegIds);
+        } else {
+          return { success: true, attendees: [], totalCount: 0, totalPages: 0, page, pageSize };
+        }
+      } else if (options.filterTab === "pending") {
+        if (attendedRegIds.length > 0) {
+          query = query.not("id", "in", `(${attendedRegIds.join(",")})`);
+        }
+      }
+    }
+
+    // 3. Filter by Search Query if specified
+    if (options.searchQuery && options.searchQuery.trim()) {
+      const q = options.searchQuery.trim();
+
+      const [profilesRes, passesRes] = await Promise.all([
+        adminClient
+          .from("profiles")
+          .select("id")
+          .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,register_number.ilike.%${q}%,college_name.ilike.%${q}%`)
+          .limit(100),
+        adminClient
+          .from("delegate_passes")
+          .select("id")
+          .ilike("pass_code", `%${q}%`)
+          .limit(50),
+      ]);
+
+      const matchedUserIds = (profilesRes.data || []).map((p) => p.id);
+      const matchedPassIds = (passesRes.data || []).map((p) => p.id);
+
+      const orConditions = [`registration_code.ilike.%${q}%`];
+      if (matchedUserIds.length > 0) {
+        orConditions.push(`user_id.in.(${matchedUserIds.join(",")})`);
+      }
+      if (matchedPassIds.length > 0) {
+        orConditions.push(`pass_id.in.(${matchedPassIds.join(",")})`);
+      }
+
+      query = query.or(orConditions.join(","));
+    }
+
+    // 4. Apply range for pagination (strictly 10 per page)
+    const { data: registrations, count, error } = await query.range(from, to);
+    if (error) throw error;
+
+    const isStudentCoord = roleType === "student";
+    const totalCount = count ?? 0;
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r: any) => {
+      const isAttended = Array.isArray(r.attendance)
+        ? r.attendance.length > 0
+        : Boolean(r.attendance);
+      const attendanceRecord = Array.isArray(r.attendance)
+        ? r.attendance[0]
+        : r.attendance;
+
+      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+
+      const sanitizedUser = {
+        ...userObj,
+        mobile_number: isStudentCoord ? undefined : userObj?.mobile_number,
+        email: isStudentCoord && userObj?.email
+          ? userObj.email.replace(/(.{2})(.*)(?=@)/, (_: string, a: string, b: string) => a + "*".repeat(b.length))
+          : userObj?.email,
+      };
+
+      return {
+        id: r.id,
+        slot_number: r.slot_number || 1,
+        registration_code: r.registration_code,
+        status: r.status,
+        payment_status: r.payment_status,
+        registered_at: r.created_at,
+        pass: Array.isArray(r.pass) ? r.pass[0] : r.pass,
+        isAttended,
+        scanned_at: attendanceRecord?.scanned_at || null,
+        scan_method: attendanceRecord?.scan_method || null,
+        user: sanitizedUser,
+      };
+    });
+
+    return {
+      success: true,
+      attendees,
+      totalCount,
+      totalPages,
+      page,
+      pageSize,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch paginated attendees";
+    return { success: false, error: msg, attendees: [], totalCount: 0, totalPages: 0 };
+  }
+}
+
+// 2c. On-Demand CSV Export for Event Attendees (Fetched Only When Coordinator Clicks Export)
+export async function exportEventAttendeesCSVAction(eventId: string) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType === "unauthorized") {
+      return { success: false, error: "Access denied." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    const [{ data: event }, { data: registrations }] = await Promise.all([
+      adminClient.from("events").select("name").eq("id", eventId).single(),
+      adminClient
+        .from("event_registrations")
+        .select(`
+          id,
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          created_at,
+          pass:delegate_passes (
+            pass_code,
+            pass_tier
+          ),
+          user:profiles (
+            full_name,
+            email,
+            mobile_number,
+            register_number,
+            college_name,
+            department,
+            course,
+            year_of_study
+          ),
+          attendance (
+            scanned_at,
+            scan_method
+          )
+        `)
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const isStudentCoord = roleType === "student";
+    const headers = [
+      "Registration Code",
+      "Pass Code",
+      "Pass Tier",
+      "Slot",
+      "Full Name",
+      "Email",
+      "Mobile",
+      "Register No",
+      "College",
+      "Department",
+      "Course",
+      "Year",
+      "Attendance Status",
+      "Scanned At",
+      "Scan Method",
+      "Registered At",
+    ];
+
+    const rows = (registrations || []).map((r: any) => {
+      const isAttended = Array.isArray(r.attendance)
+        ? r.attendance.length > 0
+        : Boolean(r.attendance);
+      const attRecord = Array.isArray(r.attendance) ? r.attendance[0] : r.attendance;
+      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+      const passObj = Array.isArray(r.pass) ? r.pass[0] : r.pass;
+
+      return [
+        r.registration_code || "",
+        passObj?.pass_code || "",
+        passObj?.pass_tier || "standard_pass",
+        r.slot_number ? `Slot #${r.slot_number}` : "Slot #1",
+        userObj?.full_name || "",
+        isStudentCoord && userObj?.email
+          ? userObj.email.replace(/(.{2})(.*)(?=@)/, (_: string, a: string, b: string) => a + "*".repeat(b.length))
+          : userObj?.email || "",
+        isStudentCoord ? "[REDACTED]" : userObj?.mobile_number || "",
+        userObj?.register_number || "",
+        userObj?.college_name || "",
+        userObj?.department || "",
+        userObj?.course || "",
+        userObj?.year_of_study || "",
+        isAttended ? "PRESENT" : "PENDING",
+        attRecord?.scanned_at ? new Date(attRecord.scanned_at).toLocaleString() : "",
+        attRecord?.scan_method || "",
+        r.created_at ? new Date(r.created_at).toLocaleString() : "",
+      ].map((field) => `"${String(field).replace(/"/g, '""')}"`);
+    });
+
+    const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+    const safeEventName = (event?.name || "event").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const filename = `${safeEventName}-roster-${new Date().toISOString().split("T")[0]}.csv`;
+
+    return {
+      success: true,
+      csvContent,
+      filename,
+      totalCount: rows.length,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to generate CSV export";
+    return { success: false, error: msg };
   }
 }
 

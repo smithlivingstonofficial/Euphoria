@@ -265,6 +265,7 @@ export async function createEventAdmin(formData: {
   isProEvent?: boolean;
   status: string;
   prizePool?: { first?: number; second?: number; third?: number };
+  brochureUrl?: string;
 }) {
   try {
     const { authorized } = await verifyAdminSession();
@@ -305,11 +306,16 @@ export async function createEventAdmin(formData: {
       updated_at: new Date().toISOString(),
     };
 
+    if (formData.brochureUrl !== undefined) {
+      newEvent.brochure_url = formData.brochureUrl.trim() || null;
+    }
+
     let { data, error } = await adminClient.from("events").insert(newEvent).select().single();
 
-    // Fallback if is_pro_event column doesn't exist on older DB schema
-    if (error && error.message.includes("is_pro_event")) {
-      delete newEvent.is_pro_event;
+    // Fallback if is_pro_event or brochure_url column doesn't exist on older DB schema
+    if (error && (error.message.includes("is_pro_event") || error.message.includes("brochure_url"))) {
+      if (error.message.includes("is_pro_event")) delete newEvent.is_pro_event;
+      if (error.message.includes("brochure_url")) delete newEvent.brochure_url;
       const retry = await adminClient.from("events").insert(newEvent).select().single();
       data = retry.data;
       error = retry.error;
@@ -348,6 +354,7 @@ export async function updateEventAdmin(
     maxTeamSize?: number;
     isProEvent?: boolean;
     status?: string;
+    brochureUrl?: string;
   }
 ) {
   try {
@@ -384,6 +391,9 @@ export async function updateEventAdmin(
     if (formData.participantLimit !== undefined) updates.participant_limit = formData.participantLimit;
     if (formData.isProEvent !== undefined) updates.is_pro_event = Boolean(formData.isProEvent);
     if (formData.status !== undefined) updates.status = formData.status;
+    if (formData.brochureUrl !== undefined) {
+      updates.brochure_url = formData.brochureUrl.trim() || null;
+    }
 
     let { data, error } = await adminClient
       .from("events")
@@ -392,9 +402,10 @@ export async function updateEventAdmin(
       .select()
       .single();
 
-    // Fallback if is_pro_event column doesn't exist on older DB schema
-    if (error && error.message.includes("is_pro_event")) {
-      delete updates.is_pro_event;
+    // Fallback if is_pro_event or brochure_url column doesn't exist on older DB schema
+    if (error && (error.message.includes("is_pro_event") || error.message.includes("brochure_url"))) {
+      if (error.message.includes("is_pro_event")) delete updates.is_pro_event;
+      if (error.message.includes("brochure_url")) delete updates.brochure_url;
       const retry = await adminClient
         .from("events")
         .update(updates)
