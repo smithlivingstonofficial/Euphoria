@@ -21,15 +21,15 @@ export function Footer() {
 
           {/* Minimalist Navigation & Copyright */}
           <div className="flex items-center gap-2 sm:gap-3 text-slate-500 font-medium">
-            <Link href="/events" className="hover:text-primary transition-colors">
+            <Link href="/events" prefetch={false} className="hover:text-primary transition-colors">
               Events
             </Link>
             <span className="text-slate-200">•</span>
-            <Link href="/campus-map" className="hover:text-primary transition-colors">
+            <Link href="/campus-map" prefetch={false} className="hover:text-primary transition-colors">
               Map
             </Link>
             <span className="text-slate-200">•</span>
-            <Link href="/announcements" className="hover:text-primary transition-colors">
+            <Link href="/announcements" prefetch={false} className="hover:text-primary transition-colors">
               Alerts
             </Link>
             <span className="text-slate-200">•</span>

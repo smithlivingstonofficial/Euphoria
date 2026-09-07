@@ -375,8 +375,7 @@ export const getPublicAnnouncements = unstable_cache(
   { revalidate: 60, tags: ["public-announcements"] }
 );
 
-// 6. Fetch Public Registration Pricing Settings
-export async function getPublicPricingSettings() {
+async function fetchPublicPricingSettingsRaw() {
   try {
     const fs = await import("fs/promises");
     const path = await import("path");
@@ -414,6 +413,13 @@ export async function getPublicPricingSettings() {
     };
   }
 }
+
+// 6. Cached Public Registration Pricing Settings (In-Memory / ISR cache)
+export const getPublicPricingSettings = unstable_cache(
+  fetchPublicPricingSettingsRaw,
+  ["public-pricing-settings-cache"],
+  { revalidate: 300, tags: ["public-pricing-settings"] }
+);
 
 // 7. Batch Register / Checkout for Events (Atomic Pass Engine)
 export async function batchRegisterEvents(eventIds: string[]) {

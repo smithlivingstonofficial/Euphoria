@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function AnnouncementsPage() {
   const { announcements } = await getPublicAnnouncements();

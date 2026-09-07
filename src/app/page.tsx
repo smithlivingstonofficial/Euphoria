@@ -1,15 +1,12 @@
 import Link from "next/link";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { createClient } from "@/lib/supabase/server";
-import { getUserPassSummary } from "@/actions/passes";
 import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
   Award,
-  Ticket,
   Zap,
   HelpCircle,
   Building,
@@ -31,78 +28,15 @@ import { CampusVenueRadar } from "@/components/home/campus-venue-radar";
 import { FAQInteractive } from "@/components/home/faq-interactive";
 import { MobileFloatingDock } from "@/components/home/mobile-floating-dock";
 import { DroneLottie } from "@/components/home/drone-lottie";
+import { HeroCtaButton } from "@/components/home/hero-cta-button";
+import { ClosingCtaButton } from "@/components/home/closing-cta-button";
 
-import { isProfileComplete } from "@/lib/profile";
-
-export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
-export default async function HomePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  let profile = null;
-  let userRole = "participant";
-  let hasPass = false;
-
-  if (user) {
-    const [{ data: p }, { data: roleAssignment }, passRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("user_role_assignments")
-        .select("role_id")
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      getUserPassSummary(),
-    ]);
-
-    profile = p;
-    // Verify that profile data is actually non-empty
-    if (profile && profile.is_profile_completed && !isProfileComplete(profile)) {
-      profile.is_profile_completed = false;
-    }
-
-    if (passRes?.success && passRes?.data?.hasPass) {
-      hasPass = true;
-    }
-
-    const isAdmin =
-      roleAssignment?.role_id === "admin" ||
-      (user.email &&
-        (user.email.toLowerCase().includes("admin") ||
-          user.email.toLowerCase().includes("smith") ||
-          user.email === process.env.ADMIN_EMAIL));
-
-    if (isAdmin) userRole = "admin";
-    else if (
-      roleAssignment?.role_id === "coordinator" ||
-      roleAssignment?.role_id === "staff_coordinator" ||
-      roleAssignment?.role_id === "student_coordinator" ||
-      roleAssignment?.role_id === "faculty"
-    ) {
-      userRole = roleAssignment.role_id;
-    }
-  }
-
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#FAFAFC] text-slate-900 flex flex-col selection:bg-indigo-100 selection:text-primary relative overflow-x-hidden pt-[57px] pb-16 sm:pb-0">
-      <Navbar
-        user={
-          user
-            ? {
-              email: user.email || "",
-              role: userRole,
-              participantType: profile?.participant_type,
-            }
-            : null
-        }
-      />
+      <Navbar />
 
       {/* ═══════════════════════════════════════════════════════════════
           HERO SECTION — Co-Branded Institutional Presentation, 3D Drone & Registration Focus
@@ -145,14 +79,7 @@ export default async function HomePage() {
               {/* ── 4. Primary & Secondary Call-to-Action Group ── */}
               <div className="w-full space-y-3.5 pt-1">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-md sm:max-w-none">
-                  <Link
-                    href={user ? (hasPass ? "/dashboard/passes" : (profile?.is_profile_completed ? "/events" : "/complete-profile")) : "/register"}
-                    className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-primary to-cyan-600 px-7 sm:px-8 py-3.5 sm:py-4 text-sm sm:text-base font-black text-white shadow-xl shadow-indigo-500/25 hover:shadow-2xl hover:shadow-indigo-500/35 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 group cursor-pointer"
-                  >
-                    <Ticket className="h-5 w-5 text-cyan-200" />
-                    <span>{hasPass ? "View My Delegate Pass" : "Register & Get Pass (₹200)"}</span>
-                    <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                  </Link>
+                  <HeroCtaButton />
 
                   <Link
                     href="/events"
@@ -386,13 +313,7 @@ export default async function HomePage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 relative z-10 shrink-0">
-              <Link
-                href={user ? (hasPass ? "/dashboard/passes" : "/events") : "/register"}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-4 text-xs sm:text-sm font-black text-slate-900 shadow-xl shadow-slate-950/10 hover:bg-cyan-50 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.99] transition-all cursor-pointer"
-              >
-                <span>{hasPass ? "View Pass QR Code" : "Claim Your Pass Now (₹200)"}</span>
-                <ArrowRight className="h-4 w-4 text-primary" />
-              </Link>
+              <ClosingCtaButton />
 
               <Link
                 href="/events"
@@ -407,7 +328,7 @@ export default async function HomePage() {
       </section>
 
       {/* Floating Mobile Dock */}
-      <MobileFloatingDock userRole={userRole} hasPass={hasPass} />
+      <MobileFloatingDock />
 
       <Footer />
     </div>

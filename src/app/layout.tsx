@@ -6,6 +6,7 @@ import { PaymentReconciler } from "@/components/cart/payment-reconciler";
 import { getPublicPricingSettings } from "@/actions/events";
 import { getUserPassSummary } from "@/actions/passes";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 
 const fontSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -50,20 +51,35 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [pricing, supabase] = await Promise.all([
+  const cookieStore = cookies();
+  const hasAuthCookie = cookieStore.getAll().some(
+    (c) => c.name.startsWith("sb-") && c.name.includes("-auth-token")
+  );
+
+  const [pricing, authData] = await Promise.all([
     getPublicPricingSettings(),
-    createClient(),
+    hasAuthCookie
+      ? (async () => {
+          try {
+            const supabase = await createClient();
+            const {
+              data: { user },
+            } = await supabase.auth.getUser();
+            return user;
+          } catch {
+            return null;
+          }
+        })()
+      : Promise.resolve(null),
   ]);
 
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-
+  const authUser = authData;
   let userProfile = null;
   let userPass = undefined;
   let confirmedEvents: any[] = [];
 
   if (authUser) {
+    const supabase = await createClient();
     const [{ data: p }, passRes] = await Promise.all([
       supabase
         .from("profiles")

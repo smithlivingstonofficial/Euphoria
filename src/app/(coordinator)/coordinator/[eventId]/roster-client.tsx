@@ -677,7 +677,7 @@ export function EventRosterClient({
                         : "bg-slate-200/90 text-slate-600"
                     }`}
                   >
-                    {attendees.length}
+                    {totalCount}
                   </span>
                 </button>
 
@@ -758,7 +758,7 @@ export function EventRosterClient({
                 </span>
                 <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                    {attendees.length}
+                    {totalCount}
                   </span>
                   <span className="text-[11px] font-bold text-cyan-800 bg-cyan-100/90 border border-cyan-200/90 px-1.5 py-0.5 rounded-md">
                     / {participantLimit ? `${participantLimit} Capacity` : "∞ Uncapped"}

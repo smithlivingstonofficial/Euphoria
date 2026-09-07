@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Zap, Calendar, Ticket, QrCode } from "lucide-react";
+import { useCart } from "@/context/cart-context";
 
 interface MobileFloatingDockProps {
   userRole?: string;
@@ -9,6 +10,8 @@ interface MobileFloatingDockProps {
 }
 
 export function MobileFloatingDock({ userRole, hasPass }: MobileFloatingDockProps) {
+  const { userPass } = useCart();
+  const passActive = hasPass ?? Boolean(userPass?.hasPass);
   return (
     <div className="fixed bottom-3 inset-x-3 z-40 sm:hidden">
       <div className="flex items-center justify-around bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl p-2 shadow-xl text-slate-900 shadow-slate-200/80">
@@ -29,10 +32,10 @@ export function MobileFloatingDock({ userRole, hasPass }: MobileFloatingDockProp
         </Link>
 
         <Link
-          href={hasPass ? "/dashboard/passes" : "/register"}
+          href={passActive ? "/dashboard/passes" : "/register"}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white font-black text-xs shadow-md active:scale-95 transition-all"
         >
-          {hasPass ? (
+          {passActive ? (
             <>
               <QrCode className="h-4 w-4" />
               <span>Pass QR</span>
