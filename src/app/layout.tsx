@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
+import { PaymentReconciler } from "@/components/cart/payment-reconciler";
 import { getPublicPricingSettings } from "@/actions/events";
 import { getUserPassSummary } from "@/actions/passes";
 import { createClient } from "@/lib/supabase/server";
@@ -116,6 +117,7 @@ export default async function RootLayout({
           initialConfirmedEvents={confirmedEvents}
           user={userProfile}
         >
+          {authUser && (!userPass || !userPass.hasPass) && <PaymentReconciler />}
           {children}
         </AppProviders>
       </body>

@@ -2,6 +2,11 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import {
+  checkEasebuzzTransactionStatus,
+  resolveEventIds,
+  getEasebuzzCredentials,
+} from "@/lib/payments/easebuzz";
 
 const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
 
@@ -1301,7 +1306,7 @@ export async function getAllOrdersAdmin() {
         .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number, city"),
       adminClient
         .from("delegate_passes")
-        .select("id, user_id, pass_code, pass_tier, amount_paid, status"),
+        .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status"),
     ]);
 
     if (ordersErr) throw ordersErr;
@@ -1309,12 +1314,44 @@ export async function getAllOrdersAdmin() {
     const profileMap = new Map<string, any>();
     (profiles || []).forEach((p) => profileMap.set(p.id, p));
 
-    const passMap = new Map<string, any>();
-    (passes || []).forEach((p) => passMap.set(p.user_id, p));
+    // Map passes primarily by order_id to prevent cancelled attempts from inheriting passes
+    const passByOrderIdMap = new Map<string, any>();
+    const userActivePassMap = new Map<string, any>();
+    (passes || []).forEach((p) => {
+      if (p.order_id) {
+        passByOrderIdMap.set(p.order_id, p);
+      }
+      if (p.status === "active") {
+        userActivePassMap.set(p.user_id, p);
+      }
+    });
+
+    const orderByIdMap = new Map<string, any>();
+    (orders || []).forEach((ord) => orderByIdMap.set(ord.id, ord));
 
     const enrichedOrders = (orders || []).map((ord) => {
       const userProf = profileMap.get(ord.user_id);
-      const userPass = passMap.get(ord.user_id);
+      
+      // Direct pass generated specifically by this order
+      let directPass = passByOrderIdMap.get(ord.id);
+      // Legacy fallback: if pass has no order_id set, only associate it if this order is paid
+      if (!directPass && ord.status === "paid") {
+        const candidatePass = userActivePassMap.get(ord.user_id);
+        if (candidatePass && !candidatePass.order_id) {
+          directPass = candidatePass;
+        }
+      }
+
+      // If this order did not generate a pass, check if user already has an active pass from another order
+      const otherPass = !directPass ? userActivePassMap.get(ord.user_id) : null;
+      const otherOrder = otherPass?.order_id ? orderByIdMap.get(otherPass.order_id) : null;
+
+      // Extract user metadata fallbacks if profile row is missing or incomplete
+      const meta = ord.metadata || {};
+      const fallbackName = meta.user_name || meta.customer_name || meta.name || meta.udf6_candidate_id || "Participant";
+      const fallbackEmail = meta.email || meta.customer_email || meta.user_email || "";
+      const fallbackPhone = meta.phone || meta.customer_phone || meta.user_phone || "";
+      const fallbackRegn = meta.register_number || meta.candidate_regn || meta.udf6 || "";
 
       return {
         id: ord.id,
@@ -1323,23 +1360,31 @@ export async function getAllOrdersAdmin() {
         status: ord.status as "paid" | "pending" | "failed" | "refunded",
         provider: ord.provider || "easebuzz",
         createdAt: ord.created_at,
-        metadata: ord.metadata || {},
+        metadata: meta,
         user: {
           id: ord.user_id,
-          fullName: userProf?.full_name || "Participant",
-          email: userProf?.email || "",
-          mobileNumber: userProf?.mobile_number || "",
+          fullName: userProf?.full_name || fallbackName,
+          email: userProf?.email || fallbackEmail,
+          mobileNumber: userProf?.mobile_number || fallbackPhone,
           participantType: userProf?.participant_type || "external",
           collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
           department: userProf?.department || "",
-          registerNumber: userProf?.register_number || "",
+          registerNumber: userProf?.register_number || fallbackRegn,
           city: userProf?.city || "",
         },
-        pass: userPass
+        pass: directPass
           ? {
-              passCode: userPass.pass_code,
-              passTier: userPass.pass_tier,
-              status: userPass.status,
+              passCode: directPass.pass_code,
+              passTier: directPass.pass_tier,
+              status: directPass.status,
+            }
+          : null,
+        userOtherPass: otherPass
+          ? {
+              passCode: otherPass.pass_code,
+              passTier: otherPass.pass_tier,
+              status: otherPass.status,
+              otherOrderNumber: otherOrder?.order_number || null,
             }
           : null,
       };
@@ -1982,5 +2027,705 @@ export async function purgeDatabaseTestDataAdmin(confirmationPhrase: string) {
     return { success: false, error: msg };
   }
 }
+
+// 18. Live Query Easebuzz Gateway Transaction Status
+export async function checkEasebuzzLiveStatusAction(txnid: string) {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized: Admin access required." };
+    }
+
+    const cleanTxnid = (txnid || "").trim();
+    if (!cleanTxnid) {
+      return { success: false, error: "Transaction ID is required." };
+    }
+
+    const result = await checkEasebuzzTransactionStatus({ txnid: cleanTxnid });
+    if (!result?.status || !result.msg) {
+      return {
+        success: false,
+        error: result?.msg || "Transaction record not found on Easebuzz gateway.",
+        raw: result,
+      };
+    }
+
+    const m = result.msg;
+
+    // Cross-reference database to check if user already possesses an active pass or another paid order
+    let existingUserPass: {
+      hasPass: boolean;
+      passCode: string;
+      passTier: string;
+      orderNumber: string | null;
+      userName: string;
+    } | null = null;
+
+    try {
+      const adminClient = await createAdminClient();
+      // Try to find user by order number (txnid)
+      const { data: dbOrder } = await adminClient
+        .from("orders")
+        .select("id, user_id, order_number")
+        .eq("order_number", cleanTxnid)
+        .maybeSingle();
+
+      let targetUserId = dbOrder?.user_id || m.udf1;
+
+      // If user ID not found, try matching by email
+      if (!targetUserId && m.email) {
+        const { data: profByEmail } = await adminClient
+          .from("profiles")
+          .select("id, full_name")
+          .eq("email", m.email)
+          .maybeSingle();
+        if (profByEmail) targetUserId = profByEmail.id;
+      }
+
+      if (targetUserId) {
+        const [{ data: userPass }, { data: userProfile }, { data: userPaidOrders }] = await Promise.all([
+          adminClient
+            .from("delegate_passes")
+            .select("id, pass_code, pass_tier, order_id, status")
+            .eq("user_id", targetUserId)
+            .eq("status", "active")
+            .maybeSingle(),
+          adminClient
+            .from("profiles")
+            .select("full_name")
+            .eq("id", targetUserId)
+            .maybeSingle(),
+          adminClient
+            .from("orders")
+            .select("order_number")
+            .eq("user_id", targetUserId)
+            .eq("status", "paid")
+            .order("created_at", { ascending: false })
+            .limit(1),
+        ]);
+
+        if (userPass) {
+          existingUserPass = {
+            hasPass: true,
+            passCode: userPass.pass_code,
+            passTier: userPass.pass_tier,
+            orderNumber: userPaidOrders?.[0]?.order_number || null,
+            userName: userProfile?.full_name || m.firstname || "Participant",
+          };
+        }
+      }
+    } catch (crossRefErr) {
+      console.error("Error cross-referencing user pass in checkEasebuzzLiveStatusAction:", crossRefErr);
+    }
+
+    return {
+      success: true,
+      data: {
+        txnid: m.txnid || cleanTxnid,
+        easepayid: m.easepayid || "N/A",
+        status: (m.status || "").toLowerCase(),
+        rawStatus: m.status,
+        amount: Number(m.amount || 0),
+        currency: "INR",
+        customerName: m.firstname || "Participant",
+        customerEmail: m.email || "N/A",
+        customerPhone: m.phone || "N/A",
+        mode: m.mode || "UPI",
+        bankRefNum: m.bank_ref_num || "N/A",
+        upiVa: m.upi_va || null,
+        addedOn: m.addedon || "N/A",
+        productInfo: m.productinfo || "Euphoria Pass",
+        errorDesc: m.error_Message || m.error || "None",
+        udf1_userId: m.udf1 || null,
+        udf2_passTier: m.udf2 || null,
+        udf3_events: m.udf3 || null,
+        udf4_accommodation: m.udf4 || null,
+        udf6_regnNo: m.udf6 || null,
+        udf7_auditKey: m.udf7 || null,
+        existingUserPass,
+      },
+      raw: result,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to query Easebuzz gateway";
+    return { success: false, error: msg };
+  }
+}
+
+// 19. Fetch Payment Issues, Discrepancies, and Orphaned Transactions
+export async function getPaymentIssuesAndDiscrepanciesAdmin() {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized", issues: [], stats: {} };
+    }
+
+    const adminClient = await createAdminClient();
+
+    const [
+      { data: allOrders, error: ordErr },
+      { data: passes, error: passErr },
+      { data: profiles, error: profErr },
+      { data: events },
+    ] = await Promise.all([
+      adminClient.from("orders").select("*").order("created_at", { ascending: false }),
+      adminClient.from("delegate_passes").select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status"),
+      adminClient.from("profiles").select("id, full_name, email, mobile_number, register_number, college_name, department, participant_type, is_profile_completed"),
+      adminClient.from("events").select("id, name, is_pro_event"),
+    ]);
+
+    if (ordErr) throw ordErr;
+    if (passErr) throw passErr;
+    if (profErr) throw profErr;
+
+    const profileMap = new Map<string, any>();
+    (profiles || []).forEach((p) => profileMap.set(p.id, p));
+
+    const passByOrderIdMap = new Map<string, any>();
+    const userActivePassMap = new Map<string, any>();
+    (passes || []).forEach((p) => {
+      if (p.order_id) passByOrderIdMap.set(p.order_id, p);
+      if (p.status === "active") userActivePassMap.set(p.user_id, p);
+    });
+
+    const orderByIdMap = new Map<string, any>();
+    (allOrders || []).forEach((ord) => orderByIdMap.set(ord.id, ord));
+
+    const eventMap = new Map<string, any>();
+    (events || []).forEach((e) => eventMap.set(e.id, e));
+
+    const issues: any[] = [];
+    let paidMissingPassCount = 0;
+    let attemptedPendingCount = 0;
+    let failedCount = 0;
+    let duplicateAttemptCount = 0;
+
+    for (const ord of allOrders || []) {
+      const user = profileMap.get(ord.user_id);
+      let directPass = passByOrderIdMap.get(ord.id);
+      const isPaid = ord.status === "paid";
+      const isAttempted = ord.status === "attempted" || ord.status === "pending" || ord.status === "created";
+      const isFailed = ord.status === "failed";
+
+      // Fallback for legacy passes without order_id: only associate if order is paid
+      if (!directPass && isPaid) {
+        const candidate = userActivePassMap.get(ord.user_id);
+        if (candidate && !candidate.order_id) {
+          directPass = candidate;
+        }
+      }
+
+      const otherPass = !directPass ? userActivePassMap.get(ord.user_id) : null;
+      const otherOrder = otherPass?.order_id ? orderByIdMap.get(otherPass.order_id) : null;
+
+      let issueType: "paid_without_pass" | "attempted_checkout" | "failed_payment" | "abandoned_duplicate_attempt" | null = null;
+      let severity: "critical" | "warning" | "info" = "info";
+
+      if (isPaid && !directPass && !otherPass) {
+        issueType = "paid_without_pass";
+        severity = "critical";
+        paidMissingPassCount++;
+      } else if (isAttempted) {
+        if (otherPass) {
+          issueType = "abandoned_duplicate_attempt";
+          severity = "info";
+          duplicateAttemptCount++;
+        } else {
+          issueType = "attempted_checkout";
+          severity = "warning";
+          attemptedPendingCount++;
+        }
+      } else if (isFailed) {
+        if (otherPass) {
+          issueType = "abandoned_duplicate_attempt";
+          severity = "info";
+          duplicateAttemptCount++;
+        } else {
+          issueType = "failed_payment";
+          severity = "info";
+          failedCount++;
+        }
+      }
+
+      if (issueType) {
+        // Resolve event titles for display
+        const rawEventIds = ord.metadata?.event_ids || [];
+        const eventNames = Array.isArray(rawEventIds)
+          ? rawEventIds.map((eid: string) => eventMap.get(eid)?.name || eid).join(", ")
+          : (ord.metadata?.event_names || ord.metadata?.udf3 || "Not specified");
+
+        const meta = ord.metadata || {};
+        const fallbackName = meta.user_name || meta.customer_name || meta.name || meta.udf6_candidate_id || "Participant";
+        const fallbackEmail = meta.email || meta.customer_email || meta.user_email || "N/A";
+        const fallbackPhone = meta.phone || meta.customer_phone || meta.user_phone || "N/A";
+        const fallbackRegn = meta.register_number || meta.candidate_regn || meta.udf6 || "N/A";
+
+        issues.push({
+          id: ord.id,
+          orderNumber: ord.order_number,
+          txnid: ord.order_number,
+          easebuzzPayId: ord.metadata?.easebuzz_pay_id || ord.gateway_payment_id || null,
+          amount: Number(ord.amount || 0),
+          status: ord.status,
+          issueType,
+          severity,
+          createdAt: ord.created_at,
+          eventNames,
+          metadata: meta,
+          user: {
+            id: ord.user_id,
+            fullName: user?.full_name || fallbackName,
+            email: user?.email || fallbackEmail,
+            mobileNumber: user?.mobile_number || fallbackPhone,
+            registerNumber: user?.register_number || fallbackRegn,
+            collegeName: user?.college_name || "KARE",
+            department: user?.department || "N/A",
+          },
+          pass: directPass || null,
+          userOtherPass: otherPass
+            ? {
+                passCode: otherPass.pass_code,
+                passTier: otherPass.pass_tier,
+                otherOrderNumber: otherOrder?.order_number || null,
+              }
+            : null,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      issues,
+      stats: {
+        totalIssues: issues.length,
+        paidMissingPassCount,
+        attemptedPendingCount,
+        failedCount,
+        duplicateAttemptCount,
+        totalPassesIssued: passes?.length || 0,
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load payment issues";
+    console.error("getPaymentIssuesAndDiscrepanciesAdmin error:", msg);
+    return { success: false, error: msg, issues: [], stats: {} };
+  }
+}
+
+// 20. Admin Action: One-Click Resolve Payment and Issue Pass
+export async function resolvePaymentAndIssuePassAction(params: {
+  userId: string;
+  txnid: string;
+  easepayid?: string;
+  amount?: number;
+  eventIds?: string[];
+  forceBypassGatewayCheck?: boolean;
+  adminNote?: string;
+}) {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized: Admin privileges required." };
+    }
+
+    const { userId, txnid, easepayid, amount, eventIds, forceBypassGatewayCheck, adminNote } = params;
+
+    if (!userId || !txnid) {
+      return { success: false, error: "User ID and Transaction ID (txnid) are required." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Verify user profile exists
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!profile) {
+      return { success: false, error: "Participant profile not found in database." };
+    }
+
+    // Check if user already has an active pass
+    const { data: existingPass } = await adminClient
+      .from("delegate_passes")
+      .select("id, pass_code")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingPass) {
+      return {
+        success: false,
+        error: `User already possesses an active festival pass (${existingPass.pass_code}).`,
+      };
+    }
+
+    // Find any existing order with this txnid
+    const { data: existingOrder } = await adminClient
+      .from("orders")
+      .select("*")
+      .eq("order_number", txnid)
+      .maybeSingle();
+
+    let verifiedAmount = Number(amount || existingOrder?.amount || 200);
+    let verifiedEasepayid = easepayid || existingOrder?.metadata?.easebuzz_pay_id || existingOrder?.gateway_payment_id || null;
+    let verifiedBankRef = existingOrder?.metadata?.bank_ref_num || null;
+    let verifiedMode = existingOrder?.metadata?.mode || "UPI";
+
+    // Gateway verification check (unless forced bypass by super admin)
+    if (!forceBypassGatewayCheck) {
+      const liveCheck = await checkEasebuzzTransactionStatus({ txnid });
+      if (!liveCheck?.status || !liveCheck.msg) {
+        return {
+          success: false,
+          error: `Easebuzz API Verification Failed: ${liveCheck?.msg || "Transaction record not found on Easebuzz."} To force issue, enable admin override.`,
+        };
+      }
+
+      const ebz = liveCheck.msg;
+      const statusLower = (ebz.status || "").toLowerCase();
+      if (statusLower !== "success") {
+        return {
+          success: false,
+          error: `Easebuzz Gateway reports status: "${ebz.status || "Failed"}". Payment has not succeeded at gateway.`,
+        };
+      }
+
+      verifiedAmount = Number(ebz.amount || verifiedAmount);
+      verifiedEasepayid = ebz.easepayid || verifiedEasepayid;
+      verifiedBankRef = ebz.bank_ref_num || verifiedBankRef;
+      verifiedMode = ebz.mode || verifiedMode;
+    }
+
+    // Resolve event IDs: provided > order metadata > live udf3 > fallback
+    let targetEvents: string[] = [];
+    if (eventIds && eventIds.length > 0) {
+      targetEvents = await resolveEventIds(eventIds, adminClient);
+    } else if (existingOrder?.metadata?.event_ids) {
+      targetEvents = await resolveEventIds(existingOrder.metadata.event_ids, adminClient);
+    } else if (existingOrder?.metadata?.event_names) {
+      targetEvents = await resolveEventIds(existingOrder.metadata.event_names, adminClient);
+    }
+
+    // If still no events resolved, fetch 2 popular/open non-pro events as fallback so pass can be issued
+    if (targetEvents.length === 0) {
+      const { data: fallbackEvents } = await adminClient
+        .from("events")
+        .select("id")
+        .eq("is_pro_event", false)
+        .eq("status", "published")
+        .limit(2);
+
+      if (fallbackEvents && fallbackEvents.length > 0) {
+        targetEvents = fallbackEvents.map((e) => e.id);
+      }
+    }
+
+    if (targetEvents.length === 0) {
+      return {
+        success: false,
+        error: "Cannot resolve event slots for pass. Please select 2 events in the resolution form.",
+      };
+    }
+
+    const needsAccomm = Boolean(existingOrder?.metadata?.needs_accommodation);
+
+    // Call atomic checkout RPC
+    const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
+      "fn_checkout_pass_atomic",
+      {
+        p_user_id: userId,
+        p_event_ids: targetEvents,
+        p_payment_provider: "easebuzz",
+        p_order_metadata: {
+          easebuzz_pay_id: verifiedEasepayid,
+          easebuzz_txnid: txnid,
+          bank_ref_num: verifiedBankRef,
+          mode: verifiedMode,
+          source: "admin_resolution_hub",
+          resolved_by: authInfo.user.email,
+          admin_note: adminNote || "Admin resolved payment issue",
+          actual_amount_paid: verifiedAmount,
+          timestamp: new Date().toISOString(),
+        },
+      }
+    );
+
+    if (checkoutError || !checkoutData?.success) {
+      return {
+        success: false,
+        error: checkoutData?.message || checkoutError?.message || "Atomic pass generation failed.",
+      };
+    }
+
+    // Clean up previous attempted order row with this txnid to keep exactly 1 order row
+    if (existingOrder?.id && existingOrder.id !== checkoutData.order_id) {
+      try {
+        await adminClient.from("orders").delete().eq("id", existingOrder.id);
+      } catch (delErr) {
+        console.warn("Notice: cleaning prior order row:", delErr);
+      }
+    }
+
+    // Update official order with exact transaction keys
+    await adminClient.from("orders").update({
+      order_number: txnid,
+      gateway_order_id: txnid,
+      gateway_payment_id: verifiedEasepayid,
+      amount: verifiedAmount,
+      status: "paid",
+      metadata: {
+        ...existingOrder?.metadata,
+        easebuzz_pay_id: verifiedEasepayid,
+        easebuzz_txnid: txnid,
+        bank_ref_num: verifiedBankRef,
+        mode: verifiedMode,
+        source: "admin_resolution_hub",
+        resolved_by: authInfo.user.email,
+        admin_note: adminNote || "Manually resolved by Admin",
+        timestamp: new Date().toISOString(),
+      },
+    }).eq("id", checkoutData.order_id);
+
+    if (needsAccomm) {
+      await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", userId);
+    }
+
+    revalidateTag("public-events");
+    revalidatePath("/", "layout");
+    revalidatePath("/admin", "layout");
+    revalidatePath("/admin/payments", "page");
+    revalidatePath("/admin/users", "page");
+    revalidatePath("/dashboard", "page");
+    revalidatePath("/dashboard/passes", "page");
+
+    return {
+      success: true,
+      passCode: checkoutData.pass_code,
+      passTier: checkoutData.pass_tier,
+      message: `Pass ${checkoutData.pass_code} issued successfully for ${profile.full_name}.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to resolve payment and issue pass";
+    console.error("resolvePaymentAndIssuePassAction error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+// 21. Admin Action: Batch Reconcile All Attempted Orders
+export async function batchReconcileAttemptedOrdersAction() {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized: Admin privileges required." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Find all attempted / pending orders from the last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    const { data: attemptedOrders } = await adminClient
+      .from("orders")
+      .select("*")
+      .in("status", ["attempted", "pending", "created"])
+      .gte("created_at", sevenDaysAgo)
+      .order("created_at", { ascending: false });
+
+    if (!attemptedOrders || attemptedOrders.length === 0) {
+      return {
+        success: true,
+        scannedCount: 0,
+        resolvedCount: 0,
+        stillPendingCount: 0,
+        message: "No pending or attempted checkout orders found in the last 7 days.",
+      };
+    }
+
+    let resolvedCount = 0;
+    let stillPendingCount = 0;
+    const resolvedDetails: any[] = [];
+
+    for (const ord of attemptedOrders) {
+      const txnid = ord.order_number;
+      if (!txnid) continue;
+
+      // Check live status on Easebuzz v2 API
+      const checkRes = await checkEasebuzzTransactionStatus({ txnid });
+      if (!checkRes?.status || !checkRes.msg) {
+        stillPendingCount++;
+        continue;
+      }
+
+      const ebz = checkRes.msg;
+      const isSuccess = (ebz.status || "").toLowerCase() === "success";
+
+      if (isSuccess) {
+        // Resolve event IDs
+        const rawEvents = ord.metadata?.event_ids || ord.metadata?.event_names || ebz.udf3;
+        const resolvedEventIds = await resolveEventIds(rawEvents, adminClient);
+
+        if (resolvedEventIds.length > 0) {
+          const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
+            "fn_checkout_pass_atomic",
+            {
+              p_user_id: ord.user_id,
+              p_event_ids: resolvedEventIds,
+              p_payment_provider: "easebuzz",
+              p_order_metadata: {
+                easebuzz_pay_id: ebz.easepayid,
+                easebuzz_txnid: txnid,
+                bank_ref_num: ebz.bank_ref_num,
+                mode: ebz.mode,
+                source: "admin_batch_reconciler",
+                resolved_by: authInfo.user.email,
+                actual_amount_paid: Number(ebz.amount || ord.amount || 200),
+                timestamp: new Date().toISOString(),
+              },
+            }
+          );
+
+          if (!checkoutError && checkoutData?.success && checkoutData.order_id) {
+            // Clean up attempted row
+            try {
+              await adminClient.from("orders").delete().eq("id", ord.id);
+            } catch (delErr) {
+              console.warn("Notice: cleaning attempted row:", delErr);
+            }
+
+            await adminClient.from("orders").update({
+              order_number: txnid,
+              gateway_order_id: txnid,
+              gateway_payment_id: ebz.easepayid || null,
+              amount: Number(ebz.amount || ord.amount || 200),
+              status: "paid",
+              metadata: {
+                ...ord.metadata,
+                easebuzz_pay_id: ebz.easepayid,
+                easebuzz_txnid: txnid,
+                bank_ref_num: ebz.bank_ref_num,
+                mode: ebz.mode,
+                source: "admin_batch_reconciler",
+                timestamp: new Date().toISOString(),
+              },
+            }).eq("id", checkoutData.order_id);
+
+            resolvedCount++;
+            resolvedDetails.push({
+              txnid,
+              easepayid: ebz.easepayid,
+              userId: ord.user_id,
+              passCode: checkoutData.pass_code,
+              amount: ebz.amount,
+            });
+          }
+        }
+      } else if (
+        (ebz.status || "").toLowerCase() === "failed" ||
+        (ebz.status || "").toLowerCase() === "usercancelled"
+      ) {
+        await adminClient.from("orders").update({
+          status: "failed",
+          metadata: { ...ord.metadata, easebuzz_status: ebz.status, updated_at: new Date().toISOString() },
+        }).eq("id", ord.id);
+      } else {
+        stillPendingCount++;
+      }
+    }
+
+    revalidateTag("public-events");
+    revalidatePath("/", "layout");
+    revalidatePath("/admin", "layout");
+    revalidatePath("/admin/payments", "page");
+    revalidatePath("/admin/users", "page");
+
+    return {
+      success: true,
+      scannedCount: attemptedOrders.length,
+      resolvedCount,
+      stillPendingCount,
+      resolvedOrders: resolvedDetails,
+      message: `Scanned ${attemptedOrders.length} attempted orders. Successfully auto-reconciled and issued ${resolvedCount} passes!`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Batch reconciliation error";
+    console.error("batchReconcileAttemptedOrdersAction error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+// 22. Search Participant with Profiles, Passes, Registrations & Orders for Manual Reconcile
+export async function searchParticipantForPaymentReconcile(query: string) {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized", participants: [] };
+    }
+
+    const cleanQ = (query || "").trim();
+    if (!cleanQ) return { success: true, participants: [] };
+
+    const adminClient = await createAdminClient();
+
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("*")
+      .or(`email.ilike.%${cleanQ}%,full_name.ilike.%${cleanQ}%,mobile_number.ilike.%${cleanQ}%,register_number.ilike.%${cleanQ}%`)
+      .limit(10);
+
+    if (!profiles || profiles.length === 0) {
+      return { success: true, participants: [] };
+    }
+
+    const userIds = profiles.map((p) => p.id);
+
+    const [
+      { data: passes },
+      { data: orders },
+      { data: registrations },
+      { data: allEvents },
+    ] = await Promise.all([
+      adminClient.from("delegate_passes").select("*").in("user_id", userIds),
+      adminClient.from("orders").select("*").in("user_id", userIds).order("created_at", { ascending: false }),
+      adminClient.from("event_registrations").select("*, events(name, is_pro_event)").in("user_id", userIds),
+      adminClient.from("events").select("id, name, is_pro_event").eq("status", "published"),
+    ]);
+
+    const passMap = new Map<string, any>();
+    (passes || []).forEach((p) => passMap.set(p.user_id, p));
+
+    const ordersByUser = new Map<string, any[]>();
+    (orders || []).forEach((o) => {
+      const list = ordersByUser.get(o.user_id) || [];
+      list.push(o);
+      ordersByUser.set(o.user_id, list);
+    });
+
+    const regsByUser = new Map<string, any[]>();
+    (registrations || []).forEach((r) => {
+      const list = regsByUser.get(r.user_id) || [];
+      list.push(r);
+      regsByUser.set(r.user_id, list);
+    });
+
+    const results = profiles.map((p) => ({
+      profile: p,
+      pass: passMap.get(p.id) || null,
+      orders: ordersByUser.get(p.id) || [],
+      registrations: regsByUser.get(p.id) || [],
+    }));
+
+    return {
+      success: true,
+      participants: results,
+      availableEvents: (allEvents || []).map((e) => ({ id: e.id, name: e.name, isPro: e.is_pro_event })),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Search failed";
+    return { success: false, error: msg, participants: [] };
+  }
+}
+
 
 

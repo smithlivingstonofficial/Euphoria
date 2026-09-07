@@ -4,7 +4,10 @@ import { EasebuzzInitiateParams, EasebuzzInitiateResponse, EasebuzzResponseData 
 /**
  * Retrieves Easebuzz configuration credentials from environment variables
  */
-export function getEasebuzzCredentials() {
+/**
+ * Retrieves Easebuzz configuration credentials from environment variables
+ */
+export function getEasebuzzCredentials(preferredOrigin?: string) {
   const key =
     process.env.EASEBUZZ_KEY ||
     process.env.NEXT_PUBLIC_EASEBUZZ_KEY ||
@@ -28,11 +31,32 @@ export function getEasebuzzCredentials() {
     process.env.EASEBUZZ_MERCHANT_ID ||
     "";
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
+  // Compute bulletproof baseUrl:
+  // 1. If caller supplies preferredOrigin (e.g. from request headers), use it if valid
+  // 2. In production (env === 'prod'), NEVER use localhost for payment callbacks!
+  let baseUrl = preferredOrigin?.trim() || "";
+
+  if (!baseUrl || (env === "prod" && baseUrl.includes("localhost"))) {
+    if (env === "prod") {
+      baseUrl =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "https://euphoria.kalasalingam.ac.in";
+      // If site url still has localhost in prod, force the live domain
+      if (baseUrl.includes("localhost")) {
+        baseUrl = "https://euphoria.kalasalingam.ac.in";
+      }
+    } else {
+      baseUrl =
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        "http://localhost:3000";
+    }
+  }
+
+  // Strip trailing slash
+  baseUrl = baseUrl.replace(/\/+$/, "");
 
   return { key, salt, env, merchantId, subMerchantId, baseUrl };
 }
@@ -50,8 +74,8 @@ export function getEasebuzzApiUrls(env: "test" | "prod" = "test") {
       ? "https://pay.easebuzz.in/pay/"
       : "https://testpay.easebuzz.in/pay/",
     transactionRetrieveUrl: isProd
-      ? "https://dashboard.easebuzz.in/transaction/v1/retrieve"
-      : "https://testdashboard.easebuzz.in/transaction/v1/retrieve",
+      ? "https://dashboard.easebuzz.in/transaction/v2/retrieve"
+      : "https://testdashboard.easebuzz.in/transaction/v2/retrieve",
     refundUrl: isProd
       ? "https://dashboard.easebuzz.in/transaction/v1/refund"
       : "https://testdashboard.easebuzz.in/transaction/v1/refund",
@@ -299,41 +323,40 @@ export async function initiateEasebuzzPayment(
 }
 
 /**
- * Server-to-server transaction status check using Easebuzz Transaction Retrieve API.
+ * Server-to-server transaction status check using official Easebuzz Transaction Retrieve v2 API.
+ * SHA-512 Hash sequence: key|txnid|salt
  */
 export async function checkEasebuzzTransactionStatus(params: {
-  key: string;
   txnid: string;
-  amount: number | string;
-  email: string;
-  phone: string;
-  salt: string;
+  key?: string;
+  salt?: string;
   env?: "test" | "prod";
+  amount?: number | string;
+  email?: string;
+  phone?: string;
 }) {
   try {
-    const { key, txnid, amount, email, phone, salt, env = "test" } = params;
+    const creds = getEasebuzzCredentials();
+    const key = (params.key || creds.key || "").trim();
+    const salt = (params.salt || creds.salt || "").trim();
+    const env = params.env || creds.env || "test";
+    const txnid = (params.txnid || "").trim();
 
-    const formattedAmount =
-      typeof amount === "number" ? amount.toFixed(2) : String(amount).trim();
+    if (!txnid) {
+      return { status: false, msg: "Transaction ID (txnid) is required" };
+    }
 
-    // Retrieve hash sequence: key|txnid|amount|email|phone|salt
-    const hashString = [
-      String(key).trim(),
-      String(txnid).trim(),
-      formattedAmount,
-      String(email).trim(),
-      String(phone).trim(),
-      String(salt).trim(),
-    ].join("|");
+    if (!key || !salt) {
+      return { status: false, msg: "Easebuzz merchant key and salt are required" };
+    }
 
+    // Official Easebuzz v2 Hash sequence: key|txnid|salt
+    const hashString = `${key}|${txnid}|${salt}`;
     const hash = crypto.createHash("sha512").update(hashString).digest("hex");
 
     const formData = new URLSearchParams();
-    formData.append("key", String(key).trim());
-    formData.append("txnid", String(txnid).trim());
-    formData.append("amount", formattedAmount);
-    formData.append("email", String(email).trim());
-    formData.append("phone", String(phone).trim());
+    formData.append("key", key);
+    formData.append("txnid", txnid);
     formData.append("hash", hash);
 
     const { transactionRetrieveUrl } = getEasebuzzApiUrls(env);
@@ -345,15 +368,71 @@ export async function checkEasebuzzTransactionStatus(params: {
         Accept: "application/json",
       },
       body: formData.toString(),
+      cache: "no-store",
     });
 
     if (!response.ok) {
-      return { status: false, msg: `HTTP error ${response.status}` };
+      const errText = await response.text();
+      return { status: false, msg: `HTTP error ${response.status}: ${errText}` };
     }
 
-    return await response.json();
-  } catch (err) {
-    console.error("Error retrieving Easebuzz transaction:", err);
-    return { status: false, msg: "Failed to retrieve transaction" };
+    const data = await response.json();
+    return data;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to retrieve Easebuzz transaction";
+    console.error("Error retrieving Easebuzz transaction:", msg);
+    return { status: false, msg };
   }
+}
+
+/**
+ * Resiliently resolves a list of raw event IDs or event names into valid UUIDs
+ * by matching against the events table in the database.
+ */
+export async function resolveEventIds(
+  rawList: string[] | string | undefined | null,
+  adminClient: any
+): Promise<string[]> {
+  if (!rawList) return [];
+
+  const items = Array.isArray(rawList)
+    ? rawList
+    : String(rawList).split(",").map((s) => s.trim()).filter(Boolean);
+
+  if (items.length === 0) return [];
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validUuids: string[] = [];
+  const namesToLookup: string[] = [];
+
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    if (uuidRegex.test(trimmed)) {
+      if (!validUuids.includes(trimmed)) validUuids.push(trimmed);
+    } else {
+      namesToLookup.push(trimmed);
+    }
+  }
+
+  if (namesToLookup.length > 0 && adminClient) {
+    for (const name of namesToLookup) {
+      try {
+        const { data: matched } = await adminClient
+          .from("events")
+          .select("id, name")
+          .ilike("name", `%${name}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (matched?.id && !validUuids.includes(matched.id)) {
+          validUuids.push(matched.id);
+        }
+      } catch (err) {
+        console.warn(`Could not resolve event name "${name}":`, err);
+      }
+    }
+  }
+
+  return validUuids.slice(0, 2);
 }

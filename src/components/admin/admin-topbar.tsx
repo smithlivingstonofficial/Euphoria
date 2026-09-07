@@ -29,6 +29,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/coordinators": "Coordinator Role Assignments",
   "/admin/announcements": "Broadcast Alerts & Notifications",
   "/admin/payments": "Payment Audit & Financial Telemetry",
+  "/admin/payments/recovery": "Payment Issues & Recovery Hub",
   "/admin/reports": "Data Export & Audit Center",
   "/super-admin": "Super Admin Developer Console",
 };

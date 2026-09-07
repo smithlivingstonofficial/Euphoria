@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import {
   verifyEasebuzzResponseHash,
   getEasebuzzCredentials,
+  checkEasebuzzTransactionStatus,
 } from "@/lib/payments/easebuzz";
 import { revalidatePath, revalidateTag } from "next/cache";
 
@@ -29,21 +30,34 @@ export async function POST(req: NextRequest) {
       productinfo,
     } = data;
 
-    const { salt, key, baseUrl } = getEasebuzzCredentials();
+    const origin = req.headers.get("x-forwarded-proto") && req.headers.get("x-forwarded-host")
+      ? `${req.headers.get("x-forwarded-proto")}://${req.headers.get("x-forwarded-host")}`
+      : req.nextUrl.origin;
+
+    const { salt, key, baseUrl } = getEasebuzzCredentials(origin);
 
     const isSuccess = (status || "").toLowerCase() === "success";
-    const eventIds = eventIdsStr ? eventIdsStr.split(",").filter(Boolean) : [];
     const needsAccommodation = needsAccommStr === "yes";
 
     // Reverse Hash Cryptographic Verification
-    const isValidHash = verifyEasebuzzResponseHash({
+    let isValidHash = verifyEasebuzzResponseHash({
       ...data,
       salt,
       key,
     });
 
+    // If reverse hash check fails but Easebuzz posted success, perform server-to-server gateway verification
+    if (!isValidHash && txnid) {
+      console.warn("Callback reverse hash check failed, verifying with Easebuzz v2 API directly...", { txnid, easepayid });
+      const liveVerify = await checkEasebuzzTransactionStatus({ txnid });
+      if (liveVerify?.status && (liveVerify.msg?.status || "").toLowerCase() === "success") {
+        isValidHash = true;
+        console.log("Easebuzz v2 direct retrieve confirmed payment success for txnid:", txnid);
+      }
+    }
+
     if (!isValidHash && !isSuccess) {
-      console.error("Easebuzz callback reverse hash mismatch:", { txnid, easepayid });
+      console.error("Easebuzz callback security mismatch:", { txnid, easepayid });
       return NextResponse.redirect(
         new URL(`/events?payment=failed&reason=security_mismatch`, baseUrl),
         { status: 303 }
@@ -59,23 +73,28 @@ export async function POST(req: NextRequest) {
 
     const adminClient = await createAdminClient();
 
-    // Resolve event UUIDs: check pending order metadata if udf3 contains names or fallback
-    let resolvedEventIds = eventIds;
+    // Look for attempted order record in DB
+    let pendingOrder: any = null;
     try {
-      const { data: pendingOrder } = await adminClient
+      const { data: ord } = await adminClient
         .from("orders")
-        .select("metadata, user_id")
+        .select("*")
         .eq("order_number", txnid)
         .maybeSingle();
-
-      if (pendingOrder?.metadata?.event_ids && Array.isArray(pendingOrder.metadata.event_ids) && pendingOrder.metadata.event_ids.length > 0) {
-        resolvedEventIds = pendingOrder.metadata.event_ids;
-      }
+      pendingOrder = ord;
     } catch (lookupErr) {
-      console.warn("Pending order lookup in callback warning:", lookupErr);
+      console.warn("Pending order lookup warning:", lookupErr);
     }
 
-    if (!userId || resolvedEventIds.length === 0) {
+    const targetUserId = userId || pendingOrder?.user_id;
+
+    // Resilient event resolution: checks order metadata first, then udf3, then dynamic event name lookup
+    const rawEvents = pendingOrder?.metadata?.event_ids || pendingOrder?.metadata?.event_names || eventIdsStr;
+    const { resolveEventIds } = await import("@/lib/payments/easebuzz");
+    const resolvedEventIds = await resolveEventIds(rawEvents, adminClient);
+
+    if (!targetUserId || resolvedEventIds.length === 0) {
+      console.error("Callback missing critical data:", { targetUserId, resolvedEventIds, txnid });
       return NextResponse.redirect(
         new URL(`/dashboard?payment=notice&msg=processed`, baseUrl),
         { status: 303 }
@@ -86,7 +105,7 @@ export async function POST(req: NextRequest) {
     const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
       "fn_checkout_pass_atomic",
       {
-        p_user_id: userId,
+        p_user_id: targetUserId,
         p_event_ids: resolvedEventIds,
         p_payment_provider: "easebuzz",
         p_order_metadata: {
@@ -96,6 +115,7 @@ export async function POST(req: NextRequest) {
           accommodation_status: needsAccommodation ? "requested" : "none",
           accommodation_payment: "in_person_on_campus",
           source: "easebuzz_hosted_callback",
+          actual_amount_paid: Number(amount || 200),
           timestamp: new Date().toISOString(),
         },
       }
@@ -110,15 +130,28 @@ export async function POST(req: NextRequest) {
     }
 
     if (checkoutData.order_id) {
+      // Remove previous attempted order row if existed to avoid duplicate / key conflicts
+      if (pendingOrder?.id && pendingOrder.id !== checkoutData.order_id) {
+        try {
+          await adminClient.from("orders").delete().eq("id", pendingOrder.id);
+        } catch (delErr) {
+          console.warn("Notice: cleaning attempted order row in callback:", delErr);
+        }
+      }
+
       await adminClient.from("orders").update({
+        order_number: txnid || undefined,
         gateway_order_id: txnid,
+        gateway_payment_id: easepayid || null,
+        amount: Number(amount || 200),
         status: "paid",
         metadata: {
+          ...pendingOrder?.metadata,
           easebuzz_pay_id: easepayid,
           easebuzz_txnid: txnid,
           productinfo: productinfo || "Euphoria 2026 Pass",
           purpose: productinfo || "Euphoria 2026 Pass",
-          udf6_candidate_id: data.udf6 || userId,
+          udf6_candidate_id: data.udf6 || targetUserId,
           udf7_audit_key: data.udf7 || "Euphoria 2026",
           needs_accommodation: needsAccommodation,
           source: "easebuzz_hosted_callback",
@@ -130,7 +163,7 @@ export async function POST(req: NextRequest) {
     if (needsAccommodation) {
       await adminClient.from("profiles").update({
         needs_accommodation: true,
-      }).eq("id", userId);
+      }).eq("id", targetUserId);
     }
 
     revalidateTag("public-events");

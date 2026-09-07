@@ -6,6 +6,8 @@ import {
   initiateEasebuzzPayment,
   verifyEasebuzzResponseHash,
   getEasebuzzCredentials,
+  checkEasebuzzTransactionStatus,
+  resolveEventIds,
 } from "@/lib/payments/easebuzz";
 import {
   CreateEasebuzzOrderResult,
@@ -55,6 +57,22 @@ export async function createEasebuzzOrderAction(
         success: false,
         error: "Please complete your participant profile before checking out.",
         redirect: "/complete-profile",
+      };
+    }
+
+    // Guard against duplicate checkout: Check if user already holds an active festival pass
+    const { data: existingActivePass } = await supabase
+      .from("delegate_passes")
+      .select("id, pass_code, pass_tier")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingActivePass) {
+      return {
+        success: false,
+        error: `You already possess an active Festival Pass (${existingActivePass.pass_code}). You do not need to pay again!`,
+        redirect: "/dashboard/passes",
       };
     }
 
@@ -159,7 +177,7 @@ export async function createEasebuzzOrderAction(
 
     const accessKey = initRes.data;
 
-    // Insert pending order in database for audit & real-time transaction tracking
+    // Insert attempted order in database for audit & real-time transaction tracking
     try {
       const adminClient = await createAdminClient();
       await adminClient.from("orders").insert({
@@ -167,11 +185,11 @@ export async function createEasebuzzOrderAction(
         order_number: txnid,
         amount: passAmountRupees,
         currency: "INR",
-        status: "pending",
+        status: "attempted",
         provider: "easebuzz",
-        gateway_order_id: txnid,
         metadata: {
           event_ids: eventIds,
+          event_names: cleanEventNames,
           pass_tier: hasProEvent ? "flagship_pass" : "regular_pass",
           productinfo: productInfo,
           purpose: productInfo,
@@ -185,11 +203,13 @@ export async function createEasebuzzOrderAction(
           accommodation_status: needsAccommodation ? "requested" : "none",
           easebuzz_access_key: accessKey,
           easebuzz_txnid: txnid,
+          user_email: userEmail,
+          user_phone: userPhone,
           created_at: new Date().toISOString(),
         },
       });
     } catch (dbErr) {
-      console.warn("Pending order audit insert notice:", dbErr);
+      console.warn("Attempted order audit insert notice:", dbErr);
     }
 
     return {
@@ -347,8 +367,19 @@ export async function verifyEasebuzzPaymentAction(
       const udf7Received = (rawPayload?.udf7 as string) || "Euphoria 2026";
 
       if (checkoutData.order_id) {
+        // Remove earlier attempted order with same txnid to avoid key conflicts
+        if (txnid) {
+          try {
+            await adminClient.from("orders").delete().eq("order_number", txnid).eq("status", "attempted");
+          } catch (delErr) {
+            console.warn("Notice: cleaning attempted order row:", delErr);
+          }
+        }
+
         await adminClient.from("orders").update({
+          order_number: txnid || undefined,
           gateway_order_id: txnid,
+          gateway_payment_id: easepayid || null,
           amount: actualChargedAmount,
           status: "paid",
           metadata: {
@@ -559,5 +590,169 @@ export async function bypassTestRegisterAction(
     const msg = err instanceof Error ? err.message : "Failed to execute test bypass registration";
     console.error("bypassTestRegisterAction error:", err);
     return { success: false, error: msg };
+  }
+}
+
+// 4. Fail-Safe Auto-Reconciliation Action for Returning Users
+export async function reconcileUserPendingPaymentAction(): Promise<{
+  success: boolean;
+  reconciled: boolean;
+  message?: string;
+  passCode?: string;
+}> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, reconciled: false, message: "Authentication required" };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Check if user already has an active festival pass
+    const { data: existingPass } = await adminClient
+      .from("delegate_passes")
+      .select("id, pass_code")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingPass) {
+      return {
+        success: true,
+        reconciled: false,
+        passCode: existingPass.pass_code,
+        message: "Festival Pass already active.",
+      };
+    }
+
+    // Look for attempted/pending orders for this user in the last 48 hours
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { data: pendingOrders } = await adminClient
+      .from("orders")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("status", ["attempted", "pending", "created"])
+      .gte("created_at", fortyEightHoursAgo)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!pendingOrders || pendingOrders.length === 0) {
+      return { success: false, reconciled: false, message: "No pending payment found." };
+    }
+
+    for (const ord of pendingOrders) {
+      const txnid = ord.order_number;
+      if (!txnid) continue;
+
+      // Live query Easebuzz v2 API
+      const statusRes = await checkEasebuzzTransactionStatus({ txnid });
+      if (!statusRes?.status || !statusRes.msg) continue;
+
+      const ebzMsg = statusRes.msg;
+      const isPaid = (ebzMsg.status || "").toLowerCase() === "success";
+
+      if (isPaid) {
+        // Resolve event IDs: check metadata event_ids, event_names, or udf3
+        const rawEvents = ord.metadata?.event_ids || ord.metadata?.event_names || ebzMsg.udf3;
+        const resolvedEventIds = await resolveEventIds(rawEvents, adminClient);
+
+        if (resolvedEventIds.length === 0) {
+          console.warn("Reconcile notice: No event IDs resolved for txnid:", txnid);
+          continue;
+        }
+
+        const needsAccomm = Boolean(ord.metadata?.needs_accommodation || ebzMsg.udf4 === "yes");
+        const chargedAmount = Number(ebzMsg.amount || ord.amount || 200);
+
+        // Execute atomic pass checkout
+        const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
+          "fn_checkout_pass_atomic",
+          {
+            p_user_id: user.id,
+            p_event_ids: resolvedEventIds,
+            p_payment_provider: "easebuzz",
+            p_order_metadata: {
+              easebuzz_pay_id: ebzMsg.easepayid,
+              easebuzz_txnid: txnid,
+              source: "auto_reconciler_client_return",
+              bank_ref_num: ebzMsg.bank_ref_num || null,
+              mode: ebzMsg.mode || "UPI",
+              upi_va: ebzMsg.upi_va || null,
+              actual_amount_paid: chargedAmount,
+              timestamp: new Date().toISOString(),
+            },
+          }
+        );
+
+        if (!checkoutError && checkoutData?.success && checkoutData.order_id) {
+          // Remove old attempted row to keep exactly 1 order record
+          try {
+            await adminClient.from("orders").delete().eq("id", ord.id);
+          } catch (delErr) {
+            console.warn("Notice: cleaning attempted row during reconcile:", delErr);
+          }
+
+          await adminClient.from("orders").update({
+            order_number: txnid,
+            gateway_order_id: txnid,
+            gateway_payment_id: ebzMsg.easepayid || null,
+            amount: chargedAmount,
+            status: "paid",
+            metadata: {
+              ...ord.metadata,
+              easebuzz_pay_id: ebzMsg.easepayid,
+              easebuzz_txnid: txnid,
+              bank_ref_num: ebzMsg.bank_ref_num,
+              mode: ebzMsg.mode,
+              upi_va: ebzMsg.upi_va,
+              source: "auto_reconciler_client_return",
+              timestamp: new Date().toISOString(),
+            },
+          }).eq("id", checkoutData.order_id);
+
+          if (needsAccomm) {
+            await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", user.id);
+          }
+
+          revalidateTag("public-events");
+          revalidatePath("/", "layout");
+          revalidatePath("/dashboard", "page");
+          revalidatePath("/events", "page");
+          revalidatePath("/dashboard/passes", "page");
+
+          return {
+            success: true,
+            reconciled: true,
+            passCode: checkoutData.pass_code,
+            message: "Payment verified successfully! Your festival pass is now active.",
+          };
+        }
+      } else if (
+        (ebzMsg.status || "").toLowerCase() === "failed" ||
+        (ebzMsg.status || "").toLowerCase() === "usercancelled"
+      ) {
+        await adminClient
+          .from("orders")
+          .update({
+            status: "failed",
+            metadata: {
+              ...ord.metadata,
+              easebuzz_status: ebzMsg.status,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", ord.id);
+      }
+    }
+
+    return { success: false, reconciled: false, message: "No confirmed payments found" };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Reconciliation error";
+    console.error("reconcileUserPendingPaymentAction error:", msg);
+    return { success: false, reconciled: false, message: msg };
   }
 }

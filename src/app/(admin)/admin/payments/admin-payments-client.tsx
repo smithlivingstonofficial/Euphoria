@@ -34,6 +34,12 @@ export interface EnrichedOrder {
     passTier: string;
     status: string;
   } | null;
+  userOtherPass?: {
+    passCode: string;
+    passTier: string;
+    status: string;
+    otherOrderNumber?: string | null;
+  } | null;
 }
 
 export function AdminPaymentsClient({
@@ -60,7 +66,7 @@ export function AdminPaymentsClient({
       const nameMatch = ord.user.fullName.toLowerCase().includes(q);
       const emailMatch = ord.user.email.toLowerCase().includes(q);
       const orderMatch = ord.orderNumber.toLowerCase().includes(q);
-      const passMatch = ord.pass?.passCode?.toLowerCase().includes(q);
+      const passMatch = ord.pass?.passCode?.toLowerCase().includes(q) || ord.userOtherPass?.passCode?.toLowerCase().includes(q);
       const easebuzzPayId = (ord.metadata?.easebuzz_pay_id || ord.metadata?.gateway_payment_id || ord.metadata?.payment_id || "").toLowerCase();
       const easebuzzTxnId = (ord.metadata?.easebuzz_txnid || ord.metadata?.gateway_order_id || ord.orderNumber || "").toLowerCase();
 
@@ -109,12 +115,45 @@ export function AdminPaymentsClient({
           </h1>
         </div>
 
-        <div className="shrink-0 flex items-center">
+        <div className="shrink-0 flex items-center gap-2">
+          <Link
+            href="/admin/payments/recovery"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 border border-amber-200/90 shadow-2xs hover:bg-amber-100 transition-colors"
+          >
+            <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span>Payment Resolution Hub</span>
+          </Link>
+
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200/90 shadow-2xs">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
             <span>Easebuzz Active</span>
           </span>
         </div>
+      </div>
+
+      {/* Recovery Quick Alert Banner */}
+      <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/90 to-orange-50/70 p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 shrink-0">
+            <AlertCircle className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-xs font-bold text-amber-950">
+              Payment Resolution &amp; Gateway Recovery Active
+            </div>
+            <div className="text-[11px] text-amber-800 font-sans">
+              Have participants whose UPI payment went through but pass wasn&apos;t generated? Inspect Easebuzz live &amp; resolve with 1 click.
+            </div>
+          </div>
+        </div>
+
+        <Link
+          href="/admin/payments/recovery"
+          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs shrink-0 transition-colors inline-flex items-center gap-1"
+        >
+          <span>Open Recovery Hub</span>
+          <span>&rarr;</span>
+        </Link>
       </div>
 
       {/* Light Theme Metrics Cards */}
@@ -322,8 +361,23 @@ export function AdminPaymentsClient({
                               </span>
                             )}
                           </div>
+                        ) : ord.userOtherPass ? (
+                          <div className="space-y-1">
+                            <span className="text-slate-400 italic text-[10px] block">
+                              {ord.status === "failed" ? "Cancelled Attempt" : "No Pass for this Attempt"}
+                            </span>
+                            <span
+                              className="inline-flex items-center gap-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-1.5 py-0.5 text-[9px] font-bold"
+                              title={`User already paid and holds pass ${ord.userOtherPass.passCode}${ord.userOtherPass.otherOrderNumber ? ` via Order ${ord.userOtherPass.otherOrderNumber}` : ""}`}
+                            >
+                              <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                              <span>Pass Active ({ord.userOtherPass.passCode})</span>
+                            </span>
+                          </div>
                         ) : (
-                          <span className="text-slate-400 italic text-[10px]">Pending Pass</span>
+                          <span className="text-slate-400 italic text-[10px]">
+                            {ord.status === "failed" ? "No Pass Issued" : "Pending Pass"}
+                          </span>
                         )}
                       </td>
 
