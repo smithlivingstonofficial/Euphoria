@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   CreditCard,
@@ -11,8 +11,13 @@ import {
   DollarSign,
   ShieldCheck,
   Star,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  X,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { getPaginatedOrdersAdmin, AdminPaymentMetrics } from "@/actions/admin";
 
 export interface EnrichedOrder {
   id: string;
@@ -44,63 +49,121 @@ export interface EnrichedOrder {
 
 export function AdminPaymentsClient({
   initialOrders = [],
+  initialTotalFilteredCount,
+  initialMetrics,
 }: {
   initialOrders: EnrichedOrder[];
+  initialTotalFilteredCount?: number;
+  initialMetrics?: AdminPaymentMetrics;
 }) {
+  const pageSize = 10;
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalFilteredCount, setTotalFilteredCount] = useState<number>(
+    initialTotalFilteredCount ?? initialOrders.length
+  );
+  const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
+
   const [orders, setOrders] = useState<EnrichedOrder[]>(initialOrders);
+  const [metrics, setMetrics] = useState<AdminPaymentMetrics>(
+    initialMetrics || {
+      totalRev: 0,
+      paidCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      totalCount: initialOrders.length,
+    }
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending" | "failed">("all");
 
-  // Filtered orders list
-  const filteredOrders = useMemo(() => {
-    return orders.filter((ord) => {
-      // Status filter
-      if (statusFilter !== "all" && ord.status !== statusFilter) {
-        return false;
-      }
+  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
 
-      // Search query
-      if (!searchQuery.trim()) return true;
+  // In-Memory Page Cache to eliminate redundant network roundtrips
+  const pageCache = useRef<
+    Record<string, { orders: EnrichedOrder[]; totalFilteredCount: number; metrics: AdminPaymentMetrics }>
+  >({
+    "1___all": {
+      orders: initialOrders,
+      totalFilteredCount: initialTotalFilteredCount ?? initialOrders.length,
+      metrics: initialMetrics || {
+        totalRev: 0,
+        paidCount: 0,
+        pendingCount: 0,
+        failedCount: 0,
+        totalCount: initialOrders.length,
+      },
+    },
+  });
 
-      const q = searchQuery.toLowerCase();
-      const nameMatch = ord.user.fullName.toLowerCase().includes(q);
-      const emailMatch = ord.user.email.toLowerCase().includes(q);
-      const orderMatch = ord.orderNumber.toLowerCase().includes(q);
-      const passMatch = ord.pass?.passCode?.toLowerCase().includes(q) || ord.userOtherPass?.passCode?.toLowerCase().includes(q);
-      const easebuzzPayId = (ord.metadata?.easebuzz_pay_id || ord.metadata?.gateway_payment_id || ord.metadata?.payment_id || "").toLowerCase();
-      const easebuzzTxnId = (ord.metadata?.easebuzz_txnid || ord.metadata?.gateway_order_id || ord.orderNumber || "").toLowerCase();
+  // Fetch a page with specific query & filter options
+  const fetchPage = async (
+    targetPage: number,
+    search: string,
+    status: "all" | "paid" | "pending" | "failed"
+  ) => {
+    const cacheKey = `${targetPage}_${search.trim()}_${status}`;
+    if (pageCache.current[cacheKey]) {
+      const cached = pageCache.current[cacheKey];
+      setOrders(cached.orders);
+      setTotalFilteredCount(cached.totalFilteredCount);
+      if (cached.metrics) setMetrics(cached.metrics);
+      setCurrentPage(targetPage);
+      return;
+    }
 
-      return (
-        nameMatch ||
-        emailMatch ||
-        orderMatch ||
-        Boolean(passMatch) ||
-        easebuzzPayId.includes(q) ||
-        easebuzzTxnId.includes(q)
-      );
+    setIsLoadingPage(true);
+    const res = await getPaginatedOrdersAdmin({
+      page: targetPage,
+      pageSize,
+      searchQuery: search,
+      statusFilter: status,
     });
-  }, [orders, searchQuery, statusFilter]);
+    setIsLoadingPage(false);
 
-  // Aggregate Metrics
-  const metrics = useMemo(() => {
-    let totalRev = 0;
-    let paidCount = 0;
-    let pendingCount = 0;
-    let failedCount = 0;
+    if (res.success) {
+      pageCache.current[cacheKey] = {
+        orders: res.orders,
+        totalFilteredCount: res.totalFilteredCount,
+        metrics: res.metrics,
+      };
+      setOrders(res.orders);
+      setTotalFilteredCount(res.totalFilteredCount);
+      if (res.metrics) setMetrics(res.metrics);
+      setCurrentPage(targetPage);
+    }
+  };
 
-    orders.forEach((o) => {
-      if (o.status === "paid") {
-        totalRev += Number(o.amount || 0);
-        paidCount++;
-      } else if (o.status === "pending") {
-        pendingCount++;
-      } else if (o.status === "failed") {
-        failedCount++;
-      }
-    });
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage || isLoadingPage) return;
+    fetchPage(newPage, searchQuery, statusFilter);
+  };
 
-    return { totalRev, paidCount, pendingCount, failedCount, totalCount: orders.length };
-  }, [orders]);
+  // Debounce search and filter updates to trigger page 1 fetch
+  useEffect(() => {
+    const isDefault = searchQuery === "" && statusFilter === "all" && currentPage === 1;
+    if (isDefault) return;
+
+    const timer = setTimeout(() => {
+      fetchPage(1, searchQuery, statusFilter);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, statusFilter]);
+
+  // Pagination page numbers generator (compact with ellipsis)
+  const paginationPageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 4) {
+      return [1, 2, 3, 4, 5, "...", totalPages];
+    }
+    if (currentPage >= totalPages - 3) {
+      return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+    return [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
+  }, [totalPages, currentPage]);
 
   return (
     <div className="space-y-4">
@@ -245,8 +308,17 @@ export function AdminPaymentsClient({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by participant name, email, pass code, or Easebuzz Txn ID..."
-            className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-slate-400 hover:bg-slate-200 cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Filter Tabs */}
@@ -309,15 +381,15 @@ export function AdminPaymentsClient({
                 <th className="py-3 px-4 font-bold text-right">Date</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-[11px]">
-              {filteredOrders.length === 0 ? (
+            <tbody className={`divide-y divide-slate-100 text-[11px] transition-opacity duration-200 ${isLoadingPage ? "opacity-40 pointer-events-none" : "opacity-100"}`}>
+              {orders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
                     No payment transaction records match the selected filter.
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((ord) => {
+                orders.map((ord) => {
                   const payId = ord.metadata?.easebuzz_pay_id || ord.metadata?.easebuzz_txnid || ord.metadata?.gateway_payment_id || "N/A";
                   const isPaid = ord.status === "paid";
                   const isPending = ord.status === "pending";
@@ -429,6 +501,84 @@ export function AdminPaymentsClient({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Bento Pagination Bar */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-3 sm:p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* Left: Summary text */}
+        <div className="text-xs text-slate-500 font-medium">
+          {totalFilteredCount > 0 ? (
+            <>
+              Showing <span className="font-bold text-slate-800">{Math.min((currentPage - 1) * pageSize + 1, totalFilteredCount)}</span> to{" "}
+              <span className="font-bold text-slate-800">{Math.min(currentPage * pageSize, totalFilteredCount)}</span> of{" "}
+              <span className="font-bold text-slate-800">{totalFilteredCount}</span> orders
+            </>
+          ) : (
+            <span>No payment transaction records found</span>
+          )}
+          {isLoadingPage && (
+            <span className="ml-2.5 inline-flex items-center gap-1.5 text-primary animate-pulse font-semibold">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading...
+            </span>
+          )}
+        </div>
+
+        {/* Right: Page Navigation Buttons */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            {/* Prev Button */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || isLoadingPage}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
+              aria-label="Previous Page"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span className="hidden xs:inline">Prev</span>
+            </button>
+
+            {/* Page Number Pills */}
+            {paginationPageNumbers.map((pageItem, idx) => {
+              if (pageItem === "...") {
+                return (
+                  <span key={`ellipsis-${idx}`} className="px-2 py-1 text-xs text-slate-400 font-bold">
+                    ...
+                  </span>
+                );
+              }
+              const pageNum = pageItem as number;
+              const isActive = pageNum === currentPage;
+              return (
+                <button
+                  key={pageNum}
+                  type="button"
+                  onClick={() => handlePageChange(pageNum)}
+                  disabled={isLoadingPage}
+                  className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-primary text-white shadow-xs scale-105"
+                      : "border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+
+            {/* Next Button */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || isLoadingPage}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
+              aria-label="Next Page"
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

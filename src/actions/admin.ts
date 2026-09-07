@@ -1397,6 +1397,292 @@ export async function getAllOrdersAdmin() {
   }
 }
 
+export interface AdminPaymentMetrics {
+  totalRev: number;
+  paidCount: number;
+  pendingCount: number;
+  failedCount: number;
+  totalCount: number;
+}
+
+export interface PaginatedOrdersResult {
+  success: boolean;
+  error?: string;
+  orders: any[];
+  totalFilteredCount: number;
+  metrics: AdminPaymentMetrics;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// 14b. Fetch Paginated Payment Orders (Strictly 10 per page, High Performance)
+export async function getPaginatedOrdersAdmin(params: {
+  page?: number;
+  pageSize?: number;
+  statusFilter?: "all" | "paid" | "pending" | "failed";
+  searchQuery?: string;
+} = {}): Promise<PaginatedOrdersResult> {
+  try {
+    const { authorized } = await verifyAdminSession();
+    if (!authorized) {
+      return {
+        success: false,
+        error: "Unauthorized. Admin privileges required.",
+        orders: [],
+        totalFilteredCount: 0,
+        metrics: { totalRev: 0, paidCount: 0, pendingCount: 0, failedCount: 0, totalCount: 0 },
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
+      };
+    }
+
+    const adminClient = await createAdminClient();
+    const page = Math.max(1, params.page || 1);
+    const pageSize = Math.max(1, Math.min(100, params.pageSize || 10));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    // 1. Lightweight Telemetry summary (single scalar select across orders)
+    const { data: summaryRows } = await adminClient
+      .from("orders")
+      .select("amount, status");
+
+    let totalRev = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+
+    (summaryRows || []).forEach((r) => {
+      if (r.status === "paid") {
+        totalRev += Number(r.amount || 0);
+        paidCount++;
+      } else if (r.status === "failed") {
+        failedCount++;
+      } else {
+        pendingCount++;
+      }
+    });
+
+    const metrics: AdminPaymentMetrics = {
+      totalRev,
+      paidCount,
+      pendingCount,
+      failedCount,
+      totalCount: (summaryRows || []).length,
+    };
+
+    // 2. Build Paginated Orders Query
+    let query = adminClient
+      .from("orders")
+      .select(`
+        id,
+        order_number,
+        amount,
+        currency,
+        status,
+        provider,
+        gateway_order_id,
+        gateway_payment_id,
+        metadata,
+        created_at,
+        user_id
+      `, { count: "exact" })
+      .order("created_at", { ascending: false });
+
+    // Apply status filter
+    if (params.statusFilter === "paid") {
+      query = query.eq("status", "paid");
+    } else if (params.statusFilter === "failed") {
+      query = query.eq("status", "failed");
+    } else if (params.statusFilter === "pending") {
+      query = query.in("status", ["pending", "attempted", "created"]);
+    }
+
+    // Apply search query
+    if (params.searchQuery && params.searchQuery.trim()) {
+      const q = params.searchQuery.trim();
+
+      const [profilesRes, passesRes] = await Promise.all([
+        adminClient
+          .from("profiles")
+          .select("id")
+          .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,register_number.ilike.%${q}%`)
+          .limit(50),
+        adminClient
+          .from("delegate_passes")
+          .select("id, order_id, user_id")
+          .ilike("pass_code", `%${q}%`)
+          .limit(50),
+      ]);
+
+      const matchedUserIds = Array.from(
+        new Set([
+          ...(profilesRes.data || []).map((p) => p.id),
+          ...(passesRes.data || []).map((p) => p.user_id).filter(Boolean),
+        ])
+      );
+      const matchedOrderIds = (passesRes.data || []).map((p) => p.order_id).filter(Boolean);
+
+      const orClauses: string[] = [
+        `order_number.ilike.%${q}%`,
+        `gateway_order_id.ilike.%${q}%`,
+        `gateway_payment_id.ilike.%${q}%`,
+      ];
+
+      if (matchedUserIds.length > 0) {
+        orClauses.push(`user_id.in.(${matchedUserIds.join(",")})`);
+      }
+      if (matchedOrderIds.length > 0) {
+        orClauses.push(`id.in.(${matchedOrderIds.join(",")})`);
+      }
+
+      query = query.or(orClauses.join(","));
+    }
+
+    // 3. Execute Range Query for strictly 10 items
+    const { data: rawOrders, count, error: ordersErr } = await query.range(from, to);
+    if (ordersErr) throw ordersErr;
+
+    const totalFilteredCount = count ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+
+    // 4. Targeted fetch of profiles & passes ONLY for the 10 retrieved orders
+    const userIds = Array.from(new Set((rawOrders || []).map((o) => o.user_id).filter(Boolean)));
+    const orderIds = (rawOrders || []).map((o) => o.id);
+
+    const profilesMap = new Map<string, any>();
+    const passByOrderIdMap = new Map<string, any>();
+    const userActivePassMap = new Map<string, any>();
+
+    if (userIds.length > 0 || orderIds.length > 0) {
+      const [profilesRes, passesRes] = await Promise.all([
+        userIds.length > 0
+          ? adminClient
+              .from("profiles")
+              .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number")
+              .in("id", userIds)
+          : Promise.resolve({ data: [] }),
+        adminClient
+          .from("delegate_passes")
+          .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status")
+          .or(`order_id.in.(${orderIds.join(",") || "00000000-0000-0000-0000-000000000000"}),user_id.in.(${userIds.join(",") || "00000000-0000-0000-0000-000000000000"})`),
+      ]);
+
+      (profilesRes.data || []).forEach((p) => profilesMap.set(p.id, p));
+
+      (passesRes.data || []).forEach((p) => {
+        if (p.order_id) {
+          passByOrderIdMap.set(p.order_id, p);
+        }
+        if (p.status === "active") {
+          userActivePassMap.set(p.user_id, p);
+        }
+      });
+    }
+
+    // Secondary pass mapping: resolve other order numbers if user has an active pass from another order
+    const otherOrderIds = Array.from(
+      new Set(
+        Array.from(userActivePassMap.values())
+          .map((p) => p.order_id)
+          .filter((oid) => Boolean(oid) && !orderIds.includes(oid))
+      )
+    );
+
+    const otherOrdersMap = new Map<string, any>();
+    if (otherOrderIds.length > 0) {
+      const { data: otherOrderRows } = await adminClient
+        .from("orders")
+        .select("id, order_number")
+        .in("id", otherOrderIds);
+      (otherOrderRows || []).forEach((o) => otherOrdersMap.set(o.id, o));
+    }
+
+    // Enrich the 10 orders
+    const enrichedOrders = (rawOrders || []).map((ord) => {
+      const userProf = profilesMap.get(ord.user_id);
+
+      let directPass = passByOrderIdMap.get(ord.id);
+      if (!directPass && ord.status === "paid") {
+        const candidatePass = userActivePassMap.get(ord.user_id);
+        if (candidatePass && !candidatePass.order_id) {
+          directPass = candidatePass;
+        }
+      }
+
+      const otherPass = !directPass ? userActivePassMap.get(ord.user_id) : null;
+      const otherOrder = otherPass?.order_id
+        ? otherOrdersMap.get(otherPass.order_id) || (orderIds.includes(otherPass.order_id) ? ord : null)
+        : null;
+
+      const meta = (ord.metadata as Record<string, any>) || {};
+      const fallbackName = meta.user_name || meta.customer_name || meta.name || meta.udf6_candidate_id || "Participant";
+      const fallbackEmail = meta.email || meta.customer_email || meta.user_email || "";
+      const fallbackPhone = meta.phone || meta.customer_phone || meta.user_phone || "";
+      const fallbackRegn = meta.register_number || meta.candidate_regn || meta.udf6 || "";
+
+      return {
+        id: ord.id,
+        orderNumber: ord.order_number,
+        amount: Number(ord.amount || 0),
+        status: ord.status as "paid" | "pending" | "failed" | "refunded",
+        provider: ord.provider || "easebuzz",
+        createdAt: ord.created_at,
+        metadata: meta,
+        user: {
+          id: ord.user_id,
+          fullName: userProf?.full_name || fallbackName,
+          email: userProf?.email || fallbackEmail,
+          mobileNumber: userProf?.mobile_number || fallbackPhone,
+          participantType: userProf?.participant_type || "external",
+          collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
+          department: userProf?.department || "",
+          registerNumber: userProf?.register_number || fallbackRegn,
+        },
+        pass: directPass
+          ? {
+              passCode: directPass.pass_code,
+              passTier: directPass.pass_tier,
+              status: directPass.status,
+            }
+          : null,
+        userOtherPass: otherPass
+          ? {
+              passCode: otherPass.pass_code,
+              passTier: otherPass.pass_tier,
+              status: otherPass.status,
+              otherOrderNumber: otherOrder?.order_number || null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      success: true,
+      orders: enrichedOrders,
+      totalFilteredCount,
+      metrics,
+      page,
+      pageSize,
+      totalPages,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch paginated payment orders";
+    return {
+      success: false,
+      error: msg,
+      orders: [],
+      totalFilteredCount: 0,
+      metrics: { totalRev: 0, paidCount: 0, pendingCount: 0, failedCount: 0, totalCount: 0 },
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
+    };
+  }
+}
+
 // 12. Load Server Master CSV Preset
 export async function getMasterEventsPreset() {
   try {
