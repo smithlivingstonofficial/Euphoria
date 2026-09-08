@@ -24,7 +24,7 @@ export interface CoordinatorEventItem {
   totalRegistrations: number;
   totalAttended: number;
   firstSlotCount?: number;
-  roleType: "staff" | "student" | "admin";
+  roleType: "staff" | "student" | "admin" | "overall_coordinator";
   internal_limit?: number | null;
   allow_internal?: boolean;
   allow_external?: boolean;
@@ -66,7 +66,7 @@ export interface CoordinatorAttendeeItem {
 }
 
 // Helper: Determine coordinator's specific role for an event
-export async function getCoordinatorRoleForEvent(userId: string, eventId?: string): Promise<"staff" | "student" | "admin" | "unauthorized"> {
+export async function getCoordinatorRoleForEvent(userId: string, eventId?: string): Promise<"staff" | "student" | "admin" | "overall_coordinator" | "unauthorized"> {
   const adminClient = await createAdminClient();
 
   const { data: userProfile } = await adminClient
@@ -97,6 +97,11 @@ export async function getCoordinatorRoleForEvent(userId: string, eventId?: strin
         userEmail === process.env.ADMIN_EMAIL))
   ) {
     return "admin";
+  }
+
+  // 2.5 Check if Overall Coordinator (Central Read-Only oversight across all 61 competitions)
+  if (assignedRoles.has("overall_coordinator")) {
+    return "overall_coordinator";
   }
 
   // 3. If specific eventId is provided, check event-specific DB assignments
@@ -197,6 +202,8 @@ export async function getCoordinatorWorkspaceData() {
             user.email.toLowerCase().includes("smith") ||
             user.email === process.env.ADMIN_EMAIL)
       );
+    const isOverallCoordinator = roles.includes("overall_coordinator");
+    const hasGlobalAccess = isAdmin || isOverallCoordinator;
     const isStaff = roles.includes("staff_coordinator") || roles.includes("faculty");
     const isStudentCoord = roles.includes("student_coordinator") || roles.includes("coordinator");
 
@@ -215,7 +222,7 @@ export async function getCoordinatorWorkspaceData() {
           .from("student_coordinator_assignments")
           .select("event_id")
           .eq("user_id", user.id),
-        isAdmin
+        hasGlobalAccess
           ? adminClient.from("events").select(`
               id,
               name,
@@ -297,8 +304,8 @@ export async function getCoordinatorWorkspaceData() {
       }
     }
 
-    const hasAnyRole = roles.includes("staff_coordinator") || roles.includes("student_coordinator") || roles.includes("faculty") || roles.includes("coordinator");
-    if (!isAdmin && !hasAnyRole && allAssignedIds.length === 0) {
+    const hasAnyRole = hasGlobalAccess || roles.includes("staff_coordinator") || roles.includes("student_coordinator") || roles.includes("faculty") || roles.includes("coordinator");
+    if (!hasGlobalAccess && !hasAnyRole && allAssignedIds.length === 0) {
       return {
         success: false,
         error: "Access denied. You are not assigned as an event coordinator.",
@@ -308,7 +315,7 @@ export async function getCoordinatorWorkspaceData() {
 
     let eventsData: any[] = [];
 
-    if (isAdmin) {
+    if (hasGlobalAccess) {
       eventsData = allEvents;
     } else if (allAssignedIds.length > 0) {
       const { data: evts } = await adminClient
@@ -405,8 +412,10 @@ export async function getCoordinatorWorkspaceData() {
     });
 
     const formattedEvents: CoordinatorEventItem[] = eventsData.map((evt) => {
-      let roleType: "staff" | "student" | "admin" = "staff";
-      if (staffEventIds.has(evt.id)) {
+      let roleType: "staff" | "student" | "admin" | "overall_coordinator" = "staff";
+      if (isOverallCoordinator) {
+        roleType = "overall_coordinator";
+      } else if (staffEventIds.has(evt.id)) {
         roleType = "staff";
       } else if (studentEventIds.has(evt.id)) {
         roleType = "student";
@@ -446,7 +455,8 @@ export async function getCoordinatorWorkspaceData() {
       };
     });
 
-    const primaryRole = isAdmin ? "admin" : isStaff ? "staff" : "student";
+    const primaryRole: "admin" | "overall_coordinator" | "staff" | "student" =
+      isOverallCoordinator ? "overall_coordinator" : (isAdmin ? "admin" : (isStaff ? "staff" : "student"));
 
     return {
       success: true,
@@ -454,6 +464,8 @@ export async function getCoordinatorWorkspaceData() {
       primaryRole,
       roles,
       isAdmin,
+      isOverallCoordinator: Boolean(isOverallCoordinator),
+      isReadOnly: Boolean(isOverallCoordinator),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load coordinator workspace";
@@ -978,6 +990,12 @@ export async function recordAttendanceCoordinator({
     const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
     if (roleType === "unauthorized") {
       return { success: false, error: "Unauthorized. You are not assigned to this event." };
+    }
+    if (roleType === "overall_coordinator") {
+      return {
+        success: false,
+        error: "Read-Only Access: Overall Coordinators cannot mark attendance. Attendance check-in is restricted to assigned event coordinators.",
+      };
     }
 
     const adminClient = await createAdminClient();
@@ -1575,6 +1593,457 @@ export async function getEventStaffDetails(eventId: string) {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch event staff details";
+    return { success: false, error: msg };
+  }
+}
+
+// ============================================================================
+// 10. EXPORT OVERALL EVENTS SUMMARY CSV (Master Analytics across all 61 events)
+// ============================================================================
+export async function exportOverallEventsSummaryCSVAction() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
+
+    const adminClient = await createAdminClient();
+    const { data: roleAssignments } = await adminClient
+      .from("user_role_assignments")
+      .select("role_id")
+      .eq("user_id", user.id);
+    const roles = new Set((roleAssignments || []).map((r) => r.role_id));
+    const userEmail = (user.email || "").toLowerCase().trim();
+    const isRootSuperAdmin = userEmail === "smithlivingston2005@gmail.com";
+
+    const isAdmin =
+      isRootSuperAdmin ||
+      roles.has("admin") ||
+      roles.has("super_admin") ||
+      (userEmail &&
+        (userEmail.includes("admin") ||
+          userEmail.includes("smith") ||
+          userEmail === process.env.ADMIN_EMAIL));
+    const isOverall = roles.has("overall_coordinator");
+
+    if (!isAdmin && !isOverall) {
+      return {
+        success: false,
+        error: "Access Denied: Master summary export requires Overall Coordinator or Administrator privileges.",
+      };
+    }
+
+    const [{ data: events }, { data: registrations }, { data: attendances }] = await Promise.all([
+      adminClient
+        .from("events")
+        .select(`
+          id,
+          name,
+          school_or_dept,
+          venue,
+          event_date,
+          start_time,
+          end_time,
+          participant_limit,
+          internal_limit,
+          allow_internal,
+          allow_external,
+          is_pro_event,
+          status,
+          category:event_categories (name)
+        `)
+        .order("school_or_dept", { ascending: true }),
+      adminClient
+        .from("event_registrations")
+        .select(`
+          event_id,
+          slot_number,
+          user:profiles (email, participant_type)
+        `),
+      adminClient
+        .from("attendance")
+        .select("event_id"),
+    ]);
+
+    // Build counts
+    const regMap: Record<string, { total: number; klu: number; external: number; slot1: number; slot2: number }> = {};
+    (registrations || []).forEach((r: any) => {
+      if (!regMap[r.event_id]) {
+        regMap[r.event_id] = { total: 0, klu: 0, external: 0, slot1: 0, slot2: 0 };
+      }
+      regMap[r.event_id].total++;
+      if (r.slot_number === 1) regMap[r.event_id].slot1++;
+      if (r.slot_number === 2) regMap[r.event_id].slot2++;
+
+      const u = Array.isArray(r.user) ? r.user[0] : r.user;
+      const email = (u?.email || "").toLowerCase();
+      const isKlu = u?.participant_type === "internal" || email.endsWith("@klu.ac.in");
+      if (isKlu) regMap[r.event_id].klu++;
+      else regMap[r.event_id].external++;
+    });
+
+    const attMap: Record<string, number> = {};
+    (attendances || []).forEach((a) => {
+      attMap[a.event_id] = (attMap[a.event_id] || 0) + 1;
+    });
+
+    // Build CSV lines
+    const headers = [
+      "Event Name",
+      "Department / School",
+      "Category Tier",
+      "Date",
+      "Start Time",
+      "End Time",
+      "Venue",
+      "Total Capacity",
+      "Internal KLU Cap",
+      "KLU Allowed?",
+      "External Allowed?",
+      "Total Confirmed",
+      "KLU Registrations",
+      "External Registrations",
+      "Primary Slot (Slot 1)",
+      "Secondary Slot (Slot 2)",
+      "Total Attended (Checked In)",
+      "Attendance Rate (%)",
+      "Slots Remaining",
+      "Status",
+    ];
+
+    const rows = (events || []).map((evt) => {
+      const counts = regMap[evt.id] || { total: 0, klu: 0, external: 0, slot1: 0, slot2: 0 };
+      const attended = attMap[evt.id] || 0;
+      const attRate = counts.total > 0 ? Math.round((attended / counts.total) * 100) : 0;
+      const remaining = Math.max(0, evt.participant_limit - counts.total);
+
+      return [
+        `"${(evt.name || "").replace(/"/g, '""')}"`,
+        `"${(evt.school_or_dept || "").replace(/"/g, '""')}"`,
+        evt.is_pro_event ? "Pro (Flagship)" : "Regular",
+        evt.event_date || "TBA",
+        evt.start_time || "TBA",
+        evt.end_time || "TBA",
+        `"${(evt.venue || "TBA").replace(/"/g, '""')}"`,
+        evt.participant_limit,
+        evt.internal_limit !== null && evt.internal_limit !== undefined ? evt.internal_limit : "Unlimited",
+        evt.allow_internal !== false ? "Yes" : "Blocked",
+        evt.allow_external !== false ? "Yes" : "Blocked",
+        counts.total,
+        counts.klu,
+        counts.external,
+        counts.slot1,
+        counts.slot2,
+        attended,
+        `${attRate}%`,
+        remaining,
+        evt.status || "active",
+      ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const filename = `Euphoria_2026_Overall_Events_Summary_${new Date().toISOString().split("T")[0]}.csv`;
+
+    return {
+      success: true,
+      csvContent,
+      filename,
+      totalEvents: events?.length || 0,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to export summary";
+    return { success: false, error: msg };
+  }
+}
+
+// ============================================================================
+// 11. GENERATE CUSTOM REPORT ACTION (Role-Scoped & Secure)
+// ============================================================================
+export interface CustomReportParams {
+  scope: "all" | "department" | "event";
+  eventId?: string;
+  department?: string;
+  affiliation?: "all" | "internal" | "external";
+  attendanceStatus?: "all" | "attended" | "absent";
+  passTier?: "all" | "pro_pass" | "standard_pass";
+  slotType?: "all" | 1 | 2;
+  selectedColumns?: string[];
+}
+
+export async function generateCustomReportAction(params: CustomReportParams) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized. Please log in." };
+
+    const adminClient = await createAdminClient();
+    const { data: roleAssignments } = await adminClient
+      .from("user_role_assignments")
+      .select("role_id")
+      .eq("user_id", user.id);
+
+    const roles = new Set((roleAssignments || []).map((r) => r.role_id));
+    const userEmail = (user.email || "").toLowerCase().trim();
+    const isRootSuperAdmin = userEmail === "smithlivingston2005@gmail.com";
+    const isAdmin =
+      isRootSuperAdmin ||
+      roles.has("admin") ||
+      roles.has("super_admin") ||
+      (userEmail &&
+        (userEmail.includes("admin") ||
+          userEmail.includes("smith") ||
+          userEmail === process.env.ADMIN_EMAIL));
+    const isOverallCoordinator = roles.has("overall_coordinator");
+    const isStaff = roles.has("staff_coordinator") || roles.has("faculty");
+
+    // STRICT SECURITY & SCOPING ENFORCEMENT:
+    // Staff coordinators can ONLY query their assigned event.
+    // Overall coordinators and Admins have global query access.
+    if (!isAdmin && !isOverallCoordinator) {
+      if (!isStaff) {
+        return {
+          success: false,
+          error: "Access Denied: You must be an authorized coordinator or administrator to generate reports.",
+        };
+      }
+
+      // Check DB assignment
+      const { data: staffAssign } = await adminClient
+        .from("staff_event_assignments")
+        .select("event_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!staffAssign || !staffAssign.event_id) {
+        return {
+          success: false,
+          error: "Access Denied: You are not assigned to any competition as staff coordinator.",
+        };
+      }
+
+      if (params.scope !== "event" || params.eventId !== staffAssign.event_id) {
+        return {
+          success: false,
+          error: "Security Restriction: Staff Coordinators are strictly permitted to generate custom reports only for their own assigned competition.",
+        };
+      }
+    }
+
+    // Build base query
+    let query = adminClient
+      .from("event_registrations")
+      .select(`
+        id,
+        event_id,
+        slot_number,
+        registration_code,
+        status,
+        payment_status,
+        created_at,
+        event:events (
+          id,
+          name,
+          school_or_dept,
+          venue,
+          event_date,
+          start_time,
+          end_time,
+          is_pro_event
+        ),
+        pass:delegate_passes (
+          id,
+          pass_code,
+          pass_tier,
+          amount_paid,
+          slots_used
+        ),
+        user:profiles (
+          id,
+          full_name,
+          email,
+          mobile_number,
+          register_number,
+          college_name,
+          department,
+          course,
+          year_of_study,
+          participant_type
+        ),
+        attendance (
+          id,
+          scanned_at,
+          scan_method
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    // Apply Scope Filter
+    if (params.scope === "event" && params.eventId) {
+      query = query.eq("event_id", params.eventId);
+    }
+
+    const { data: rawRegistrations, error: fetchErr } = await query;
+    if (fetchErr) throw fetchErr;
+
+    let filtered = rawRegistrations || [];
+
+    // Filter by Department (if scope === "department" and department specified)
+    if (params.scope === "department" && params.department && params.department !== "all") {
+      filtered = filtered.filter((r: any) => {
+        const evt = Array.isArray(r.event) ? r.event[0] : r.event;
+        return evt?.school_or_dept === params.department;
+      });
+    }
+
+    // Filter by Affiliation
+    if (params.affiliation && params.affiliation !== "all") {
+      filtered = filtered.filter((r: any) => {
+        const u = Array.isArray(r.user) ? r.user[0] : r.user;
+        const email = (u?.email || "").toLowerCase().trim();
+        const isKlu = u?.participant_type === "internal" || email.endsWith("@klu.ac.in");
+        return params.affiliation === "internal" ? isKlu : !isKlu;
+      });
+    }
+
+    // Filter by Attendance Status
+    if (params.attendanceStatus && params.attendanceStatus !== "all") {
+      filtered = filtered.filter((r: any) => {
+        const isAttended = Array.isArray(r.attendance) ? r.attendance.length > 0 : Boolean(r.attendance?.id);
+        return params.attendanceStatus === "attended" ? isAttended : !isAttended;
+      });
+    }
+
+    // Filter by Pass Tier
+    if (params.passTier && params.passTier !== "all") {
+      filtered = filtered.filter((r: any) => {
+        const p = Array.isArray(r.pass) ? r.pass[0] : r.pass;
+        return p?.pass_tier === params.passTier;
+      });
+    }
+
+    // Filter by Slot Type
+    if (params.slotType && params.slotType !== "all") {
+      filtered = filtered.filter((r: any) => r.slot_number === Number(params.slotType));
+    }
+
+    // Determine Columns
+    const defaultCols = [
+      "regCode",
+      "name",
+      "email",
+      "mobile",
+      "regNo",
+      "college",
+      "department",
+      "affiliation",
+      "eventName",
+      "passCode",
+      "passTier",
+      "slotNumber",
+      "attendance",
+      "scanTime",
+    ];
+    const cols = params.selectedColumns && params.selectedColumns.length > 0 ? params.selectedColumns : defaultCols;
+
+    const columnHeaderMap: Record<string, string> = {
+      regCode: "Registration Code",
+      name: "Delegate Full Name",
+      email: "Email Address",
+      mobile: "Mobile Number",
+      regNo: "Register Number",
+      college: "College / Institution",
+      department: "Academic Department",
+      course: "Course / Degree",
+      year: "Year of Study",
+      affiliation: "Affiliation (KLU / External)",
+      eventName: "Competition Name",
+      eventDept: "Event Department",
+      passCode: "Pass Code",
+      passTier: "Pass Tier",
+      amount: "Amount Paid (INR)",
+      slotNumber: "Slot Number",
+      status: "Registration Status",
+      attendance: "Attendance Status",
+      scanTime: "Check-in Timestamp",
+      scanMethod: "Check-in Method",
+    };
+
+    const headers = cols.map((c) => columnHeaderMap[c] || c);
+
+    const rows = filtered.map((r: any) => {
+      const u = Array.isArray(r.user) ? r.user[0] : r.user;
+      const evt = Array.isArray(r.event) ? r.event[0] : r.event;
+      const p = Array.isArray(r.pass) ? r.pass[0] : r.pass;
+      const att = Array.isArray(r.attendance) ? r.attendance[0] : r.attendance;
+      const isAttended = Boolean(att?.id || (Array.isArray(r.attendance) && r.attendance.length > 0));
+      const email = (u?.email || "").toLowerCase().trim();
+      const isInternal = u?.participant_type === "internal" || email.endsWith("@klu.ac.in");
+
+      const colVal = (colKey: string): string => {
+        switch (colKey) {
+          case "regCode":
+            return r.registration_code || "N/A";
+          case "name":
+            return u?.full_name || "N/A";
+          case "email":
+            return u?.email || "N/A";
+          case "mobile":
+            return u?.mobile_number || "N/A";
+          case "regNo":
+            return u?.register_number || "N/A";
+          case "college":
+            return u?.college_name || (isInternal ? "Kalasalingam University (KLU)" : "N/A");
+          case "department":
+            return u?.department || "N/A";
+          case "course":
+            return u?.course || "N/A";
+          case "year":
+            return u?.year_of_study ? `Year ${u.year_of_study}` : "N/A";
+          case "affiliation":
+            return isInternal ? "KLU Internal Student" : "External Delegate";
+          case "eventName":
+            return evt?.name || "N/A";
+          case "eventDept":
+            return evt?.school_or_dept || "N/A";
+          case "passCode":
+            return p?.pass_code || "N/A";
+          case "passTier":
+            return p?.pass_tier === "pro_pass" ? "Pro Pass (₹300)" : "Standard Pass (₹200)";
+          case "amount":
+            return p?.amount_paid ? `₹${p.amount_paid}` : "₹0";
+          case "slotNumber":
+            return `Slot ${r.slot_number || 1}`;
+          case "status":
+            return r.status || "confirmed";
+          case "attendance":
+            return isAttended ? "Checked-In" : "Pending / Absent";
+          case "scanTime":
+            return att?.scanned_at ? new Date(att.scanned_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Not Checked-In";
+          case "scanMethod":
+            return att?.scan_method || "N/A";
+          default:
+            return "";
+        }
+      };
+
+      return cols.map((c) => `"${String(colVal(c)).replace(/"/g, '""')}"`).join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const filename = `Euphoria_2026_Custom_Report_${params.scope}_${new Date().toISOString().split("T")[0]}.csv`;
+
+    return {
+      success: true,
+      csvContent,
+      filename,
+      totalCount: filtered.length,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to generate custom report";
     return { success: false, error: msg };
   }
 }

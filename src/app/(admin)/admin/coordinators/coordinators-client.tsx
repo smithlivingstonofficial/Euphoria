@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import {
   assignCoordinatorAdmin,
   revokeCoordinatorAdmin,
+  assignOverallCoordinatorAdmin,
+  revokeOverallCoordinatorAdmin,
 } from "@/actions/admin";
 import {
   ShieldCheck,
@@ -30,6 +32,7 @@ import {
   ChevronRight,
   UserPlus,
   Check,
+  Globe,
 } from "lucide-react";
 
 export interface CoordinatorItem {
@@ -82,22 +85,25 @@ export interface EventItem {
 export function CoordinatorsAdminClient({
   staffAssignments: initialStaff,
   studentAssignments: initialStudent,
+  overallAssignments: initialOverall = [],
   allProfiles,
   allEvents,
 }: {
   staffAssignments: CoordinatorItem[];
   studentAssignments: CoordinatorItem[];
+  overallAssignments?: CoordinatorItem[];
   allProfiles: ProfileItem[];
   allEvents: EventItem[];
 }) {
   const [staffList, setStaffList] = useState<CoordinatorItem[]>(initialStaff);
   const [studentList, setStudentList] = useState<CoordinatorItem[]>(initialStudent);
+  const [overallList, setOverallList] = useState<CoordinatorItem[]>(initialOverall);
 
   // Primary view: "events" (Operations Matrix) vs "coordinators" (Directory)
   const [viewMode, setViewMode] = useState<"events" | "coordinators">("events");
 
   // Coordinator Directory Filters
-  const [coordTab, setCoordTab] = useState<"all" | "staff" | "student" | "unassigned">("all");
+  const [coordTab, setCoordTab] = useState<"all" | "overall" | "staff" | "student" | "unassigned">("all");
   const [coordSearch, setCoordSearch] = useState("");
 
   // Event Operations Matrix Filters
@@ -107,7 +113,7 @@ export function CoordinatorsAdminClient({
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<"staff" | "student">("staff");
+  const [modalType, setModalType] = useState<"staff" | "student" | "overall">("staff");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -127,15 +133,16 @@ export function CoordinatorsAdminClient({
 
   // Combined coordinators list with type tag
   const allCoordinatorsCombined = useMemo(() => {
-    const list: Array<CoordinatorItem & { type: "staff" | "student" }> = [];
+    const list: Array<CoordinatorItem & { type: "staff" | "student" | "overall" }> = [];
+    overallList.forEach((o) => list.push({ ...o, type: "overall" }));
     staffList.forEach((s) => list.push({ ...s, type: "staff" }));
     studentList.forEach((st) => list.push({ ...st, type: "student" }));
     return list;
-  }, [staffList, studentList]);
+  }, [overallList, staffList, studentList]);
 
   // Quick lookup of currently assigned event for any user ID
   const userCurrentAssignment = useMemo(() => {
-    const map = new Map<string, { event: any; type: "staff" | "student"; assignmentId: string }>();
+    const map = new Map<string, { event: any; type: "staff" | "student" | "overall"; assignmentId: string }>();
     allCoordinatorsCombined.forEach((item) => {
       if (item.event && item.event.id && item.user_id) {
         map.set(item.user_id, {
@@ -244,6 +251,7 @@ export function CoordinatorsAdminClient({
   // Filtered Coordinators List (for Directory View)
   const filteredCoordinators = useMemo(() => {
     return allCoordinatorsCombined.filter((item) => {
+      if (coordTab === "overall" && item.type !== "overall") return false;
       if (coordTab === "staff" && item.type !== "staff") return false;
       if (coordTab === "student" && item.type !== "student") return false;
       if (coordTab === "unassigned" && item.event_id && !item.isUnassigned) return false;
@@ -268,7 +276,7 @@ export function CoordinatorsAdminClient({
   }, [allCoordinatorsCombined, coordTab, coordSearch]);
 
   // Trigger Modal to Assign fresh
-  const openAssignModal = (preselectedEventId?: string, preselectedType?: "staff" | "student") => {
+  const openAssignModal = (preselectedEventId?: string, preselectedType?: "staff" | "student" | "overall") => {
     setActionError(null);
     setActionSuccess(null);
     setModalType(preselectedType || "staff");
@@ -280,7 +288,7 @@ export function CoordinatorsAdminClient({
   };
 
   // Trigger Modal to Reassign a specific coordinator
-  const openReassignModal = (coord: CoordinatorItem & { type: "staff" | "student" }) => {
+  const openReassignModal = (coord: CoordinatorItem & { type: "staff" | "student" | "overall" }) => {
     setActionError(null);
     setActionSuccess(null);
     setModalType(coord.type);
@@ -295,11 +303,46 @@ export function CoordinatorsAdminClient({
   // Submit Handler
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUserId || !selectedEventId) return;
+    if (!selectedUserId) return;
+    if (modalType !== "overall" && !selectedEventId) return;
 
     setIsSubmitting(true);
     setActionError(null);
     setActionSuccess(null);
+
+    if (modalType === "overall") {
+      const res = await assignOverallCoordinatorAdmin(selectedUserId);
+      if (!res.success) {
+        setActionError(res.error || "Failed to assign overall coordinator");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const targetUser = allProfiles.find((p) => p.id === selectedUserId);
+      const newAssignment: CoordinatorItem = {
+        id: "overall_" + Math.random().toString(36).substring(2, 9),
+        event_id: null,
+        user_id: selectedUserId,
+        created_at: new Date().toISOString(),
+        isDbRecord: true,
+        isUnassigned: false,
+        user: targetUser ? { ...targetUser } : null,
+        event: {
+          id: "all_61_events",
+          name: "All 61 Competitions",
+          school_or_dept: "Global Scope (Read-Only)",
+        },
+      };
+
+      setOverallList((prev) => [newAssignment, ...prev.filter((a) => a.user_id !== selectedUserId)]);
+      setActionSuccess(
+        `Successfully assigned ${targetUser?.full_name || "Coordinator"} as Overall Coordinator (Read-Only across all 61 competitions)!`
+      );
+      setIsModalOpen(false);
+      setIsSubmitting(false);
+      setTimeout(() => setActionSuccess(null), 4500);
+      return;
+    }
 
     const res = await assignCoordinatorAdmin(modalType, selectedEventId, selectedUserId);
 
@@ -346,7 +389,7 @@ export function CoordinatorsAdminClient({
   const handleRevoke = async (
     assignmentId: string,
     userId: string,
-    type: "staff" | "student",
+    type: "staff" | "student" | "overall",
     coordinatorName: string,
     eventName: string
   ) => {
@@ -355,6 +398,18 @@ export function CoordinatorsAdminClient({
         `Are you sure you want to revoke ${coordinatorName}'s coordinator role for "${eventName}"?`
       )
     ) {
+      return;
+    }
+
+    if (type === "overall") {
+      const res = await revokeOverallCoordinatorAdmin(userId);
+      if (res.success) {
+        setOverallList((prev) => prev.filter((a) => a.user_id !== userId && a.id !== assignmentId));
+        setActionSuccess(`Overall coordinator role revoked for ${coordinatorName}.`);
+        setTimeout(() => setActionSuccess(null), 3500);
+      } else {
+        alert(res.error || "Failed to revoke overall coordinator");
+      }
       return;
     }
 
@@ -412,6 +467,13 @@ export function CoordinatorsAdminClient({
           >
             Export Roster
           </a>
+          <button
+            onClick={() => openAssignModal(undefined, "overall")}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-sky-700 active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <Globe className="h-3.5 w-3.5" />
+            <span>+ Assign Overall Coordinator</span>
+          </button>
           <button
             onClick={() => openAssignModal()}
             className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 active:scale-[0.98] transition-all cursor-pointer"
@@ -899,7 +961,7 @@ export function CoordinatorsAdminClient({
           {/* Action Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Filter Tabs */}
-            <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200/80 shrink-0">
+            <div className="inline-flex rounded-2xl bg-slate-100 p-1 border border-slate-200/80 shrink-0 flex-wrap gap-1">
               <button
                 onClick={() => setCoordTab("all")}
                 className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
@@ -909,6 +971,17 @@ export function CoordinatorsAdminClient({
                 }`}
               >
                 All Roles ({allCoordinatorsCombined.length})
+              </button>
+              <button
+                onClick={() => setCoordTab("overall")}
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                  coordTab === "overall"
+                    ? "bg-white text-sky-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                <Globe className="h-3 w-3 text-sky-600" />
+                <span>Overall ({overallList.length})</span>
               </button>
               <button
                 onClick={() => setCoordTab("staff")}
@@ -970,7 +1043,7 @@ export function CoordinatorsAdminClient({
                 <tr>
                   <th className="px-4 py-3">Coordinator Details</th>
                   <th className="px-4 py-3">Designated Role</th>
-                  <th className="px-4 py-3">Assigned Single Competition</th>
+                  <th className="px-4 py-3">Assigned Competition / Scope</th>
                   <th className="px-4 py-3">Verification Source</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -1001,12 +1074,19 @@ export function CoordinatorsAdminClient({
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold border ${
-                            item.type === "staff"
+                            item.type === "overall"
+                              ? "bg-sky-50 text-sky-800 border-sky-300"
+                              : item.type === "staff"
                               ? "bg-indigo-50 text-indigo-700 border-indigo-200"
                               : "bg-purple-50 text-purple-700 border-purple-200"
                           }`}
                         >
-                          {item.type === "staff" ? (
+                          {item.type === "overall" ? (
+                            <>
+                              <Globe className="h-3 w-3 text-sky-600" />
+                              <span>Overall Coord</span>
+                            </>
+                          ) : item.type === "staff" ? (
                             <>
                               <Users className="h-3 w-3" />
                               <span>Faculty Staff</span>
@@ -1020,9 +1100,21 @@ export function CoordinatorsAdminClient({
                         </span>
                       </td>
 
-                      {/* Competition Assignment (Strictly 1) */}
+                      {/* Competition Assignment (Global or Strictly 1) */}
                       <td className="px-4 py-3">
-                        {item.event && item.event.name ? (
+                        {item.type === "overall" ? (
+                          <div className="space-y-0.5">
+                            <div className="font-extrabold text-sky-950 flex items-center gap-1.5">
+                              <span>All 61 Competitions</span>
+                              <span className="inline-block rounded-md bg-sky-100 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold">
+                                Global Scope
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-sky-700 font-medium">
+                              Read-Only Oversight &amp; Custom Reports
+                            </div>
+                          </div>
+                        ) : item.event && item.event.name ? (
                           <div className="space-y-0.5">
                             <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
                               <span>{item.event.name}</span>
@@ -1135,7 +1227,7 @@ export function CoordinatorsAdminClient({
                 <label className="block text-xs font-bold text-slate-700">
                   Coordinator Role Type
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setModalType("staff")}
@@ -1147,7 +1239,7 @@ export function CoordinatorsAdminClient({
                   >
                     <div className="font-extrabold text-sm">Faculty Staff</div>
                     <div className="text-[10px] font-normal opacity-80 mt-0.5">
-                      Faculty / Department Coordinator
+                      Faculty / Dept Coord
                     </div>
                   </button>
 
@@ -1163,6 +1255,24 @@ export function CoordinatorsAdminClient({
                     <div className="font-extrabold text-sm">Student Lead</div>
                     <div className="text-[10px] font-normal opacity-80 mt-0.5">
                       Student Coordinator
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModalType("overall")}
+                    className={`rounded-2xl p-2.5 border text-xs font-bold transition-all cursor-pointer text-left ${
+                      modalType === "overall"
+                        ? "bg-sky-50 border-sky-600 text-sky-900 shadow-2xs"
+                        : "border-slate-200 bg-slate-50/70 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="font-extrabold text-sm flex items-center gap-1">
+                      <Globe className="h-3.5 w-3.5 text-sky-600" />
+                      <span>Overall</span>
+                    </div>
+                    <div className="text-[10px] font-normal opacity-80 mt-0.5">
+                      All 61 Events (Read-Only)
                     </div>
                   </button>
                 </div>
@@ -1299,29 +1409,43 @@ export function CoordinatorsAdminClient({
                 </div>
               )}
 
-              {/* Event Selection */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Designated Competition (Strictly 1 Event)
-                </label>
-                <select
-                  value={selectedEventId}
-                  onChange={(e) => setSelectedEventId(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-600 focus:outline-none shadow-2xs truncate"
-                  required
-                >
-                  <option value="">-- Choose competition (61 events) --</option>
-                  {allEvents.map((evt) => {
-                    const assignedStaff = staffList.find((s) => s.event_id === evt.id || s.event?.id === evt.id);
-                    const staffLabel = assignedStaff?.user?.full_name ? `(Staff: ${assignedStaff.user.full_name})` : "(Staff: None)";
-                    return (
-                      <option key={evt.id} value={evt.id}>
-                        {evt.name} • {evt.school_or_dept} {staffLabel}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              {/* Event Selection or Global Scope Notice */}
+              {modalType === "overall" ? (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-3.5 text-xs text-sky-950 flex items-start gap-2.5 shadow-2xs">
+                  <Globe className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-extrabold block text-sky-900">
+                      Global Scope (All 61 Competitions)
+                    </span>
+                    <span className="text-sky-800 text-[11px] leading-relaxed">
+                      Overall Coordinators gain read-only visibility across all 61 competitions to review live rosters, verify check-in progress, and export custom reports. Gate scanning &amp; event modifications remain locked to single-event coordinators.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Designated Competition (Strictly 1 Event)
+                  </label>
+                  <select
+                    value={selectedEventId}
+                    onChange={(e) => setSelectedEventId(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-600 focus:outline-none shadow-2xs truncate"
+                    required
+                  >
+                    <option value="">-- Choose competition (61 events) --</option>
+                    {allEvents.map((evt) => {
+                      const assignedStaff = staffList.find((s) => s.event_id === evt.id || s.event?.id === evt.id);
+                      const staffLabel = assignedStaff?.user?.full_name ? `(Staff: ${assignedStaff.user.full_name})` : "(Staff: None)";
+                      return (
+                        <option key={evt.id} value={evt.id}>
+                          {evt.name} • {evt.school_or_dept} {staffLabel}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
 
               {/* Error Notice */}
               {actionError && (
@@ -1342,7 +1466,11 @@ export function CoordinatorsAdminClient({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || !selectedUserId || !selectedEventId}
+                  disabled={
+                    isSubmitting ||
+                    !selectedUserId ||
+                    (modalType !== "overall" && !selectedEventId)
+                  }
                   className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
@@ -1351,7 +1479,11 @@ export function CoordinatorsAdminClient({
                     <>
                       <ShieldCheck className="h-4 w-4" />
                       <span>
-                        {activeSelectedUserExisting ? "Confirm Reassignment" : "Confirm Single Assignment"}
+                        {modalType === "overall"
+                          ? "Confirm Overall Coordinator"
+                          : activeSelectedUserExisting
+                          ? "Confirm Reassignment"
+                          : "Confirm Single Assignment"}
                       </span>
                     </>
                   )}

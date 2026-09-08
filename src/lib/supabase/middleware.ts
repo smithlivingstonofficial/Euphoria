@@ -33,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   // If user has NO auth cookie:
   if (!hasAuthCookie) {
     // If attempting to access protected route without cookie, redirect immediately with 0 network overhead
-    if (isProtectedPath) {
+    if (isProtectedPath && !isAuthPage) {
       const url = request.nextUrl.clone();
       if (path.startsWith("/coordinator")) {
         url.pathname = "/coordinator/login";

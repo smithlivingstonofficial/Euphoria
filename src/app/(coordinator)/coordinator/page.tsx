@@ -14,6 +14,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   Lock,
+  Globe,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -101,7 +102,12 @@ export default async function CoordinatorDashboardPage() {
             </span>
 
             {/* Role Badge */}
-            {data.primaryRole === "staff" ? (
+            {data.primaryRole === "overall_coordinator" || data.isOverallCoordinator ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300 bg-sky-50 px-2.5 py-0.5 text-xs font-bold text-sky-900 shadow-2xs">
+                <Globe className="h-3.5 w-3.5 text-sky-600" />
+                <span>Overall Coordinator (Read-Only)</span>
+              </span>
+            ) : data.primaryRole === "staff" ? (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-bold text-purple-900">
                 <ShieldCheck className="h-3.5 w-3.5 text-purple-700" />
                 <span>Faculty Staff</span>
@@ -139,15 +145,41 @@ export default async function CoordinatorDashboardPage() {
               </Link>
             )}
 
-            <Link
-              href="/coordinator/scanner"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-primary/20 hover:from-primary-hover hover:to-indigo-700 transition-all cursor-pointer shrink-0"
-            >
-              <QrCode className="h-4 w-4" />
-              <span>Launch Live Scanner</span>
-            </Link>
+            {data.isOverallCoordinator ? (
+              <div className="inline-flex items-center gap-1.5 rounded-2xl border border-sky-200 bg-sky-50 px-3.5 py-2 text-xs font-bold text-sky-800 shadow-2xs">
+                <Globe className="h-3.5 w-3.5 text-sky-600" />
+                <span>Global Oversight Active</span>
+              </div>
+            ) : (
+              <Link
+                href="/coordinator/scanner"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-primary/20 hover:from-primary-hover hover:to-indigo-700 transition-all cursor-pointer shrink-0"
+              >
+                <QrCode className="h-4 w-4" />
+                <span>Launch Live Scanner</span>
+              </Link>
+            )}
           </div>
         </div>
+
+        {/* Overall Coordinator Oversight Banner */}
+        {data.isOverallCoordinator && (
+          <div className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-indigo-50/40 to-white p-3 sm:p-3.5 text-xs text-sky-950 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-600 text-white shrink-0 shadow-xs">
+                <Globe className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-extrabold text-sky-950">
+                  Global Oversight Active • All 61 Competitions (Read-Only)
+                </p>
+                <p className="text-[11px] text-sky-800">
+                  You have campus-wide read visibility across all 61 competitions to review rosters, real-time telemetry, and generate custom Excel/CSV reports. Live check-in scanner and event modifications are restricted.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 4 Vibrant Telemetry Cards (Themed, Shiny & High-Impact) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
@@ -273,8 +305,12 @@ export default async function CoordinatorDashboardPage() {
         <div className="pt-0.5">
           <CoordinatorDirectoryClient
             events={events}
-            primaryRole={(data.primaryRole as "admin" | "staff" | "student") || "student"}
+            primaryRole={
+              data.primaryRole || (data.isOverallCoordinator ? "overall_coordinator" : "student")
+            }
             isAdmin={Boolean(data.isAdmin)}
+            isOverallCoordinator={Boolean(data.isOverallCoordinator)}
+            isReadOnly={Boolean(data.isReadOnly)}
           />
         </div>
       </main>

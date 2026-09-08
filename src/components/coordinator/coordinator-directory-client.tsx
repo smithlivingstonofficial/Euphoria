@@ -23,18 +23,29 @@ import {
   RotateCcw,
   Star,
   CheckCircle2,
+  FileSpreadsheet,
+  Loader2,
+  Globe,
+  Download,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
+import { CustomReportModal } from "./custom-report-modal";
+import { exportOverallEventsSummaryCSVAction } from "@/actions/coordinator";
 
 interface CoordinatorDirectoryClientProps {
   events: CoordinatorEventItem[];
-  primaryRole?: "admin" | "staff" | "student" | string;
+  primaryRole?: "admin" | "staff" | "student" | "overall_coordinator" | string;
   isAdmin: boolean;
+  isOverallCoordinator?: boolean;
+  isReadOnly?: boolean;
 }
 
 export function CoordinatorDirectoryClient({
   events,
   primaryRole,
+  isAdmin,
+  isOverallCoordinator = false,
+  isReadOnly = false,
 }: CoordinatorDirectoryClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<
@@ -46,6 +57,39 @@ export function CoordinatorDirectoryClient({
   >("most_registered");
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
+
+  // Custom Report Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportInitialEventId, setReportInitialEventId] = useState<string | undefined>(undefined);
+  const [isExportingMasterCSV, setIsExportingMasterCSV] = useState(false);
+
+  const handleExportMasterCSV = async () => {
+    try {
+      setIsExportingMasterCSV(true);
+      const res = await exportOverallEventsSummaryCSVAction();
+      if (!res.success || !res.csvContent) {
+        alert(res.error || "Failed to generate master summary CSV");
+        return;
+      }
+      const blob = new Blob([res.csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        res.filename || `euphoria_2026_all_events_summary_${new Date().toISOString().split("T")[0]}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Master CSV Export Error:", err);
+      alert("An error occurred while exporting master CSV.");
+    } finally {
+      setIsExportingMasterCSV(false);
+    }
+  };
 
   const itemsPerPage = 20;
 
@@ -296,6 +340,38 @@ export function CoordinatorDirectoryClient({
                 <span className="hidden xl:inline">Reset</span>
               </button>
             )}
+
+            {/* Custom Report Generator Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setReportInitialEventId(undefined);
+                setIsReportModalOpen(true);
+              }}
+              title="Generate Custom CSV Report with Selected Filters & Columns"
+              className="h-10 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+              <span>Custom Report</span>
+            </button>
+
+            {/* Master 61-Events Summary Export (Overall Coordinator / Admin) */}
+            {(isOverallCoordinator || isAdmin) && (
+              <button
+                type="button"
+                onClick={handleExportMasterCSV}
+                disabled={isExportingMasterCSV}
+                title="Export University-Wide 61-Events Summary CSV"
+                className="h-10 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl border border-indigo-200 bg-indigo-50/90 hover:bg-indigo-100 text-xs font-bold text-indigo-900 shadow-2xs transition-all cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                {isExportingMasterCSV ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                ) : (
+                  <Download className="h-4 w-4 text-indigo-600" />
+                )}
+                <span className="hidden xl:inline">Master Summary CSV</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -494,16 +570,34 @@ export function CoordinatorDirectoryClient({
                             href={`/coordinator/${evt.id}`}
                             className="inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-3.5 py-1.5 shadow-2xs hover:shadow-xs transition-all cursor-pointer group-hover:scale-105"
                           >
-                            <span>Roster</span>
+                            <span>{isReadOnly ? "View Roster" : "Roster"}</span>
                             <ArrowRight className="h-3 w-3" />
                           </Link>
-                          <Link
-                            href={`/coordinator/scanner?event=${evt.id}`}
-                            title="Open Scanner for this competition"
-                            className="rounded-xl border border-primary/20 bg-primary/5 hover:bg-primary hover:text-white text-primary p-2 transition-all cursor-pointer shadow-2xs"
+
+                          {/* Quick Custom Report Button for this specific event */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReportInitialEventId(evt.id);
+                              setIsReportModalOpen(true);
+                            }}
+                            title={`Generate Custom CSV Report for ${evt.name}`}
+                            className="rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 p-2 transition-all cursor-pointer shadow-2xs"
                           >
-                            <QrCode className="h-3.5 w-3.5" />
-                          </Link>
+                            <FileSpreadsheet className="h-3.5 w-3.5" />
+                          </button>
+
+                          {/* Scanner CTA: Available for staff/student/admin, restricted in read-only/overall coordinator mode */}
+                          {!isReadOnly && !isOverallCoordinator && (
+                            <Link
+                              href={`/coordinator/scanner?event=${evt.id}`}
+                              title="Open Scanner for this competition"
+                              className="rounded-xl border border-primary/20 bg-primary/5 hover:bg-primary hover:text-white text-primary p-2 transition-all cursor-pointer shadow-2xs"
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                            </Link>
+                          )}
+
                           {evt.brochureUrl && (
                             <a
                               href={evt.brochureUrl}
@@ -579,6 +673,24 @@ export function CoordinatorDirectoryClient({
           </div>
         </div>
       )}
+
+      {/* Reusable Custom CSV Report Modal with Granular Filters & Column Picker */}
+      <CustomReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        roleType={(isOverallCoordinator ? "overall_coordinator" : primaryRole) as any}
+        assignedEvent={
+          events.length === 1
+            ? { id: events[0].id, name: events[0].name, department: events[0].school_or_dept }
+            : null
+        }
+        allEvents={events.map((e) => ({
+          id: e.id,
+          name: e.name,
+          school_or_dept: e.school_or_dept,
+        }))}
+        initialEventId={reportInitialEventId}
+      />
     </div>
   );
 }

@@ -35,6 +35,7 @@ import {
   Lock,
   Crown,
   Shield,
+  Globe,
 } from "lucide-react";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ export function UsersAdminClient({
   const [slotFilter, setSlotFilter] = useState<"all" | "0" | "1" | "2">("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "internal" | "external">("all");
   const [profileFilter, setProfileFilter] = useState<"all" | "completed" | "incomplete">("all");
-  const [roleFilter, setRoleFilter] = useState<"all" | "super_admin" | "admin" | "staff_coordinator" | "student_coordinator" | "participant">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "super_admin" | "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator" | "participant">("all");
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
@@ -216,7 +217,7 @@ export function UsersAdminClient({
   };
 
   const handleToggleRole = async (
-    roleId: "admin" | "staff_coordinator" | "student_coordinator",
+    roleId: "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator",
     action: "assign" | "revoke"
   ) => {
     if (!selectedUser) return;
@@ -489,6 +490,7 @@ export function UsersAdminClient({
             <option value="all">All Roles</option>
             <option value="super_admin">👑 Super Admin</option>
             <option value="admin">🛡️ Platform Administrator</option>
+            <option value="overall_coordinator">🌐 Overall Coordinator (Read-Only)</option>
             <option value="staff_coordinator">👔 Staff Coordinator</option>
             <option value="student_coordinator">🎓 Student Coordinator</option>
             <option value="participant">👤 Participant Only</option>
@@ -666,6 +668,16 @@ export function UsersAdminClient({
                                       className="rounded bg-indigo-700 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
                                     >
                                       🛡️ ADMIN
+                                    </span>
+                                  );
+                                }
+                                if (r === "overall_coordinator") {
+                                  return (
+                                    <span
+                                      key={r}
+                                      className="rounded bg-sky-600 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider shadow-2xs"
+                                    >
+                                      🌐 OVERALL COORD
                                     </span>
                                   );
                                 }
@@ -950,7 +962,7 @@ export function UsersAdminClient({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                     {/* 1. Platform Admin Role */}
                     <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("admin") ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}>
                       <div className="flex items-center justify-between mb-2">
@@ -984,7 +996,40 @@ export function UsersAdminClient({
                       )}
                     </div>
 
-                    {/* 2. Staff Coordinator Role */}
+                    {/* 2. Overall Coordinator (Read-Only) */}
+                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("overall_coordinator") ? "border-sky-300 bg-sky-50/50" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Globe className={`h-4 w-4 ${selectedUser.roles.includes("overall_coordinator") ? "text-sky-600" : "text-slate-400"}`} />
+                          <span className="text-xs font-bold text-slate-900">Overall Coord</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-3">
+                        Global read-only oversight across all 61 competitions. Custom reports &amp; telemetry.
+                      </p>
+                      {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleToggleRole("overall_coordinator", selectedUser.roles.includes("overall_coordinator") ? "revoke" : "assign")}
+                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                            selectedUser.roles.includes("overall_coordinator")
+                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                              : "bg-sky-600 text-white hover:bg-sky-700"
+                          }`}
+                        >
+                          {selectedUser.roles.includes("overall_coordinator") ? "Revoke Overall" : "Grant Overall"}
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                          <Lock className="h-3 w-3" />
+                          <span>Admin Required</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Staff Coordinator Role */}
                     <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("staff_coordinator") ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"}`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">

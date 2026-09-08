@@ -52,8 +52,10 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Globe,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
+import { CustomReportModal } from "@/components/coordinator/custom-report-modal";
 
 interface StudentCoordinator {
   id: string;
@@ -107,7 +109,7 @@ export function EventRosterClient({
   isLiveToday?: boolean;
   eventRules?: string | string[] | null;
   eventStatus?: string;
-  roleType?: "staff" | "student" | "admin";
+  roleType?: "staff" | "student" | "admin" | "overall_coordinator";
   initialAttendees: CoordinatorAttendeeItem[];
   initialTotalCount?: number;
   initialAttendedCount?: number;
@@ -120,8 +122,12 @@ export function EventRosterClient({
 }) {
   const isStaffOrAdmin = roleType === "staff" || roleType === "admin";
   const isAdmin = roleType === "admin";
+  const isOverallCoordinator = roleType === "overall_coordinator";
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"roster" | "controls">("roster");
+
+  // Custom Report Modal state
+  const [isCustomReportModalOpen, setIsCustomReportModalOpen] = useState(false);
 
   // Live Telemetry Totals (derived from aggregate counts)
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount ?? initialAttendees.length);
@@ -543,7 +549,7 @@ export function EventRosterClient({
 
   // 5. ON-DEMAND UNPAGINATED CSV EXPORT (Zero-egress during normal browsing)
   const handleExportCSV = async () => {
-    if (!isStaffOrAdmin || isExportingCSV) return;
+    if ((!isStaffOrAdmin && !isOverallCoordinator) || isExportingCSV) return;
 
     try {
       setIsExportingCSV(true);
@@ -631,7 +637,12 @@ export function EventRosterClient({
                 </span>
               )}
 
-              {roleType === "admin" ? (
+              {roleType === "overall_coordinator" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 text-sky-900 border border-sky-300 px-2.5 py-0.5 text-[11px] font-bold shadow-2xs">
+                  <Globe className="h-3.5 w-3.5 text-sky-600" />
+                  <span>Overall Coordinator (Read-Only)</span>
+                </span>
+              ) : roleType === "admin" ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 text-white px-2.5 py-0.5 text-[11px] font-bold shadow-2xs">
                   <ShieldCheck className="h-3.5 w-3.5 text-slate-300" />
                   <span>Super Admin</span>
@@ -703,20 +714,27 @@ export function EventRosterClient({
               </div>
             )}
 
-            {/* Direct Link to Camera Scanner */}
-            <Link
-              href={`/coordinator/scanner?eventId=${eventId}`}
-              onClick={(e) => {
-                if (hasUnsavedChanges) {
-                  e.preventDefault();
-                  handleGuardedNavigation(() => router.push(`/coordinator/scanner?eventId=${eventId}`));
-                }
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs sm:text-sm px-3.5 py-2 shadow-2xs transition-colors cursor-pointer shrink-0"
-            >
-              <Camera className="h-4 w-4" />
-              <span>Open Scanner</span>
-            </Link>
+            {/* Direct Link to Camera Scanner or Read-Only Mode Badge */}
+            {!isOverallCoordinator ? (
+              <Link
+                href={`/coordinator/scanner?eventId=${eventId}`}
+                onClick={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.preventDefault();
+                    handleGuardedNavigation(() => router.push(`/coordinator/scanner?eventId=${eventId}`));
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs sm:text-sm px-3.5 py-2 shadow-2xs transition-colors cursor-pointer shrink-0"
+              >
+                <Camera className="h-4 w-4" />
+                <span>Open Scanner</span>
+              </Link>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800 shadow-2xs">
+                <Globe className="h-3.5 w-3.5 text-sky-600" />
+                <span>Read-Only Oversight</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -834,6 +852,25 @@ export function EventRosterClient({
         </div>
       </div>
 
+      {/* Overall Coordinator Oversight Notice */}
+      {isOverallCoordinator && (
+        <div className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-indigo-50/40 to-white p-3 sm:p-3.5 text-xs text-sky-950 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-600 text-white shrink-0 shadow-xs">
+              <Globe className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-extrabold text-sky-950">
+                Read-Only Event Oversight • Overall Coordinator
+              </p>
+              <p className="text-[11px] text-sky-800">
+                You are monitoring this competition in read-only mode. Attendance check-ins and operational configurations are locked to assigned event coordinators. You can inspect all participant records and export custom reports.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ==========================================
           VIEW 1: ATTENDEE ROSTER & SEARCH
          ========================================== */}
@@ -897,26 +934,38 @@ export function EventRosterClient({
                   <option value="standard_pass">📌 Standard Pass Only</option>
                 </select>
 
-                {/* Staff CSV Export Button */}
-                {isStaffOrAdmin && (
-                  <button
-                    type="button"
-                    onClick={handleExportCSV}
-                    disabled={isExportingCSV}
-                    className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed px-3.5 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
-                  >
-                    {isExportingCSV ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
-                        <span>Exporting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FileSpreadsheet className="h-4 w-4" />
-                        <span>Export CSV</span>
-                      </>
-                    )}
-                  </button>
+                {/* Custom Report & CSV Export Buttons */}
+                {(isStaffOrAdmin || isOverallCoordinator) && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomReportModalOpen(true)}
+                      title="Generate Custom CSV Report with Filters & Column Selector"
+                      className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-300" />
+                      <span>Custom Report</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExportCSV}
+                      disabled={isExportingCSV}
+                      className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed px-3.5 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      {isExportingCSV ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                          <span>Exporting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                          <span>Export CSV</span>
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
 
                 {/* Results Count Badge */}
@@ -2174,6 +2223,16 @@ export function EventRosterClient({
           </div>
         </div>
       )}
+
+      {/* Reusable Custom CSV Report Modal */}
+      <CustomReportModal
+        isOpen={isCustomReportModalOpen}
+        onClose={() => setIsCustomReportModalOpen(false)}
+        roleType={roleType as any}
+        assignedEvent={{ id: eventId, name: eventName, department: schoolOrDept }}
+        allEvents={[{ id: eventId, name: eventName, school_or_dept: schoolOrDept }]}
+        initialEventId={eventId}
+      />
     </div>
   );
 }

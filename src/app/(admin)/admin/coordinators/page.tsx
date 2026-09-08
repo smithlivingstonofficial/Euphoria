@@ -20,6 +20,11 @@ export default async function AdminCoordinatorsPage() {
           user: Array.isArray(s.user) ? s.user[0] : s.user,
           event: Array.isArray(s.event) ? s.event[0] : s.event,
         }))}
+        overallAssignments={(data.overallAssignments || []).map((o: any) => ({
+          ...o,
+          user: Array.isArray(o.user) ? o.user[0] : o.user,
+          event: Array.isArray(o.event) ? o.event[0] : o.event,
+        }))}
         allProfiles={(data.allProfiles || []) as any}
         allEvents={(data.allEvents || []) as any}
       />

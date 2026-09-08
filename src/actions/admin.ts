@@ -13,6 +13,7 @@ const SUPER_ADMIN_EMAIL = "smithlivingston2005@gmail.com";
 const ROLE_HIERARCHY: Record<string, number> = {
   super_admin: 4,
   admin: 3,
+  overall_coordinator: 2,
   staff_coordinator: 2,
   student_coordinator: 1,
   participant: 0,
@@ -23,10 +24,11 @@ export interface CallerAuthInfo {
     id: string;
     email?: string;
   };
-  roleId: "super_admin" | "admin" | "staff_coordinator" | "student_coordinator" | "participant";
+  roleId: "super_admin" | "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator" | "participant";
   roleLevel: number;
   isSuperAdmin: boolean;
   isAdmin: boolean;
+  isOverallCoordinator: boolean;
   isStaff: boolean;
   isCoordinator: boolean;
 }
@@ -63,6 +65,9 @@ export async function getCallerAuthInfo(): Promise<CallerAuthInfo | null> {
   } else if (assignedRoles.has("admin")) {
     highestLevel = 3;
     highestRole = "admin";
+  } else if (assignedRoles.has("overall_coordinator")) {
+    highestLevel = 2;
+    highestRole = "overall_coordinator";
   } else if (assignedRoles.has("staff_coordinator")) {
     highestLevel = 2;
     highestRole = "staff_coordinator";
@@ -71,12 +76,15 @@ export async function getCallerAuthInfo(): Promise<CallerAuthInfo | null> {
     highestRole = "student_coordinator";
   }
 
+  const isOverallCoordinator = assignedRoles.has("overall_coordinator") || highestRole === "overall_coordinator";
+
   return {
     user: { id: user.id, email: user.email },
     roleId: highestRole,
     roleLevel: highestLevel,
     isSuperAdmin: highestLevel >= 4,
     isAdmin: highestLevel >= 3,
+    isOverallCoordinator,
     isStaff: highestLevel >= 2,
     isCoordinator: highestLevel >= 1,
   };
@@ -861,10 +869,36 @@ export async function getAllCoordinatorsAdmin() {
       }
     });
 
+    // 3. Mapping for Overall Coordinators (Global Read-Only Scope across all 61 competitions)
+    const overallMap = new Map<string, any>();
+    (userRoles || []).forEach((r: any) => {
+      if (r.role_id === "overall_coordinator" && !overallMap.has(r.user_id)) {
+        const u = (Array.isArray(r.user) ? r.user[0] : r.user) || profileMapById.get(r.user_id);
+        if (u) {
+          overallMap.set(r.user_id, {
+            id: r.id,
+            event_id: "all_events",
+            user_id: r.user_id,
+            created_at: r.created_at || new Date().toISOString(),
+            user: u,
+            event: {
+              id: "all_events",
+              name: "All 61 Competitions",
+              school_or_dept: "Global Scope (Read-Only)",
+              venue: "Central Oversight",
+            },
+            isDbRecord: true,
+            isUnassigned: false,
+          });
+        }
+      }
+    });
+
     return {
       success: true,
       staffAssignments: Array.from(staffMap.values()),
       studentAssignments: Array.from(studentMap.values()),
+      overallAssignments: Array.from(overallMap.values()),
       allProfiles: profiles || [],
       allEvents: events || [],
     };
@@ -2090,7 +2124,7 @@ export async function updateUserProfileAdmin(
 // 14. Assign or Revoke Role by Admin (Strict RBAC Hierarchy Enforced)
 export async function updateUserRoleAdmin(
   userId: string,
-  roleId: "admin" | "staff_coordinator" | "student_coordinator",
+  roleId: "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator",
   action: "assign" | "revoke"
 ) {
   try {
@@ -2125,6 +2159,14 @@ export async function updateUserRoleAdmin(
       return {
         success: false,
         error: "Hierarchy Restriction: Only Super Admin (smithlivingston2005@gmail.com) can create or revoke Platform Administrators.",
+      };
+    }
+
+    // - Only Admin or above (Level >= 3) can assign/revoke 'overall_coordinator' (Level 2)
+    if (roleId === "overall_coordinator" && authInfo.roleLevel < 3) {
+      return {
+        success: false,
+        error: "Hierarchy Restriction: Only Administrators or Super Admin can assign or revoke Overall Coordinators.",
       };
     }
 
@@ -2182,11 +2224,21 @@ export async function updateUserRoleAdmin(
 
     revalidatePath("/admin/users", "page");
     revalidatePath("/admin/coordinators", "page");
+    revalidatePath("/coordinator", "page");
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update role";
     return { success: false, error: msg };
   }
+}
+
+// 15. Quick Helpers for Overall Coordinator
+export async function assignOverallCoordinatorAdmin(userId: string) {
+  return updateUserRoleAdmin(userId, "overall_coordinator", "assign");
+}
+
+export async function revokeOverallCoordinatorAdmin(userId: string) {
+  return updateUserRoleAdmin(userId, "overall_coordinator", "revoke");
 }
 
 // 16. Super Admin Telemetry & Dashboard Data
