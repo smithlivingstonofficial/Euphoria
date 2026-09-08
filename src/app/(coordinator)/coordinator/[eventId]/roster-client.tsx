@@ -979,8 +979,21 @@ export function EventRosterClient({
 
                     {/* Middle Row: Participant & College info */}
                     <div className="space-y-1 text-xs">
-                      <div className="font-bold text-slate-900 text-sm">
-                        {item.user.full_name}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-bold text-slate-900 text-sm">
+                          {item.user.full_name}
+                        </div>
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-black border uppercase tracking-wider shrink-0 ${
+                            item.isInternal || item.user.participant_type === "internal"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                              : "bg-purple-50 text-purple-800 border-purple-300"
+                          }`}
+                        >
+                          {item.isInternal || item.user.participant_type === "internal"
+                            ? "KLU Student"
+                            : "External Delegate"}
+                        </span>
                       </div>
                       <div className="text-slate-500 font-mono text-[11px]">
                         {item.user.email || "Email protected"}
@@ -1101,15 +1114,15 @@ export function EventRosterClient({
                           <td className="px-4 py-3">
                             <div className="space-y-0.5 max-w-[220px]">
                               <span
-                                className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-bold border ${
-                                  item.user.participant_type === "internal"
-                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                    : "bg-purple-50 text-purple-800 border-purple-200"
+                                className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-black border uppercase tracking-wider ${
+                                  item.isInternal || item.user.participant_type === "internal"
+                                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                    : "bg-purple-50 text-purple-800 border-purple-300"
                                 }`}
                               >
-                                {item.user.participant_type === "internal"
-                                  ? "KARE Internal"
-                                  : "External"}
+                                {item.isInternal || item.user.participant_type === "internal"
+                                  ? "KLU Student"
+                                  : "External Delegate"}
                               </span>
                               <div className="font-semibold text-slate-800 truncate text-[11px]">
                                 {item.user.college_name || item.user.department || "Kalasalingam Academy"}

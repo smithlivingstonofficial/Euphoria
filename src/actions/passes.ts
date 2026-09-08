@@ -288,14 +288,67 @@ export async function claimSecondSlotAction(eventId: string) {
       return { success: false, error: "You are already registered for this event." };
     }
 
+    // Fetch user profile to verify participant type
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email, participant_type")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const isInternalUser = profile?.participant_type === "internal" || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
+
     // Verify slot 2 event capacity before claiming
     const { data: targetEvent } = await supabase
       .from("events")
-      .select("id, name, participant_limit, status")
+      .select("id, name, participant_limit, internal_limit, allow_internal, allow_external, status")
       .eq("id", eventId)
       .single();
 
     if (targetEvent) {
+      if (isInternalUser && targetEvent.allow_internal === false) {
+        return {
+          success: false,
+          error: `Claim Blocked: "${targetEvent.name}" is closed for Kalasalingam University students. Remaining slots are reserved exclusively for external delegates.`,
+        };
+      }
+
+      if (!isInternalUser && targetEvent.allow_external === false) {
+        return {
+          success: false,
+          error: `Claim Blocked: "${targetEvent.name}" is not open to external delegates.`,
+        };
+      }
+
+      if (isInternalUser && targetEvent.internal_limit !== null && targetEvent.internal_limit !== undefined) {
+        const { data: intRegs } = await supabase
+          .from("event_registrations")
+          .select(`
+            id,
+            user:profiles (
+              email,
+              participant_type
+            )
+          `)
+          .eq("event_id", eventId)
+          .eq("status", "confirmed");
+
+        let currentInternalCount = 0;
+        (intRegs || []).forEach((r: any) => {
+          const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+          const email = (userObj?.email || "").toLowerCase();
+          if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
+            currentInternalCount++;
+          }
+        });
+
+        if (currentInternalCount >= Number(targetEvent.internal_limit)) {
+          return {
+            success: false,
+            error: `Claim Blocked: The Kalasalingam student quota for "${targetEvent.name}" is full (${currentInternalCount}/${targetEvent.internal_limit} seats taken). Remaining slots are reserved exclusively for external delegates.`,
+          };
+        }
+      }
+
       const limit = Number(targetEvent.participant_limit || 100);
       const { count: regCount } = await supabase
         .from("event_registrations")

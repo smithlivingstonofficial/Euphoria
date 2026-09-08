@@ -3013,5 +3013,450 @@ export async function searchParticipantForPaymentReconcile(query: string) {
   }
 }
 
+export interface AdminEventSlotControlItem {
+  id: string;
+  name: string;
+  slug: string;
+  school_or_dept: string;
+  venue: string;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  participant_limit: number;
+  internal_limit: number | null;
+  allow_internal: boolean;
+  allow_external: boolean;
+  is_pro_event: boolean;
+  status: string;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+  total_confirmed: number;
+  internal_confirmed: number;
+  external_confirmed: number;
+  is_total_full: boolean;
+  is_internal_full: boolean;
+  is_klu_blocked: boolean;
+  remaining_total_slots: number;
+  remaining_internal_slots: number | null;
+  remaining_external_reserved: number;
+}
+
+/**
+ * Fetches all events with detailed slot capacity, KLU vs External breakdown, and quota status
+ */
+export async function getEventsSlotControlAdmin(): Promise<{
+  success: boolean;
+  error?: string;
+  events: AdminEventSlotControlItem[];
+  stats: {
+    totalEvents: number;
+    kluBlockedEvents: number;
+    fullCapacityEvents: number;
+    totalCapacity: number;
+    totalConfirmed: number;
+    totalInternalConfirmed: number;
+    totalExternalConfirmed: number;
+  };
+}> {
+  try {
+    const session = await verifyAdminSession();
+    if (!session.authorized) {
+      return {
+        success: false,
+        error: "Unauthorized. Admin privileges required.",
+        events: [],
+        stats: {
+          totalEvents: 0,
+          kluBlockedEvents: 0,
+          fullCapacityEvents: 0,
+          totalCapacity: 0,
+          totalConfirmed: 0,
+          totalInternalConfirmed: 0,
+          totalExternalConfirmed: 0,
+        },
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // 1. Fetch all events with categories
+    const { data: events, error: eventsErr } = await adminClient
+      .from("events")
+      .select(`
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        participant_limit,
+        internal_limit,
+        allow_internal,
+        allow_external,
+        is_pro_event,
+        status,
+        category:event_categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .order("event_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (eventsErr) throw eventsErr;
+
+    const allEventsList = events || [];
+    const eventIds = allEventsList.map((e) => e.id);
+
+    // 2. Fetch confirmed registrations with user profile data for KLU classification
+    const { data: regs, error: regsErr } = await adminClient
+      .from("event_registrations")
+      .select(`
+        id,
+        event_id,
+        status,
+        user:profiles (
+          id,
+          email,
+          participant_type
+        )
+      `)
+      .in("event_id", eventIds)
+      .eq("status", "confirmed");
+
+    if (regsErr) throw regsErr;
+
+    // Aggregate counts per event
+    const internalCounts: Record<string, number> = {};
+    const totalCounts: Record<string, number> = {};
+
+    (regs || []).forEach((r: any) => {
+      const eId = r.event_id;
+      totalCounts[eId] = (totalCounts[eId] || 0) + 1;
+
+      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+      const userEmail = (userObj?.email || "").toLowerCase().trim();
+      const pType = userObj?.participant_type || "";
+
+      const isKlu = pType === "internal" || userEmail.endsWith("@klu.ac.in");
+      if (isKlu) {
+        internalCounts[eId] = (internalCounts[eId] || 0) + 1;
+      }
+    });
+
+    let kluBlockedCount = 0;
+    let fullCapacityCount = 0;
+    let totalCapSum = 0;
+    let totalConfirmedSum = 0;
+    let totalInternalSum = 0;
+    let totalExternalSum = 0;
+
+    const formattedEvents: AdminEventSlotControlItem[] = allEventsList.map((evt) => {
+      const totalConfirmed = totalCounts[evt.id] || 0;
+      const internalConfirmed = internalCounts[evt.id] || 0;
+      const externalConfirmed = Math.max(0, totalConfirmed - internalConfirmed);
+
+      const partLimit = Number(evt.participant_limit || 100);
+      const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
+      const allowInt = evt.allow_internal !== false;
+      const allowExt = evt.allow_external !== false;
+
+      const isTotalFull = totalConfirmed >= partLimit;
+      const isIntFull = intLimit !== null ? internalConfirmed >= intLimit : false;
+      const isKluBlocked = !allowInt || isIntFull;
+
+      const remainingTotal = Math.max(0, partLimit - totalConfirmed);
+      const remainingInternal = intLimit !== null ? Math.max(0, intLimit - internalConfirmed) : null;
+      const remainingExternal = isKluBlocked ? remainingTotal : remainingTotal;
+
+      if (isKluBlocked) kluBlockedCount++;
+      if (isTotalFull) fullCapacityCount++;
+      totalCapSum += partLimit;
+      totalConfirmedSum += totalConfirmed;
+      totalInternalSum += internalConfirmed;
+      totalExternalSum += externalConfirmed;
+
+      const catObj = Array.isArray(evt.category) ? evt.category[0] : evt.category;
+
+      return {
+        id: evt.id,
+        name: evt.name,
+        slug: evt.slug,
+        school_or_dept: evt.school_or_dept,
+        venue: evt.venue,
+        event_date: evt.event_date,
+        start_time: evt.start_time,
+        end_time: evt.end_time,
+        participant_limit: partLimit,
+        internal_limit: intLimit,
+        allow_internal: allowInt,
+        allow_external: allowExt,
+        is_pro_event: Boolean(evt.is_pro_event),
+        status: evt.status,
+        category: catObj || null,
+        total_confirmed: totalConfirmed,
+        internal_confirmed: internalConfirmed,
+        external_confirmed: externalConfirmed,
+        is_total_full: isTotalFull,
+        is_internal_full: isIntFull,
+        is_klu_blocked: isKluBlocked,
+        remaining_total_slots: remainingTotal,
+        remaining_internal_slots: remainingInternal,
+        remaining_external_reserved: remainingExternal,
+      };
+    });
+
+    return {
+      success: true,
+      events: formattedEvents,
+      stats: {
+        totalEvents: formattedEvents.length,
+        kluBlockedEvents: kluBlockedCount,
+        fullCapacityEvents: fullCapacityCount,
+        totalCapacity: totalCapSum,
+        totalConfirmed: totalConfirmedSum,
+        totalInternalConfirmed: totalInternalSum,
+        totalExternalConfirmed: totalExternalSum,
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load event slot controls";
+    return {
+      success: false,
+      error: msg,
+      events: [],
+      stats: {
+        totalEvents: 0,
+        kluBlockedEvents: 0,
+        fullCapacityEvents: 0,
+        totalCapacity: 0,
+        totalConfirmed: 0,
+        totalInternalConfirmed: 0,
+        totalExternalConfirmed: 0,
+      },
+    };
+  }
+}
+
+/**
+ * Updates slot limits and KLU/External eligibility toggles for an event
+ */
+export async function updateEventSlotControlAdmin(params: {
+  eventId: string;
+  participant_limit?: number;
+  internal_limit?: number | null;
+  allow_internal?: boolean;
+  allow_external?: boolean;
+  autoBlockInternalOnExpand?: boolean;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  updatedEvent?: any;
+}> {
+  try {
+    const session = await verifyAdminSession();
+    if (!session.authorized) {
+      return { success: false, error: "Unauthorized. Admin privileges required." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // 1. Fetch current event
+    const { data: currentEvent, error: currentErr } = await adminClient
+      .from("events")
+      .select("id, name, participant_limit, internal_limit, allow_internal, allow_external")
+      .eq("id", params.eventId)
+      .single();
+
+    if (currentErr || !currentEvent) {
+      return { success: false, error: "Event not found" };
+    }
+
+    const updates: Record<string, any> = {};
+
+    if (params.participant_limit !== undefined) {
+      const newLimit = Math.max(1, Math.min(1000, Number(params.participant_limit)));
+      updates.participant_limit = newLimit;
+
+      // If expanding slots and admin chose to reserve expanded slots for externals:
+      if (params.autoBlockInternalOnExpand) {
+        // Query current confirmed internal count for this event
+        const { data: internalRegs } = await adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            user:profiles (
+              email,
+              participant_type
+            )
+          `)
+          .eq("event_id", params.eventId)
+          .eq("status", "confirmed");
+
+        let currentInternalCount = 0;
+        (internalRegs || []).forEach((r: any) => {
+          const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+          const email = (userObj?.email || "").toLowerCase();
+          if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
+            currentInternalCount++;
+          }
+        });
+
+        // Set internal_limit to current internal count
+        updates.internal_limit = currentInternalCount;
+      }
+    }
+
+    if (params.internal_limit !== undefined) {
+      updates.internal_limit = params.internal_limit === null ? null : Math.max(0, Number(params.internal_limit));
+    }
+
+    if (params.allow_internal !== undefined) {
+      updates.allow_internal = Boolean(params.allow_internal);
+    }
+
+    if (params.allow_external !== undefined) {
+      updates.allow_external = Boolean(params.allow_external);
+    }
+
+    // 2. Perform DB update
+    const { data: updated, error: updateErr } = await adminClient
+      .from("events")
+      .update(updates)
+      .eq("id", params.eventId)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+
+    // 3. Multi-role Cache Invalidation to guarantee atomic UI updates across users, coordinators, and admins
+    revalidateTag("public-events");
+    revalidatePath("/events");
+    revalidatePath("/coordinator");
+    revalidatePath(`/coordinator/${params.eventId}`);
+    revalidatePath("/admin/events");
+    revalidatePath("/admin/events/slots");
+
+    return {
+      success: true,
+      message: `Slot control updated for "${currentEvent.name}".`,
+      updatedEvent: updated,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update slot controls";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Bulk updates slot controls across multiple events
+ */
+export async function bulkUpdateEventSlotControlAdmin(params: {
+  eventIds: string[];
+  action: "reserve_for_externals" | "unblock_klu" | "block_klu" | "increase_capacity";
+  increaseBy?: number;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  affectedCount?: number;
+}> {
+  try {
+    const session = await verifyAdminSession();
+    if (!session.authorized) {
+      return { success: false, error: "Unauthorized. Admin privileges required." };
+    }
+
+    if (!params.eventIds || params.eventIds.length === 0) {
+      return { success: false, error: "No events selected." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    if (params.action === "block_klu") {
+      const { error } = await adminClient
+        .from("events")
+        .update({ allow_internal: false })
+        .in("id", params.eventIds);
+
+      if (error) throw error;
+    } else if (params.action === "unblock_klu") {
+      const { error } = await adminClient
+        .from("events")
+        .update({ allow_internal: true, internal_limit: null })
+        .in("id", params.eventIds);
+
+      if (error) throw error;
+    } else if (params.action === "reserve_for_externals") {
+      // For each event, set internal_limit to current internal registration count
+      const { data: regs } = await adminClient
+        .from("event_registrations")
+        .select(`
+          event_id,
+          user:profiles (
+            email,
+            participant_type
+          )
+        `)
+        .in("event_id", params.eventIds)
+        .eq("status", "confirmed");
+
+      const internalCounts: Record<string, number> = {};
+      (regs || []).forEach((r: any) => {
+        const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+        const email = (userObj?.email || "").toLowerCase();
+        if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
+          internalCounts[r.event_id] = (internalCounts[r.event_id] || 0) + 1;
+        }
+      });
+
+      for (const eId of params.eventIds) {
+        const currentIntCount = internalCounts[eId] || 0;
+        await adminClient
+          .from("events")
+          .update({ internal_limit: currentIntCount })
+          .eq("id", eId);
+      }
+    } else if (params.action === "increase_capacity") {
+      const delta = Math.max(1, params.increaseBy || 10);
+      const { data: evts } = await adminClient
+        .from("events")
+        .select("id, participant_limit")
+        .in("id", params.eventIds);
+
+      for (const e of evts || []) {
+        await adminClient
+          .from("events")
+          .update({ participant_limit: (e.participant_limit || 100) + delta })
+          .eq("id", e.id);
+      }
+    }
+
+    revalidateTag("public-events");
+    revalidatePath("/events");
+    revalidatePath("/coordinator");
+    revalidatePath("/admin/events");
+    revalidatePath("/admin/events/slots");
+
+    return {
+      success: true,
+      message: `Successfully updated ${params.eventIds.length} event(s).`,
+      affectedCount: params.eventIds.length,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Bulk slot update failed";
+    return { success: false, error: msg };
+  }
+}
+
+
 
 

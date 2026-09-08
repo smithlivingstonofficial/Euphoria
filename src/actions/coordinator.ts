@@ -25,6 +25,12 @@ export interface CoordinatorEventItem {
   totalAttended: number;
   firstSlotCount?: number;
   roleType: "staff" | "student" | "admin";
+  internal_limit?: number | null;
+  allow_internal?: boolean;
+  allow_external?: boolean;
+  kluRegistrations?: number;
+  externalRegistrations?: number;
+  isKluBlocked?: boolean;
 }
 
 export interface CoordinatorAttendeeItem {
@@ -44,6 +50,7 @@ export interface CoordinatorAttendeeItem {
   isAttended: boolean;
   scanned_at?: string | null;
   scan_method?: string | null;
+  isInternal?: boolean;
   user: {
     id: string;
     full_name: string;
@@ -219,6 +226,9 @@ export async function getCoordinatorWorkspaceData() {
               start_time,
               end_time,
               participant_limit,
+              internal_limit,
+              allow_internal,
+              allow_external,
               status,
               is_pro_event,
               description,
@@ -313,6 +323,9 @@ export async function getCoordinatorWorkspaceData() {
           start_time,
           end_time,
           participant_limit,
+          internal_limit,
+          allow_internal,
+          allow_external,
           status,
           is_pro_event,
           description,
@@ -344,7 +357,15 @@ export async function getCoordinatorWorkspaceData() {
       const [regRes, attRes] = await Promise.all([
         adminClient
           .from("event_registrations")
-          .select("id, event_id, slot_number")
+          .select(`
+            id,
+            event_id,
+            slot_number,
+            user:profiles (
+              email,
+              participant_type
+            )
+          `)
           .in("event_id", eventIds),
         adminClient
           .from("attendance")
@@ -359,10 +380,22 @@ export async function getCoordinatorWorkspaceData() {
 
     const regCountMap: Record<string, number> = {};
     const firstSlotCountMap: Record<string, number> = {};
-    registrations.forEach((r) => {
+    const kluCountMap: Record<string, number> = {};
+    const externalCountMap: Record<string, number> = {};
+
+    registrations.forEach((r: any) => {
       regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
       if (r.slot_number === 1) {
         firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
+      }
+
+      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+      const email = (userObj?.email || "").toLowerCase().trim();
+      const isInternal = userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in");
+      if (isInternal) {
+        kluCountMap[r.event_id] = (kluCountMap[r.event_id] || 0) + 1;
+      } else {
+        externalCountMap[r.event_id] = (externalCountMap[r.event_id] || 0) + 1;
       }
     });
 
@@ -390,6 +423,13 @@ export async function getCoordinatorWorkspaceData() {
       const brochureMatch = desc.match(/\[(BROCHURE_URL|BROCHURE_LINK):\s*([^\]]+)\]/);
       const brochureUrl = (brochureMatch ? brochureMatch[2].trim() : null) || evt.brochure_url || null;
 
+      const kluRegs = kluCountMap[evt.id] || 0;
+      const extRegs = externalCountMap[evt.id] || 0;
+      const allowInt = evt.allow_internal !== false;
+      const allowExt = evt.allow_external !== false;
+      const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
+      const isKluBlocked = !allowInt || (intLimit !== null && kluRegs >= intLimit);
+
       return {
         ...evt,
         brochureUrl: brochureUrl || null,
@@ -397,6 +437,12 @@ export async function getCoordinatorWorkspaceData() {
         totalAttended: attendCountMap[evt.id] || 0,
         firstSlotCount: isStudent ? undefined : (firstSlotCountMap[evt.id] || 0),
         roleType,
+        internal_limit: intLimit,
+        allow_internal: allowInt,
+        allow_external: allowExt,
+        kluRegistrations: kluRegs,
+        externalRegistrations: extRegs,
+        isKluBlocked,
       };
     });
 
@@ -528,6 +574,8 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
           : userObj?.email,
       };
 
+      const isInternal = userObj?.participant_type === "internal" || (userObj?.email && userObj.email.toLowerCase().endsWith("@klu.ac.in"));
+
       return {
         id: r.id,
         slot_number: r.slot_number || 1,
@@ -540,15 +588,25 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         scanned_at: attendanceRecord?.scanned_at || null,
         scan_method: attendanceRecord?.scan_method || null,
         user: sanitizedUser,
+        isInternal: Boolean(isInternal),
       };
     });
 
     const firstSlotCount = isStudentCoord ? undefined : (firstSlotCountRaw ?? 0);
 
+    const allowInt = event.allow_internal !== false;
+    const allowExt = event.allow_external !== false;
+    const intLimit = event.internal_limit !== null && event.internal_limit !== undefined ? Number(event.internal_limit) : null;
+
     return {
       success: true,
       roleType,
-      event,
+      event: {
+        ...event,
+        allow_internal: allowInt,
+        allow_external: allowExt,
+        internal_limit: intLimit,
+      },
       attendees, // 10 items for Page 1
       totalCount: totalCount ?? 0,
       attendedCount: attendedCount ?? 0,
@@ -730,6 +788,8 @@ export async function getPaginatedEventAttendees(
           : userObj?.email,
       };
 
+      const isInternal = userObj?.participant_type === "internal" || (userObj?.email && userObj.email.toLowerCase().endsWith("@klu.ac.in"));
+
       return {
         id: r.id,
         slot_number: r.slot_number || 1,
@@ -742,6 +802,7 @@ export async function getPaginatedEventAttendees(
         scanned_at: attendanceRecord?.scanned_at || null,
         scan_method: attendanceRecord?.scan_method || null,
         user: sanitizedUser,
+        isInternal: Boolean(isInternal),
       };
     });
 

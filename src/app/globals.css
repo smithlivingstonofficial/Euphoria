@@ -389,6 +389,26 @@ body {
   animation: connector-shimmer 2s linear infinite;
 }
 
+/* Continuous Seamless Infinite Marquee */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-smooth {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 28s linear infinite;
+}
+
+.animate-marquee-smooth:hover {
+  animation-play-state: paused;
+}
+
 /* Dedicated Professional Print Stylesheet for Ink-Friendly Single-Page A4 Fit */
 @media print {
   @page {

@@ -57,6 +57,15 @@ export interface PublicEvent {
   end_time: string;
   registration_fee: number;
   participant_limit: number;
+  internal_limit?: number | null;
+  allow_internal?: boolean;
+  allow_external?: boolean;
+  total_registered?: number;
+  internal_registered?: number;
+  external_registered?: number;
+  is_klu_blocked?: boolean;
+  is_total_full?: boolean;
+  is_internal_full?: boolean;
   min_team_size?: number;
   max_team_size?: number;
   is_pro_event: boolean;
@@ -71,6 +80,10 @@ export interface PublicEvent {
   registrations?: Array<{
     id: string;
     status: string;
+    user?: {
+      email?: string;
+      participant_type?: string;
+    };
   }>;
 }
 
@@ -274,8 +287,21 @@ export function EventCatalogExplorer({
   categories: Array<{ id: string; name: string; slug: string }>;
   initialTrack?: string;
   initialQuery?: string;
-  user?: { id: string; email: string; fullName?: string } | null;
+  user?: {
+    id: string;
+    email: string;
+    fullName?: string;
+    participantType?: "internal" | "external" | null;
+    isInternal?: boolean;
+  } | null;
 }) {
+  const isGuest = !user;
+  const isInternalUser = Boolean(
+    user?.isInternal ||
+    user?.participantType === "internal" ||
+    (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"))
+  );
+  const isExternalUser = Boolean(user && !isInternalUser);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const router = useRouter();
@@ -934,10 +960,11 @@ export function EventCatalogExplorer({
               const theme = getCategoryTheme(evt.category?.name, isPro);
               const regCount = (evt.registrations || []).length;
               const limit = evt.participant_limit || 100;
-              const isSlotFull = regCount >= limit;
+              const isSlotFull = regCount >= limit || evt.is_total_full;
+              const isKluQuotaBlocked = Boolean(evt.is_klu_blocked || evt.allow_internal === false);
               const isSelected = isEventSelected(evt.id);
               const isConfirmed = isEventConfirmed(evt.id);
-              const validation = canSelectEvent(evt);
+              const validation = canSelectEvent(evt, { isInternal: isInternalUser, isGuest });
               const sched = getEventSchedule(evt);
               const meta = parseEventMetadata(evt);
 
@@ -978,6 +1005,11 @@ export function EventCatalogExplorer({
                           <span className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                             <Lock className="h-3 w-3" />
                             <span>SLOT FULL</span>
+                          </span>
+                        ) : isKluQuotaBlocked ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 text-amber-950 border border-amber-300 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                            <Lock className="h-3 w-3 text-amber-700" />
+                            <span>EXTERNALS ONLY (KLU Full)</span>
                           </span>
                         ) : isPro ? (
                           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
@@ -1096,6 +1128,25 @@ export function EventCatalogExplorer({
                             <Lock className="h-3.5 w-3.5 text-rose-500" />
                             <span>Slot Full</span>
                           </button>
+                        ) : isKluQuotaBlocked && isInternalUser ? (
+                          <button
+                            type="button"
+                            disabled
+                            title="Kalasalingam student quota is full. Remaining seats are reserved exclusively for external delegates."
+                            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 cursor-not-allowed shadow-2xs"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-amber-600" />
+                            <span>KLU Full</span>
+                          </button>
+                        ) : isKluQuotaBlocked && isGuest ? (
+                          <Link
+                            href="/login?redirect=/events"
+                            title="Reserved for external delegates. Please sign in with an external email to select."
+                            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-amber-600" />
+                            <span>Externals Only</span>
+                          </Link>
                         ) : isSelected ? (
                           <button
                             type="button"
@@ -1596,6 +1647,23 @@ export function EventCatalogExplorer({
                     <Lock className="h-4 w-4 text-rose-500" />
                     <span>Slot Full / Capacity Reached</span>
                   </button>
+                ) : (activeModalEvent.is_klu_blocked || activeModalEvent.allow_internal === false) && isInternalUser ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 px-4 py-2.5 text-xs font-bold cursor-not-allowed shadow-2xs"
+                  >
+                    <Lock className="h-4 w-4 text-amber-600" />
+                    <span>Locked for KLU (Reserved for Externals)</span>
+                  </button>
+                ) : (activeModalEvent.is_klu_blocked || activeModalEvent.allow_internal === false) && isGuest ? (
+                  <Link
+                    href="/login?redirect=/events"
+                    className="inline-flex items-center gap-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 px-4 py-2.5 text-xs font-bold hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Lock className="h-4 w-4 text-amber-600" />
+                    <span>External Delegates Only (Sign In)</span>
+                  </Link>
                 ) : isEventSelected(activeModalEvent.id) ? (
                   <button
                     type="button"
@@ -1605,7 +1673,7 @@ export function EventCatalogExplorer({
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span>Selected (Remove)</span>
                   </button>
-                ) : canSelectEvent(activeModalEvent).allowed ? (
+                ) : canSelectEvent(activeModalEvent, { isInternal: isInternalUser, isGuest }).allowed ? (
                   <button
                     type="button"
                     onClick={() => {

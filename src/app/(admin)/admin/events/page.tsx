@@ -44,7 +44,15 @@ export default async function AdminEventsPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <Link
+            href="/admin/events/slots"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900 shadow-xs hover:bg-amber-100 transition-colors shrink-0"
+          >
+            <Sparkles className="h-4 w-4 text-amber-600" />
+            <span>Slot &amp; Quota Control</span>
+          </Link>
+
           <Link
             href="/admin/reports"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors shrink-0"

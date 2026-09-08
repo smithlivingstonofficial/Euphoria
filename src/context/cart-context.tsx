@@ -64,7 +64,7 @@ interface CartContextType {
   clearCart: () => void;
   isEventSelected: (eventId: string) => boolean;
   isEventConfirmed: (eventId: string) => boolean;
-  canSelectEvent: (event: PublicEvent) => SelectionValidation;
+  canSelectEvent: (event: PublicEvent, userInfo?: { isInternal?: boolean; isGuest?: boolean }) => SelectionValidation;
   hasProEventSelected: boolean;
   firstSelectedEvent: PublicEvent | null;
   maxEventsLimit: number;
@@ -252,16 +252,40 @@ export function CartProvider({
     return selectedEvents.length > 0 ? selectedEvents[0] : null;
   }, [selectedEvents]);
 
-  // Validation engine for Pro Event and slot limits taking confirmed passes into account
+  // Validation engine for Pro Event, slot limits, and KLU quota guards
   const canSelectEvent = useCallback(
-    (event: PublicEvent): SelectionValidation => {
+    (event: PublicEvent, userInfo?: { isInternal?: boolean; isGuest?: boolean }): SelectionValidation => {
       // 0. Check event participant limit capacity (lock if full)
       const regCount = (event.registrations || []).length;
       const limit = Number(event.participant_limit || 100);
-      if (regCount >= limit) {
+      if (regCount >= limit || event.is_total_full) {
         return {
           allowed: false,
           reason: `Slot limit full (${regCount}/${limit} seats filled)`,
+        };
+      }
+
+      // 0b. Check Kalasalingam University (@klu.ac.in) vs External Quotas
+      const isEventKluBlocked = event.is_klu_blocked || event.allow_internal === false;
+      if (isEventKluBlocked) {
+        if (userInfo?.isGuest) {
+          return {
+            allowed: false,
+            reason: "External Delegates Only (Sign in with external email to unlock)",
+          };
+        }
+        if (userInfo?.isInternal) {
+          return {
+            allowed: false,
+            reason: "KLU student quota full. Remaining seats reserved exclusively for external delegates.",
+          };
+        }
+      }
+
+      if (event.allow_external === false && userInfo && !userInfo.isInternal) {
+        return {
+          allowed: false,
+          reason: "Reserved exclusively for Kalasalingam University students.",
         };
       }
 

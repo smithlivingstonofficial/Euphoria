@@ -13,6 +13,7 @@ import {
   UserCheck,
   GraduationCap,
   LayoutDashboard,
+  Lock,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,9 @@ export default async function CoordinatorDashboardPage() {
 
   const flagshipCount = events.filter((e) => e.is_pro_event).length;
   const regularCount = events.length - flagshipCount;
+  const totalKluRegistrations = events.reduce((acc, e) => acc + (e.kluRegistrations || 0), 0);
+  const totalExternalRegistrations = events.reduce((acc, e) => acc + (e.externalRegistrations || 0), 0);
+  const externalOnlyCount = events.filter((e) => e.isKluBlocked || e.allow_internal === false).length;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
@@ -111,6 +115,14 @@ export default async function CoordinatorDashboardPage() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-900">
                 <GraduationCap className="h-3.5 w-3.5 text-amber-600" />
                 <span>Student Coordinator</span>
+              </span>
+            )}
+
+            {/* External-Only Events Banner */}
+            {externalOnlyCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-900">
+                <Lock className="h-3 w-3 text-amber-600" />
+                <span>{externalOnlyCount} External-Only Mode</span>
               </span>
             )}
           </div>
@@ -185,7 +197,7 @@ export default async function CoordinatorDashboardPage() {
                 </div>
                 <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md bg-white/95 border border-cyan-200/80 text-[10px] sm:text-[11px] font-bold text-cyan-950 shadow-2xs truncate max-w-full">
                   <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
-                  <span>Registered across events</span>
+                  <span>{totalKluRegistrations} KLU • {totalExternalRegistrations} Externals</span>
                 </div>
               </div>
             </div>

@@ -33,6 +33,9 @@ async function fetchPublicEventsRaw() {
             end_time,
             registration_fee,
             participant_limit,
+            internal_limit,
+            allow_internal,
+            allow_external,
             is_pro_event,
             brochure_url,
             status,
@@ -44,7 +47,11 @@ async function fetchPublicEventsRaw() {
             ),
             registrations:event_registrations (
               id,
-              status
+              status,
+              user:profiles (
+                email,
+                participant_type
+              )
             )
           `)
           .order("event_date", { ascending: true })
@@ -57,9 +64,46 @@ async function fetchPublicEventsRaw() {
 
     if (eventsError) throw eventsError;
 
+    const processedEvents = (events || []).map((evt: any) => {
+      const allRegs = (evt.registrations || []).filter((r: any) => r.status === "confirmed");
+      let internalCount = 0;
+      allRegs.forEach((r: any) => {
+        const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
+        const email = (userObj?.email || "").toLowerCase();
+        if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
+          internalCount++;
+        }
+      });
+      const totalCount = allRegs.length;
+      const externalCount = Math.max(0, totalCount - internalCount);
+
+      const partLimit = Number(evt.participant_limit || 100);
+      const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
+      const allowInt = evt.allow_internal !== false;
+      const allowExt = evt.allow_external !== false;
+
+      const isTotalFull = totalCount >= partLimit;
+      const isInternalFull = intLimit !== null ? internalCount >= intLimit : false;
+      const isKluBlocked = !allowInt || isInternalFull;
+
+      return {
+        ...evt,
+        participant_limit: partLimit,
+        internal_limit: intLimit,
+        allow_internal: allowInt,
+        allow_external: allowExt,
+        total_registered: totalCount,
+        internal_registered: internalCount,
+        external_registered: externalCount,
+        is_total_full: isTotalFull,
+        is_internal_full: isInternalFull,
+        is_klu_blocked: isKluBlocked,
+      };
+    });
+
     return {
       success: true,
-      events: events || [],
+      events: processedEvents,
       categories: categories || [],
     };
   } catch (err: unknown) {

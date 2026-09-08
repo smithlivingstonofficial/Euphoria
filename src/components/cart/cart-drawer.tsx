@@ -570,41 +570,74 @@ export function CartDrawer({
             ) : (
               /* Regular New Pass Purchase Buttons */
               (() => {
+                const isInternalUser = user?.participantType === "internal" || (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"));
                 const hasFullEventInCart = selectedEvents.some(
-                  (e) => (e.registrations || []).length >= (e.participant_limit || 100)
+                  (e) => (e.registrations || []).length >= (e.participant_limit || 100) || e.is_total_full
                 );
+                const hasKluBlockedEventInCart = Boolean(
+                  isInternalUser && selectedEvents.some((e) => e.is_klu_blocked || e.allow_internal === false)
+                );
+                const hasGuestBlockedEventInCart = Boolean(
+                  !user && selectedEvents.some((e) => e.is_klu_blocked || e.allow_internal === false)
+                );
+
+                const isBlockedFromCheckout = hasFullEventInCart || hasKluBlockedEventInCart;
+
                 return (
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        window.location.href = `/login?redirect=/events`;
-                        return;
-                      }
-                      if (hasFullEventInCart) return;
-                      setIsConfirmModalOpen(true);
-                    }}
-                    disabled={isSubmitting || hasFullEventInCart}
-                    className={`w-full inline-flex items-center justify-center gap-2 rounded-xl py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg transition-all ${
-                      hasFullEventInCart
-                        ? "bg-rose-600/80 cursor-not-allowed shadow-none"
-                        : "bg-primary hover:bg-primary-hover active:scale-[0.99] shadow-primary/25 cursor-pointer disabled:opacity-50"
-                    }`}
-                  >
-                    {isSubmitting ? (
-                      <span>Securing Payment Order...</span>
-                    ) : hasFullEventInCart ? (
-                      <>
-                        <Lock className="h-4 w-4" />
-                        <span>Remove Full Competition to Pay</span>
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="h-4 w-4 text-cyan-200" />
-                        <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
-                        <ArrowRight className="h-4 w-4 ml-0.5" />
-                      </>
+                  <div className="space-y-2">
+                    {hasKluBlockedEventInCart && (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-950 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>
+                          One or more competitions in your cart are closed for Kalasalingam University students. Remaining slots are reserved for external delegates. Please remove them to proceed.
+                        </span>
+                      </div>
                     )}
-                  </button>
+
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          window.location.href = `/login?redirect=/events`;
+                          return;
+                        }
+                        if (isBlockedFromCheckout) return;
+                        setIsConfirmModalOpen(true);
+                      }}
+                      disabled={isSubmitting || isBlockedFromCheckout}
+                      className={`w-full inline-flex items-center justify-center gap-2 rounded-xl py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg transition-all ${
+                        isBlockedFromCheckout
+                          ? "bg-rose-600/80 cursor-not-allowed shadow-none"
+                          : hasGuestBlockedEventInCart
+                          ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/25 cursor-pointer"
+                          : "bg-primary hover:bg-primary-hover active:scale-[0.99] shadow-primary/25 cursor-pointer disabled:opacity-50"
+                      }`}
+                    >
+                      {isSubmitting ? (
+                        <span>Securing Payment Order...</span>
+                      ) : hasKluBlockedEventInCart ? (
+                        <>
+                          <Lock className="h-4 w-4" />
+                          <span>Remove KLU-Blocked Competition</span>
+                        </>
+                      ) : hasFullEventInCart ? (
+                        <>
+                          <Lock className="h-4 w-4" />
+                          <span>Remove Full Competition to Pay</span>
+                        </>
+                      ) : hasGuestBlockedEventInCart ? (
+                        <>
+                          <Lock className="h-4 w-4" />
+                          <span>Sign In with External Email</span>
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="h-4 w-4 text-cyan-200" />
+                          <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
+                          <ArrowRight className="h-4 w-4 ml-0.5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 );
               })()
             )}

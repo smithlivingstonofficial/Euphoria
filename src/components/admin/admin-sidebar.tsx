@@ -22,6 +22,7 @@ import {
   Crown,
   ShieldAlert,
   MessageSquareWarning,
+  SlidersHorizontal,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 
@@ -39,6 +40,11 @@ const NAV_SECTIONS = [
         href: "/admin/events",
         label: "Events & Staff",
         icon: Calendar,
+      },
+      {
+        href: "/admin/events/slots",
+        label: "Slot & Quota Control",
+        icon: SlidersHorizontal,
       },
       {
         href: "/admin/users",
