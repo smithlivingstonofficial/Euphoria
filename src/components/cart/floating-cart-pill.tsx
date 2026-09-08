@@ -13,8 +13,12 @@ export function FloatingCartPill({
   const pathname = usePathname();
   const { selectedEvents, openCart, calculatePricing } = useCart();
 
-  // Suppress participant cart widget inside Admin Console and Coordinator Workspace
-  if (pathname?.startsWith("/admin") || pathname?.startsWith("/coordinator")) {
+  // Suppress participant cart widget inside Admin Console, Coordinator Workspace, and Payment Help
+  if (
+    pathname?.startsWith("/admin") ||
+    pathname?.startsWith("/coordinator") ||
+    pathname === "/payment-help"
+  ) {
     return null;
   }
 

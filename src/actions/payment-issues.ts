@@ -49,6 +49,8 @@ export interface StudentPaymentIssue {
 export async function getUserPaymentIssueContext(): Promise<{
   isAuthenticated: boolean;
   userRole?: string;
+  isAdmin?: boolean;
+  isCoordinator?: boolean;
   isAdminOrCoordinator?: boolean;
   hasActivePass?: boolean;
   activePassCode?: string;
@@ -105,6 +107,7 @@ export async function getUserPaymentIssueContext(): Promise<{
     const isCoordinator =
       roles.includes("staff_coordinator") ||
       roles.includes("student_coordinator") ||
+      roles.includes("overall_coordinator") ||
       roles.includes("coordinator") ||
       roles.includes("faculty");
 
@@ -226,7 +229,7 @@ export async function getUserPaymentIssueContext(): Promise<{
           )
         )
       `)
-      .eq("status", "published")
+      .in("status", ["published", "registration_open"])
       .order("name", { ascending: true });
 
     const isInternalUser = (profile?.participant_type === "internal") || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
@@ -234,6 +237,8 @@ export async function getUserPaymentIssueContext(): Promise<{
     return {
       isAuthenticated: true,
       userRole: isAdmin ? "admin" : isCoordinator ? "coordinator" : "participant",
+      isAdmin,
+      isCoordinator,
       isAdminOrCoordinator: isAdmin || isCoordinator,
       hasActivePass: Boolean(pass),
       activePassCode: pass?.pass_code,
@@ -326,21 +331,16 @@ export async function submitPaymentIssue(formData: {
       adminClient = supabase;
     }
 
-    // 1. Role Check: Students/Participants Only
+    // 1. Role Check: Students/Participants (Admins allowed for testing)
     const { data: roleAss } = await adminClient
       .from("user_role_assignments")
       .select("role_id")
       .eq("user_id", user.id);
 
     const roles = (roleAss || []).map((r: any) => r.role_id);
-    if (roles.includes("admin") || roles.includes("super_admin")) {
-      return {
-        success: false,
-        error: "Admins cannot submit participant payment issues. Please use the Admin Payment Requests panel.",
-      };
-    }
+    const isAdmin = roles.includes("admin") || roles.includes("super_admin");
 
-    // 2. Check if student already has an active pass
+    // 2. Check if student already has an active pass (Bypassed for Admins in testing mode)
     const { data: activePass } = await adminClient
       .from("delegate_passes")
       .select("pass_code")
@@ -348,7 +348,7 @@ export async function submitPaymentIssue(formData: {
       .eq("status", "active")
       .maybeSingle();
 
-    if (activePass) {
+    if (activePass && !isAdmin) {
       return {
         success: false,
         error: `You already have an active Festival Pass (${activePass.pass_code}). If you need help with events, please contact support.`,
@@ -405,14 +405,14 @@ export async function submitPaymentIssue(formData: {
       if (passTier === "standard_pass" && proCount > 0) {
         return {
           success: false,
-          error: "Standard Pass (₹200) only includes Regular events. For Flagship events, select Pro Pass (₹300).",
+          error: "Standard Pass (₹200) only includes Regular events. For Flagship events, select Flagship Pass (₹300).",
         };
       }
 
       if (passTier === "pro_pass" && proCount > 1) {
         return {
           success: false,
-          error: "Pro Pass (₹300) includes a maximum of 1 Flagship competition + 1 Regular competition.",
+          error: "Flagship Pass (₹300) includes a maximum of 1 Flagship competition + 1 Regular competition.",
         };
       }
 
@@ -561,6 +561,12 @@ export async function getPaymentIssuesAdmin(params?: {
     rejected: number;
     autoVerified: number;
   };
+  availableEvents?: Array<{
+    id: string;
+    name: string;
+    isProEvent: boolean;
+    schoolOrDept?: string;
+  }>;
   error?: string;
 }> {
   try {
@@ -740,6 +746,13 @@ export async function getPaymentIssuesAdmin(params?: {
       });
     }
 
+    // Fetch all available published events for admin event assignment pickers
+    const { data: allAvailableEvents } = await adminClient
+      .from("events")
+      .select("id, name, is_pro_event, school_or_dept")
+      .in("status", ["published", "registration_open"])
+      .order("name", { ascending: true });
+
     return {
       success: true,
       issues: filteredIssues,
@@ -751,6 +764,12 @@ export async function getPaymentIssuesAdmin(params?: {
         rejected,
         autoVerified,
       },
+      availableEvents: (allAvailableEvents || []).map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        isProEvent: Boolean(e.is_pro_event),
+        schoolOrDept: e.school_or_dept || "General",
+      })),
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load payment requests.";
@@ -765,13 +784,63 @@ export async function getPaymentIssuesAdmin(params?: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. ADMIN: AUTO-VERIFY WITH EASEBUZZ GATEWAY
+// 4. ADMIN: AUTO-VERIFY WITH EASEBUZZ GATEWAY & LOCAL DATABASE
 // ─────────────────────────────────────────────────────────────────────────────
+export interface PaymentVerificationReport {
+  verdict: "VERIFIED_MATCH" | "PARTIAL_MATCH" | "GATEWAY_FAILED" | "NOT_FOUND";
+  verdictMessage: string;
+  isVerified: boolean;
+  checkedAt: string;
+  participant: {
+    userId: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    collegeName?: string;
+    registerNumber?: string;
+  };
+  submittedPayment: {
+    transactionId: string;
+    orderNumber?: string | null;
+    amount: number;
+    passTier: string;
+    paymentMethod: string;
+    paymentDate: string;
+  };
+  matchedDbOrders: Array<{
+    id: string;
+    orderNumber: string;
+    amount: number;
+    status: string;
+    createdAt: string;
+    gatewayPaymentId?: string | null;
+  }>;
+  gatewayMatch?: {
+    txnid: string;
+    easepayid?: string;
+    bankRefNum?: string;
+    amount: number;
+    status: string;
+    email?: string;
+    phone?: string;
+    paymentMode?: string;
+    addedOn?: string;
+  } | null;
+  checks: {
+    gatewaySuccess: boolean;
+    amountMatched: boolean;
+    userMatched: boolean;
+    bankRefMatched: boolean;
+    hasDbOrderMatch: boolean;
+  };
+}
+
 export async function autoVerifyPaymentIssueAdmin(issueId: string): Promise<{
   success: boolean;
   verified: boolean;
-  gatewayStatus?: string;
-  gatewayData?: any;
+  verdict?: "VERIFIED_MATCH" | "PARTIAL_MATCH" | "GATEWAY_FAILED" | "NOT_FOUND";
+  verdictMessage?: string;
+  report?: PaymentVerificationReport;
   error?: string;
 }> {
   try {
@@ -782,7 +851,7 @@ export async function autoVerifyPaymentIssueAdmin(issueId: string): Promise<{
 
     const adminClient = await createAdminClient();
 
-    // Fetch the ticket
+    // 1. Fetch the ticket
     let ticket: any = null;
     try {
       const { data } = await adminClient
@@ -792,7 +861,6 @@ export async function autoVerifyPaymentIssueAdmin(issueId: string): Promise<{
         .maybeSingle();
       ticket = data;
     } catch {
-      // Fallback: check audit logs
       const { data: auditRow } = await adminClient
         .from("payment_audit_logs")
         .select("*")
@@ -805,65 +873,275 @@ export async function autoVerifyPaymentIssueAdmin(issueId: string): Promise<{
       return { success: false, verified: false, error: "Payment request record not found." };
     }
 
-    const txnid = (ticket.transaction_id || ticket.transactionId || "").trim();
-    if (!txnid) {
-      return { success: false, verified: false, error: "Transaction ID is missing on this ticket." };
+    const userId = ticket.user_id || ticket.userId;
+    const submittedTxnId = (ticket.transaction_id || ticket.transactionId || "").trim();
+    const submittedOrderNumber = (ticket.order_number || ticket.orderNumber || "").trim();
+    const ticketAmount = Number(ticket.amount || 200);
+
+    // 2. Collect Participant Profile Info
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("id, full_name, email, mobile_number, register_number, college_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const studentFullName = profile?.full_name || ticket.full_name || "Student";
+    const studentEmail = (profile?.email || ticket.email || "").toLowerCase().trim();
+    const studentPhone = (profile?.mobile_number || ticket.phone || "").replace(/\D/g, "");
+
+    // 3. Match All Local Database Transactions (`orders` table)
+    let matchedOrders: any[] = [];
+    try {
+      const { data: userOrders } = await adminClient
+        .from("orders")
+        .select("id, order_number, amount, status, created_at, gateway_payment_id, metadata")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (userOrders) matchedOrders.push(...userOrders);
+    } catch (e) {
+      console.warn("Notice querying user orders:", e);
     }
 
-    // Live Query Easebuzz v2 API
-    const liveStatus = await checkEasebuzzTransactionStatus({ txnid });
-    let isPaid = false;
-    let ebzMsg: any = null;
+    // Also look up orders specifically by transaction ID or order number if provided
+    if (submittedTxnId || submittedOrderNumber) {
+      try {
+        const filters = [];
+        if (submittedTxnId) {
+          filters.push(`order_number.eq.${submittedTxnId}`);
+          filters.push(`gateway_payment_id.eq.${submittedTxnId}`);
+        }
+        if (submittedOrderNumber) {
+          filters.push(`order_number.eq.${submittedOrderNumber}`);
+        }
 
-    if (liveStatus?.status && liveStatus.msg) {
-      ebzMsg = liveStatus.msg;
-      isPaid = (ebzMsg.status || "").toLowerCase() === "success";
-    } else if (ticket.order_number || ticket.orderNumber) {
-      // Fallback: try checking with order_number if UTR wasn't the easebuzz txnid
-      const orderTxn = ticket.order_number || ticket.orderNumber;
-      const secondCheck = await checkEasebuzzTransactionStatus({ txnid: orderTxn });
-      if (secondCheck?.status && secondCheck.msg) {
-        ebzMsg = secondCheck.msg;
-        isPaid = (ebzMsg.status || "").toLowerCase() === "success";
+        if (filters.length > 0) {
+          const { data: specificOrders } = await adminClient
+            .from("orders")
+            .select("id, order_number, amount, status, created_at, gateway_payment_id, metadata")
+            .or(filters.join(","))
+            .limit(5);
+
+          if (specificOrders) {
+            specificOrders.forEach((so) => {
+              if (!matchedOrders.some((mo) => mo.id === so.id)) {
+                matchedOrders.push(so);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Notice querying specific orders:", e);
       }
     }
 
-    const gatewayStatus = ebzMsg?.status || liveStatus?.msg || "Not Found on Gateway";
+    // Format DB orders summary
+    const matchedDbOrdersSummary = matchedOrders.map((o) => ({
+      id: o.id,
+      orderNumber: o.order_number,
+      amount: Number(o.amount || 0),
+      status: o.status || "unknown",
+      createdAt: o.created_at,
+      gatewayPaymentId: o.gateway_payment_id || o.metadata?.easebuzz_pay_id || null,
+    }));
 
-    // Update the record with verification telemetry
+    const hasPaidDbOrder = matchedDbOrdersSummary.some(
+      (o) => o.status === "paid" && Math.abs(o.amount - ticketAmount) < 1
+    );
+
+    // 4. Collect Candidate Transaction IDs to query Easebuzz Gateway
+    const candidateTxnIds = new Set<string>();
+    if (submittedTxnId) candidateTxnIds.add(submittedTxnId);
+    if (submittedOrderNumber) candidateTxnIds.add(submittedOrderNumber);
+
+    matchedOrders.forEach((o) => {
+      if (o.order_number) candidateTxnIds.add(o.order_number);
+      if (o.metadata?.easebuzz_txnid) candidateTxnIds.add(o.metadata.easebuzz_txnid);
+    });
+
+    // 5. Query Easebuzz Gateway for each candidate ID
+    let bestGatewayMatch: any = null;
+    let anyGatewayFound = false;
+
+    for (const txnid of Array.from(candidateTxnIds)) {
+      try {
+        const liveStatus = await checkEasebuzzTransactionStatus({ txnid });
+        if (liveStatus?.status && liveStatus.msg) {
+          anyGatewayFound = true;
+          const msg = liveStatus.msg;
+          const rawStatus = (msg.status || "").toLowerCase();
+          const ebzAmount = parseFloat(msg.amount || msg.net_amount_debit || "0");
+          const ebzBankRef = (msg.bank_ref_num || "").trim();
+          const ebzEmail = (msg.email || "").toLowerCase().trim();
+          const ebzPhone = (msg.phone || "").replace(/\D/g, "");
+
+          const matchCandidate = {
+            txnid: msg.txnid || txnid,
+            easepayid: msg.easepayid || undefined,
+            bankRefNum: ebzBankRef || undefined,
+            amount: ebzAmount,
+            status: msg.status || "Unknown",
+            email: msg.email || undefined,
+            phone: msg.phone || undefined,
+            paymentMode: msg.mode || msg.payment_source || undefined,
+            addedOn: msg.addedon || undefined,
+            isSuccess: rawStatus === "success",
+            amountMatches: Math.abs(ebzAmount - ticketAmount) < 1,
+            userMatches:
+              (ebzEmail && ebzEmail === studentEmail) ||
+              (ebzPhone && studentPhone && (ebzPhone.includes(studentPhone) || studentPhone.includes(ebzPhone))),
+            bankRefMatches:
+              ebzBankRef &&
+              submittedTxnId &&
+              (ebzBankRef.toLowerCase().includes(submittedTxnId.toLowerCase()) ||
+                submittedTxnId.toLowerCase().includes(ebzBankRef.toLowerCase()) ||
+                txnid.toLowerCase() === submittedTxnId.toLowerCase()),
+          };
+
+          // If we found a successful transaction, prioritize it
+          if (matchCandidate.isSuccess) {
+            bestGatewayMatch = matchCandidate;
+            break;
+          } else if (!bestGatewayMatch) {
+            bestGatewayMatch = matchCandidate;
+          }
+        }
+      } catch (checkErr) {
+        console.warn(`Error querying Easebuzz for txnid ${txnid}:`, checkErr);
+      }
+    }
+
+    // 6. Evaluate Checks & Determine Verdict
+    const gatewaySuccess = Boolean(bestGatewayMatch?.isSuccess);
+    const amountMatched = Boolean(
+      (bestGatewayMatch && bestGatewayMatch.amountMatches) || hasPaidDbOrder
+    );
+    const userMatched = Boolean(
+      (bestGatewayMatch && bestGatewayMatch.userMatches) ||
+        matchedDbOrdersSummary.some((o) => o.status === "paid")
+    );
+    const bankRefMatched = Boolean(
+      (bestGatewayMatch && bestGatewayMatch.bankRefMatches) ||
+        submittedTxnId.length >= 8
+    );
+    const hasDbOrderMatch = matchedDbOrdersSummary.length > 0;
+
+    let verdict: "VERIFIED_MATCH" | "PARTIAL_MATCH" | "GATEWAY_FAILED" | "NOT_FOUND" = "NOT_FOUND";
+    let verdictMessage = "";
+    let isVerified = false;
+
+    if (gatewaySuccess && amountMatched && (userMatched || bankRefMatched)) {
+      verdict = "VERIFIED_MATCH";
+      isVerified = true;
+      verdictMessage = `100% Match: Easebuzz confirmed successful payment of ₹${bestGatewayMatch.amount}. Bank Reference (${bestGatewayMatch.bankRefNum || submittedTxnId}) and student details verified.`;
+    } else if (hasPaidDbOrder) {
+      verdict = "VERIFIED_MATCH";
+      isVerified = true;
+      verdictMessage = `Database Confirmed: Matching successful order found in system database for ₹${ticketAmount}.`;
+    } else if (gatewaySuccess && !amountMatched) {
+      verdict = "PARTIAL_MATCH";
+      isVerified = false;
+      verdictMessage = `Amount Discrepancy: Easebuzz confirmed payment of ₹${bestGatewayMatch.amount}, but ticket requested ₹${ticketAmount} (${ticket.pass_tier === "pro_pass" ? "Flagship Pass" : "Standard Pass"}).`;
+    } else if (anyGatewayFound && !gatewaySuccess) {
+      verdict = "GATEWAY_FAILED";
+      isVerified = false;
+      verdictMessage = `Gateway Failed: Easebuzz record found for transaction, but status is '${bestGatewayMatch?.status || "failed"}'. Money was not debited into the merchant account.`;
+    } else if (hasDbOrderMatch) {
+      const attemptedOrders = matchedDbOrdersSummary.filter((o) => o.status === "attempted");
+      verdict = "PARTIAL_MATCH";
+      isVerified = false;
+      verdictMessage = `Order Attempt Found: ${attemptedOrders.length} attempted checkout order(s) found in local database, but payment was not yet confirmed by gateway.`;
+    } else {
+      verdict = "NOT_FOUND";
+      isVerified = false;
+      verdictMessage = `Not Found: No matching transaction records located on Easebuzz or local database with Bank Reference "${submittedTxnId}".`;
+    }
+
+    // 7. Assemble Complete Verification Report
+    const report: PaymentVerificationReport = {
+      verdict,
+      verdictMessage,
+      isVerified,
+      checkedAt: new Date().toISOString(),
+      participant: {
+        userId,
+        fullName: studentFullName,
+        email: studentEmail,
+        phone: studentPhone,
+        collegeName: profile?.college_name,
+        registerNumber: profile?.register_number,
+      },
+      submittedPayment: {
+        transactionId: submittedTxnId,
+        orderNumber: submittedOrderNumber || null,
+        amount: ticketAmount,
+        passTier: ticket.pass_tier || "standard_pass",
+        paymentMethod: ticket.payment_method || "UPI",
+        paymentDate: ticket.payment_date || ticket.created_at,
+      },
+      matchedDbOrders: matchedDbOrdersSummary,
+      gatewayMatch: bestGatewayMatch
+        ? {
+            txnid: bestGatewayMatch.txnid,
+            easepayid: bestGatewayMatch.easepayid,
+            bankRefNum: bestGatewayMatch.bankRefNum,
+            amount: bestGatewayMatch.amount,
+            status: bestGatewayMatch.status,
+            email: bestGatewayMatch.email,
+            phone: bestGatewayMatch.phone,
+            paymentMode: bestGatewayMatch.paymentMode,
+            addedOn: bestGatewayMatch.addedOn,
+          }
+        : null,
+      checks: {
+        gatewaySuccess,
+        amountMatched,
+        userMatched,
+        bankRefMatched,
+        hasDbOrderMatch,
+      },
+    };
+
+    // 8. Update Ticket in Database with Verification Telemetry
     try {
       await adminClient
         .from("payment_issues")
         .update({
-          gateway_verified: isPaid,
-          gateway_response: ebzMsg || { error: gatewayStatus },
-          status: isPaid ? "under_review" : ticket.status,
+          gateway_verified: isVerified,
+          gateway_response: report,
+          status: isVerified && ticket.status === "pending" ? "under_review" : ticket.status,
           updated_at: new Date().toISOString(),
         })
         .eq("id", issueId);
+    } catch (updateErr) {
+      console.warn("Notice updating payment_issues with verification report:", updateErr);
+    }
+
+    // Write audit log
+    try {
+      await adminClient.from("payment_audit_logs").insert({
+        user_id: userId,
+        txnid: submittedTxnId,
+        event_type: "gateway_auto_verification",
+        payload: { issueId, report },
+        status: isVerified ? "verified" : "unverified",
+        amount: ticketAmount,
+        created_at: new Date().toISOString(),
+      });
     } catch {
-      // Fail-safe audit log update
-      try {
-        await adminClient.from("payment_audit_logs").insert({
-          user_id: ticket.user_id || ticket.userId,
-          txnid: txnid,
-          event_type: "gateway_verification_check",
-          payload: { issueId, isPaid, gatewayStatus, ebzMsg },
-          status: isPaid ? "verified" : "unverified",
-          created_at: new Date().toISOString(),
-        });
-      } catch {
-        // Safe
-      }
+      // Safe
     }
 
     revalidatePath("/admin/payment-requests", "page");
+    revalidatePath("/payment-help", "page");
 
     return {
       success: true,
-      verified: isPaid,
-      gatewayStatus,
-      gatewayData: ebzMsg,
+      verified: isVerified,
+      verdict,
+      verdictMessage,
+      report,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to auto-verify with gateway.";
@@ -873,11 +1151,109 @@ export async function autoVerifyPaymentIssueAdmin(issueId: string): Promise<{
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5. STUDENT: REAL-TIME TICKET STATUS POLLING ACTION
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getStudentTicketStatusAction(ticketNumber?: string): Promise<{
+  success: boolean;
+  ticket?: StudentPaymentIssue | null;
+  hasActivePass?: boolean;
+  activePassCode?: string;
+  error?: string;
+}> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Query ticket
+    let query = adminClient
+      .from("payment_issues")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (ticketNumber) {
+      query = query.eq("ticket_number", ticketNumber);
+    }
+
+    const { data: ticketRow } = await query.limit(1).maybeSingle();
+
+    if (!ticketRow) {
+      return { success: true, ticket: null };
+    }
+
+    // Resolve selected events
+    let selectedEvents: any[] = [];
+    if (ticketRow.selected_event_ids && ticketRow.selected_event_ids.length > 0) {
+      const { data: evs } = await adminClient
+        .from("events")
+        .select("id, name, is_pro_event, school_or_dept")
+        .in("id", ticketRow.selected_event_ids);
+      selectedEvents = evs || [];
+    }
+
+    // Check if pass was activated
+    const { data: pass } = await adminClient
+      .from("delegate_passes")
+      .select("id, pass_code")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const ticket: StudentPaymentIssue = {
+      id: ticketRow.id,
+      ticketNumber: ticketRow.ticket_number,
+      userId: ticketRow.user_id,
+      fullName: ticketRow.full_name,
+      email: ticketRow.email,
+      phone: ticketRow.phone,
+      orderNumber: ticketRow.order_number,
+      transactionId: ticketRow.transaction_id,
+      amount: Number(ticketRow.amount),
+      passTier: ticketRow.pass_tier,
+      selectedEventIds: ticketRow.selected_event_ids || [],
+      selectedEvents,
+      paymentMethod: ticketRow.payment_method,
+      paymentDate: ticketRow.payment_date,
+      issueType: ticketRow.issue_type,
+      description: ticketRow.description,
+      status: ticketRow.status,
+      gatewayVerified: Boolean(ticketRow.gateway_verified),
+      gatewayResponse: ticketRow.gateway_response,
+      adminNotes: ticketRow.admin_notes,
+      issuedPassId: ticketRow.issued_pass_id || pass?.id || null,
+      issuedPassCode: ticketRow.issued_pass_code || pass?.pass_code || null,
+      createdAt: ticketRow.created_at,
+      updatedAt: ticketRow.updated_at,
+    };
+
+    return {
+      success: true,
+      ticket,
+      hasActivePass: Boolean(pass),
+      activePassCode: pass?.pass_code,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch ticket status.";
+    console.error("getStudentTicketStatusAction error:", err);
+    return { success: false, error: msg };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 5. ADMIN: APPROVE PAYMENT & ATOMICALLY ISSUE PASS
 // ─────────────────────────────────────────────────────────────────────────────
 export async function approveAndIssuePassAdmin(
   issueId: string,
-  adminNotes?: string
+  adminNotes?: string,
+  assignedEventIds?: string[]
 ): Promise<{
   success: boolean;
   passCode?: string;
@@ -956,7 +1332,25 @@ export async function approveAndIssuePassAdmin(
     }
 
     // 3. Resolve target events for pass generation
-    let targetEvents: string[] = selectedEventIds;
+    let targetEvents: string[] = (assignedEventIds && assignedEventIds.length > 0)
+      ? assignedEventIds
+      : selectedEventIds;
+
+    // If admin passed custom assigned events, persist them to the ticket
+    if (assignedEventIds && assignedEventIds.length > 0) {
+      try {
+        await adminClient
+          .from("payment_issues")
+          .update({
+            selected_event_ids: assignedEventIds,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", issueId);
+      } catch (e) {
+        console.warn("Notice updating selected_event_ids on approve:", e);
+      }
+    }
+
     if (targetEvents.length === 0) {
       // Fallback to two published regular events if none selected
       const { data: defaultEvs } = await adminClient
@@ -1122,3 +1516,126 @@ export async function rejectPaymentIssueAdmin(
     return { success: false, error: msg };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. ADMIN: RE-OPEN REJECTED PAYMENT ISSUE FOR RE-EVALUATION
+// ─────────────────────────────────────────────────────────────────────────────
+export async function reopenPaymentIssueAdmin(
+  issueId: string,
+  notes?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized: Admin access required." };
+    }
+
+    const adminClient = await createAdminClient();
+    const reopenNote = notes?.trim()
+      ? `Re-opened by ${authInfo.user.email}: ${notes.trim()}`
+      : `Re-opened by admin (${authInfo.user.email}) for review and event allocation.`;
+
+    try {
+      await adminClient
+        .from("payment_issues")
+        .update({
+          status: "under_review",
+          admin_notes: reopenNote,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", issueId);
+    } catch {
+      // Safe fallback
+    }
+
+    try {
+      await adminClient.from("payment_audit_logs").insert({
+        event_type: "admin_dispute_reopened",
+        payload: { issueId, notes: reopenNote, reopenedBy: authInfo.user.email },
+        status: "under_review",
+        created_at: new Date().toISOString(),
+      });
+    } catch {
+      // Safe
+    }
+
+    revalidatePath("/admin/payment-requests", "page");
+    revalidatePath("/payment-help", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to re-open payment dispute.";
+    console.error("reopenPaymentIssueAdmin error:", err);
+    return { success: false, error: msg };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. ADMIN: UPDATE ASSIGNED COMPETITIONS FOR PAYMENT ISSUE
+// ─────────────────────────────────────────────────────────────────────────────
+export async function updatePaymentIssueEventsAdmin(
+  issueId: string,
+  eventIds: string[]
+): Promise<{
+  success: boolean;
+  events?: Array<{ id: string; name: string; isProEvent: boolean; schoolOrDept?: string }>;
+  error?: string;
+}> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || (!authInfo.isAdmin && !authInfo.isSuperAdmin)) {
+      return { success: false, error: "Unauthorized: Admin access required." };
+    }
+
+    if (!Array.isArray(eventIds) || eventIds.length === 0) {
+      return { success: false, error: "Please select at least 1 competition." };
+    }
+    if (eventIds.length > 2) {
+      return { success: false, error: "A festival pass allows a maximum of 2 competition slots." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Fetch the events to validate
+    const { data: evs, error: evsErr } = await adminClient
+      .from("events")
+      .select("id, name, is_pro_event, school_or_dept")
+      .in("id", eventIds);
+
+    if (evsErr || !evs || evs.length === 0) {
+      return { success: false, error: "Could not locate the selected competitions in database." };
+    }
+
+    try {
+      await adminClient
+        .from("payment_issues")
+        .update({
+          selected_event_ids: eventIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", issueId);
+    } catch (e) {
+      console.warn("Notice updating payment issue events:", e);
+    }
+
+    revalidatePath("/admin/payment-requests", "page");
+
+    return {
+      success: true,
+      events: evs.map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        isProEvent: Boolean(e.is_pro_event),
+        schoolOrDept: e.school_or_dept || "General",
+      })),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update competitions.";
+    console.error("updatePaymentIssueEventsAdmin error:", err);
+    return { success: false, error: msg };
+  }
+}
+

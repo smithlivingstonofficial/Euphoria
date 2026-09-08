@@ -7,7 +7,7 @@ import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/dashboard";
+  const redirectUrl = searchParams.get("redirect") || searchParams.get("returnUrl") || "/dashboard";
   const authError = searchParams.get("error");
 
   return (

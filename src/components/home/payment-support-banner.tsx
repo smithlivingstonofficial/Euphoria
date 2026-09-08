@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowRight, GripVertical, Zap } from "lucide-react";
-import { PaymentIssueModal } from "./payment-issue-modal";
 
 export function PaymentSupportBanner() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef<HTMLDivElement | null>(null);
@@ -26,19 +26,12 @@ export function PaymentSupportBanner() {
     hasMoved: false,
   });
 
-  // Auto-open modal if redirected with ?openPaymentIssue=true
+  // Auto-redirect if accessed with ?openPaymentIssue=true
   useEffect(() => {
     if (searchParams.get("openPaymentIssue") === "true") {
-      setIsModalOpen(true);
-      try {
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.delete("openPaymentIssue");
-        window.history.replaceState({}, "", nextUrl.pathname + nextUrl.search);
-      } catch {
-        // Safe fallback
-      }
+      router.push("/payment-help");
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   // Set initial position safely on client side (bottom-left floating pill)
   useEffect(() => {
@@ -173,14 +166,19 @@ export function PaymentSupportBanner() {
           // Safe fallback
         }
       } else {
-        // Clicked/tapped without moving -> open dispute modal
-        setIsModalOpen(true);
+        // Clicked/tapped without moving -> Navigate to dedicated Payment Help page
+        router.push("/payment-help");
       }
     };
 
     window.addEventListener("pointermove", handlePointerMove, { passive: false });
     window.addEventListener("pointerup", handlePointerUp);
   };
+
+  // Hide the floating button completely on the /payment-help page itself
+  if (pathname === "/payment-help") {
+    return null;
+  }
 
   return (
     <>
@@ -250,12 +248,6 @@ export function PaymentSupportBanner() {
           </div>
         </div>
       )}
-
-      {/* Payment Dispute & Event Resolution Modal */}
-      <PaymentIssueModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
     </>
   );
 }

@@ -21,9 +21,15 @@ export default async function AdminPaymentRequestsPage() {
     autoVerified: 0,
   };
 
+  const availableEvents = result.availableEvents || [];
+
   return (
     <div className="space-y-6">
-      <PaymentRequestsClient initialIssues={issues} initialMetrics={metrics} />
+      <PaymentRequestsClient
+        initialIssues={issues}
+        initialMetrics={metrics}
+        availableEvents={availableEvents}
+      />
     </div>
   );
 }

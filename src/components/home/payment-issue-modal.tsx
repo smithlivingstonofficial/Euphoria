@@ -40,6 +40,8 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
   const [context, setContext] = useState<{
     isAuthenticated: boolean;
     userRole?: string;
+    isAdmin?: boolean;
+    isCoordinator?: boolean;
     isAdminOrCoordinator?: boolean;
     hasActivePass?: boolean;
     activePassCode?: string;
@@ -68,6 +70,9 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
     isAuthenticated: false,
   });
 
+  const [forceShowForm, setForceShowForm] = useState(false);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+
   // Form State (Text-Based Only)
   const [passTier, setPassTier] = useState<"standard_pass" | "pro_pass">("standard_pass");
   const [amount, setAmount] = useState<number>(200);
@@ -77,11 +82,17 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
   const [orderNumber, setOrderNumber] = useState("");
   const [issueType, setIssueType] = useState("Amount debited from bank, but pass was not generated");
   const [description, setDescription] = useState("");
-  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
 
-  // Event search within the modal
-  const [eventSearch, setEventSearch] = useState("");
-  const [eventCategoryFilter, setEventCategoryFilter] = useState<"all" | "regular" | "pro">("all");
+  // 2-Slot Event Selection State
+  const [slot1Id, setSlot1Id] = useState<string>("");
+  const [slot2Id, setSlot2Id] = useState<string>("");
+  const [openSlotPicker, setOpenSlotPicker] = useState<1 | 2 | null>(null);
+  const [slotSearch, setSlotSearch] = useState<string>("");
+
+  const selectedEventIds = useMemo(
+    () => [slot1Id, slot2Id].filter(Boolean),
+    [slot1Id, slot2Id]
+  );
 
   // Submission Feedback
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -93,6 +104,12 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
 
     setIsLoadingContext(true);
     setSubmitError(null);
+    setForceShowForm(false);
+    setCurrentStep(1);
+    setSlot1Id("");
+    setSlot2Id("");
+    setOpenSlotPicker(null);
+    setSlotSearch("");
 
     async function loadData() {
       try {
@@ -111,75 +128,98 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
     loadData();
   }, [isOpen]);
 
-  // Sync amount with pass tier button
+  const availableEvents = useMemo(() => context.availableEvents || [], [context.availableEvents]);
+  const flagshipEvents = useMemo(
+    () => availableEvents.filter((e) => e.isProEvent),
+    [availableEvents]
+  );
+  const regularEvents = useMemo(
+    () => availableEvents.filter((e) => !e.isProEvent),
+    [availableEvents]
+  );
+
+  const slot1Event = useMemo(
+    () => availableEvents.find((e) => e.id === slot1Id),
+    [availableEvents, slot1Id]
+  );
+  const slot2Event = useMemo(
+    () => availableEvents.find((e) => e.id === slot2Id),
+    [availableEvents, slot2Id]
+  );
+
+  // Check if step 1 requirements are satisfied (both slots filled)
+  const isStep1Complete = Boolean(slot1Id && slot2Id);
+
+  const step1ValidationMessage = useMemo(() => {
+    if (passTier === "standard_pass") {
+      if (!slot1Id && !slot2Id) return "Please choose your 2 regular competitions.";
+      if (!slot1Id || !slot2Id) return "Please choose 1 more regular competition.";
+      return null;
+    } else {
+      if (!slot1Id && !slot2Id) return "Please choose 1 Flagship and 1 Regular competition.";
+      if (!slot1Id) return "Please choose your Flagship competition.";
+      if (!slot2Id) return "Please choose your Regular competition.";
+      return null;
+    }
+  }, [passTier, slot1Id, slot2Id]);
+
+  const handleContinueToStep2 = () => {
+    if (!isStep1Complete) {
+      setSubmitError(step1ValidationMessage || "Please select both competitions to continue.");
+      return;
+    }
+    setSubmitError(null);
+    setOpenSlotPicker(null);
+    setCurrentStep(2);
+  };
+
+  // Sync amount with pass tier button and adjust event availability
   const handleTierChange = (tier: "standard_pass" | "pro_pass") => {
     setPassTier(tier);
     setAmount(tier === "pro_pass" ? 300 : 200);
-    // If standard pass, clear any pro event from selection
-    if (tier === "standard_pass" && context.availableEvents) {
-      const proIds = new Set(context.availableEvents.filter((e) => e.isProEvent).map((e) => e.id));
-      setSelectedEventIds((prev) => prev.filter((id) => !proIds.has(id)));
-    }
-  };
+    setSubmitError(null);
+    setOpenSlotPicker(null);
+    setSlotSearch("");
 
-  // Event selection handling
-  const toggleEventSelection = (eventId: string, isPro: boolean, isFull?: boolean) => {
-    if (selectedEventIds.includes(eventId)) {
-      setSelectedEventIds((prev) => prev.filter((id) => id !== eventId));
-      return;
-    }
-
-    if (isFull) {
-      alert("This competition's slots are completely full! Please select another competition.");
-      return;
-    }
-
-    if (selectedEventIds.length >= 2) {
-      alert("A Festival Pass covers a maximum of 2 competitions. Please unselect one first.");
-      return;
-    }
-
-    if (passTier === "standard_pass" && isPro) {
-      alert("Flagship / Pro competitions require a Pro Pass (₹300). Switch to Pro Pass above.");
-      return;
-    }
-
-    if (passTier === "pro_pass" && isPro) {
-      const currentProCount = selectedEventIds.filter(
-        (id) => context.availableEvents?.find((e) => e.id === id)?.isProEvent
-      ).length;
-      if (currentProCount >= 1) {
-        alert("Pro Pass includes exactly 1 Flagship competition + 1 Regular competition.");
-        return;
+    if (tier === "standard_pass") {
+      // If slot 1 was a flagship event, clear it
+      if (slot1Event?.isProEvent) {
+        setSlot1Id("");
+      }
+    } else {
+      // Switching to Flagship pass: if slot 1 was regular, clear it so user selects flagship
+      if (slot1Event && !slot1Event.isProEvent) {
+        setSlot1Id("");
       }
     }
-
-    setSelectedEventIds((prev) => [...prev, eventId]);
   };
 
-  // Filter available events for selection
-  const filteredEvents = useMemo(() => {
-    if (!context.availableEvents) return [];
-    return context.availableEvents.filter((ev) => {
-      const matchesSearch =
-        ev.name.toLowerCase().includes(eventSearch.toLowerCase()) ||
-        ev.schoolOrDept.toLowerCase().includes(eventSearch.toLowerCase());
+  const getFilteredSlotEvents = (slotNum: 1 | 2) => {
+    let list: typeof availableEvents = [];
+    if (passTier === "standard_pass") {
+      list = slotNum === 1
+        ? regularEvents.filter((e) => e.id !== slot2Id)
+        : regularEvents.filter((e) => e.id !== slot1Id);
+    } else {
+      list = slotNum === 1 ? flagshipEvents : regularEvents;
+    }
 
-      if (!matchesSearch) return false;
-
-      if (eventCategoryFilter === "regular") return !ev.isProEvent;
-      if (eventCategoryFilter === "pro") return ev.isProEvent;
-      return true;
-    });
-  }, [context.availableEvents, eventSearch, eventCategoryFilter]);
+    if (!slotSearch.trim()) return list;
+    const q = slotSearch.toLowerCase();
+    return list.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.schoolOrDept.toLowerCase().includes(q)
+    );
+  };
 
   // Form Submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSubmitError(null);
 
     if (!transactionId.trim() || transactionId.trim().length < 5) {
-      setSubmitError("Please enter a valid Bank Reference / UTR Number (min 5 characters).");
+      setSubmitError("Please enter a valid Bank Reference or Transaction ID (min 5 characters).");
       return;
     }
 
@@ -238,41 +278,126 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
     });
   };
 
+  const isShowingForm =
+    !isLoadingContext &&
+    context.isAuthenticated &&
+    (context.isAdmin || (!context.isAdminOrCoordinator && !context.hasActivePass) || forceShowForm) &&
+    (!activeTicket || forceShowForm);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-2xl max-h-[92vh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden"
+        className="relative w-full max-w-lg sm:max-w-xl md:max-w-2xl max-h-[82vh] sm:max-h-[76vh] flex flex-col bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header Ribbon */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-transparent">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 shrink-0">
-              <CreditCard className="h-4 w-4" />
+        {/* Compact Header Ribbon */}
+        <div className="flex items-center justify-between px-3.5 sm:px-5 py-2.5 border-b border-slate-100 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-transparent shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-7 w-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 shrink-0">
+              <CreditCard className="h-3.5 w-3.5" />
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                Payment Resolution Desk
-              </h2>
-              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
-                Official Euphoria 2026 Student Dispute &amp; Pass Recovery Form
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                  Payment Help &amp; Pass Request
+                </h2>
+                {context.isAdmin && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-extrabold text-[9px] uppercase">
+                    <Zap className="h-2.5 w-2.5 text-amber-600" /> Admin Test
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium truncate">
+                {context.userProfile?.fullName
+                  ? `For ${context.userProfile.fullName} (${context.userProfile.email})`
+                  : "Enter your transaction details to issue your festival pass"}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            aria-label="Close dialog"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {context.isAdmin && (
+              <Link
+                href="/admin/payment-requests"
+                target="_blank"
+                className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 hover:text-amber-950 underline px-2 py-0.5 rounded-md hover:bg-amber-50 transition-colors"
+                title="Open Admin Requests List in new tab"
+              >
+                <span>Requests Desk</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label="Close dialog"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
+        {/* Ultra-Compact Stepper Bar */}
+        {isShowingForm && (
+          <div className="px-4 sm:px-5 py-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
+            <div className="flex items-center justify-between gap-2 max-w-xs sm:max-w-sm mx-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmitError(null);
+                  setCurrentStep(1);
+                }}
+                className={`flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  currentStep === 1 ? "text-primary" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span
+                  className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                    currentStep === 1
+                      ? "bg-primary text-white shadow-xs"
+                      : isStep1Complete
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  {isStep1Complete && currentStep === 2 ? "✓" : "1"}
+                </span>
+                <span>Pass &amp; Events</span>
+              </button>
+
+              <div className="flex-1 h-0.5 bg-slate-200 mx-2" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isStep1Complete) {
+                    setSubmitError(null);
+                    setCurrentStep(2);
+                  } else {
+                    setSubmitError(step1ValidationMessage);
+                  }
+                }}
+                className={`flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  currentStep === 2 ? "text-primary" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span
+                  className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                    currentStep === 2 ? "bg-primary text-white shadow-xs" : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  2
+                </span>
+                <span>Payment Details</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modal Body Container */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
           {isLoadingContext ? (
             <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-400">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -291,7 +416,7 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                   Student Login Required
                 </h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  To securely match your bank UTR transaction with your student account and automatically issue your festival pass, you must sign in to Euphoria.
+                  To match your payment with your student account and automatically issue your festival pass, please sign in to Euphoria.
                 </p>
               </div>
 
@@ -311,19 +436,19 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                 </Link>
               </div>
             </div>
-          ) : context.isAdminOrCoordinator ? (
+          ) : !context.isAdmin && context.isAdminOrCoordinator && !forceShowForm ? (
             /* ═══════════════════════════════════════════════════════════════
-               STATE 2: ADMIN / COORDINATOR NOTICE
+               STATE 2: COORDINATOR NOTICE
             ═══════════════════════════════════════════════════════════════ */
             <div className="p-5 rounded-2xl border border-amber-200 bg-amber-50/80 text-amber-900 space-y-3">
               <div className="flex items-center gap-2 font-bold text-sm">
                 <AlertCircle className="h-5 w-5 text-amber-600" />
-                <span>Administrator / Staff Coordinator Session Detected</span>
+                <span>Staff Coordinator Session Detected</span>
               </div>
               <p className="text-xs text-amber-800 leading-relaxed">
-                You are currently signed in with elevated privileges (<strong>{context.userRole}</strong>). This form is reserved exclusively for student participants to submit payment receipts.
+                You are currently signed in as a coordinator (<strong>{context.userRole}</strong>). This form is reserved exclusively for student participants to submit payment receipts.
               </p>
-              <div className="pt-2">
+              <div className="pt-2 flex flex-wrap items-center gap-2">
                 <Link
                   href="/admin/payment-requests"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs shadow-xs hover:bg-amber-700 transition-colors"
@@ -331,9 +456,17 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                   <span>Go to Admin Payment Requests Desk</span>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setForceShowForm(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-white hover:bg-amber-50 text-amber-900 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  <Zap className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Preview / Test Form</span>
+                </button>
               </div>
             </div>
-          ) : context.hasActivePass && !activeTicket ? (
+          ) : !context.isAdmin && context.hasActivePass && !activeTicket && !forceShowForm ? (
             /* ═══════════════════════════════════════════════════════════════
                STATE 3: PASS ALREADY ACTIVE (NO ISSUE NEEDED)
             ═══════════════════════════════════════════════════════════════ */
@@ -347,7 +480,7 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                     Festival Pass Already Active!
                   </h4>
                   <p className="text-xs text-emerald-700">
-                    Pass Code: <strong className="font-mono">{context.activePassCode}</strong> ({context.activePassTier === "pro_pass" ? "PRO PASS" : "STANDARD PASS"})
+                    Pass Code: <strong className="font-mono">{context.activePassCode}</strong> ({context.activePassTier === "pro_pass" ? "FLAGSHIP PASS" : "STANDARD PASS"})
                   </p>
                 </div>
               </div>
@@ -355,7 +488,7 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
               {context.existingRegisteredEvents && context.existingRegisteredEvents.length > 0 && (
                 <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 space-y-1.5">
                   <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                    Linked Competitions:
+                    Your Registered Events:
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {context.existingRegisteredEvents.map((ev, i) => (
@@ -366,7 +499,7 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                         <span>{ev.name}</span>
                         {ev.isProEvent && (
                           <span className="bg-amber-400 text-amber-950 text-[9px] px-1 rounded font-black">
-                            PRO
+                            FLAGSHIP
                           </span>
                         )}
                       </span>
@@ -385,11 +518,43 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                 </Link>
               </div>
             </div>
-          ) : activeTicket ? (
+          ) : activeTicket && !forceShowForm ? (
             /* ═══════════════════════════════════════════════════════════════
                STATE 4: LIVE STATUS DASHBOARD (POST-SUBMIT & RE-OPEN)
             ═══════════════════════════════════════════════════════════════ */
             <div className="space-y-4">
+              {/* Admin Test Mode Controls in State 4 */}
+              {context.isAdmin && (
+                <div className="p-3.5 rounded-2xl border border-amber-300 bg-amber-50/90 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-7 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                      <Zap className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold flex items-center gap-1.5">
+                        <span>Admin Testing Mode Active</span>
+                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded">
+                          TEST ACTIVE
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-tight mt-0.5">
+                        Viewing ticket status screen. You can submit another test request at any time.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTicket(null);
+                      setForceShowForm(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer shrink-0 self-end sm:self-center"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Submit Another Test Request</span>
+                  </button>
+                </div>
+              )}
               {/* Status Header Banner */}
               <div
                 className={`p-4 sm:p-5 rounded-2xl border ${
@@ -461,11 +626,11 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                     </>
                   ) : activeTicket.status === "rejected" ? (
                     <>
-                      <strong>Admin Remarks:</strong> {activeTicket.adminNotes || "Verification failed. Please ensure your Bank Reference UTR matches your debit statement."}
+                      <strong>Admin Remarks:</strong> {activeTicket.adminNotes || "Verification failed. Please ensure your transaction reference number matches your bank statement."}
                     </>
                   ) : (
                     <>
-                      Our finance desk is matching your Bank UTR (<strong className="font-mono">{activeTicket.transactionId}</strong>) with Easebuzz gateway capture records.
+                      Our team is matching your transaction number (<strong className="font-mono">{activeTicket.transactionId}</strong>) with payment records to issue your pass.
                     </>
                   )}
                 </p>
@@ -490,12 +655,12 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                 </span>
                 <div className="grid grid-cols-2 gap-2 font-medium">
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Bank UTR / Txn ID:</span>
+                    <span className="text-slate-400 block text-[10px]">Bank Reference ID:</span>
                     <strong className="font-mono text-slate-900 break-all">{activeTicket.transactionId}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Amount &amp; Tier:</span>
-                    <strong className="text-slate-900">{formatCurrency(activeTicket.amount)} ({activeTicket.passTier === "pro_pass" ? "Pro Pass" : "Standard Pass"})</strong>
+                    <span className="text-slate-400 block text-[10px]">Amount &amp; Pass:</span>
+                    <strong className="text-slate-900">{formatCurrency(activeTicket.amount)} ({activeTicket.passTier === "pro_pass" ? "Flagship Pass" : "Standard Pass"})</strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px]">Payment Method:</span>
@@ -510,7 +675,7 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                 {activeTicket.selectedEvents && activeTicket.selectedEvents.length > 0 && (
                   <div className="pt-1 border-t border-slate-200/80">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                      Selected Competitions:
+                      Selected Events:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {activeTicket.selectedEvents.map((ev, i) => (
@@ -520,9 +685,9 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                         >
                           <span className="truncate max-w-[180px]">{ev.name}</span>
                           {ev.isProEvent ? (
-                            <span className="text-[9px] bg-amber-100 text-amber-900 px-1 rounded font-bold">PRO</span>
+                            <span className="text-[9px] bg-amber-100 text-amber-900 px-1 rounded font-extrabold">FLAGSHIP</span>
                           ) : (
-                            <span className="text-[9px] bg-slate-100 text-slate-600 px-1 rounded">REG</span>
+                            <span className="text-[9px] bg-slate-100 text-slate-600 px-1 rounded font-bold">REGULAR</span>
                           )}
                         </span>
                       ))}
@@ -546,363 +711,637 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
             </div>
           ) : (
             /* ═══════════════════════════════════════════════════════════════
-               STATE 5: DISPUTE SUBMISSION FORM (100% TEXT-BASED + EVENT PICKER)
+               STATE 5: DISPUTE SUBMISSION FORM (2-STEP COMPACT FLOW)
             ═══════════════════════════════════════════════════════════════ */
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {submitError && (
-                <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start gap-2 animate-in fade-in">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
-                  <span>{submitError}</span>
+            <div className="space-y-3">
+              {/* ─────────────────────────────────────────────────────────────
+                  STEP 1: SELECT PASS TIER & 2-SLOT EVENTS
+                  ───────────────────────────────────────────────────────────── */}
+              {currentStep === 1 && (
+                <div className="space-y-2.5 animate-in fade-in duration-150">
+                  {/* Pass Tier & Amount Selection (Compact Cards) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800">
+                        Select the pass you paid for <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400">
+                        Choose pass matching your payment
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleTierChange("standard_pass")}
+                        className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          passTier === "standard_pass"
+                            ? "border-primary bg-indigo-50/50 ring-2 ring-primary/20 shadow-xs"
+                            : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900">Standard Pass</span>
+                          <span className="font-mono font-extrabold text-xs text-primary">₹200</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                          2 regular competitions across any dept
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTierChange("pro_pass")}
+                        className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          passTier === "pro_pass"
+                            ? "border-amber-500 bg-amber-50/50 ring-2 ring-amber-500/20 shadow-xs"
+                            : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1">
+                            <span>⭐ Flagship Pass</span>
+                          </span>
+                          <span className="font-mono font-extrabold text-xs text-amber-600">₹300</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                          1 Flagship Event + 1 Regular Event
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* The 2-Slot Event Selector */}
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Layers className="h-3.5 w-3.5 text-primary" />
+                        <span>
+                          {passTier === "standard_pass"
+                            ? "Select Your 2 Competitions (Regular)"
+                            : "Select 1 Flagship + 1 Regular Competition"}
+                        </span>
+                      </label>
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-colors ${
+                          isStep1Complete
+                            ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {isStep1Complete
+                          ? "✓ 2 of 2 Selected"
+                          : `${(slot1Id ? 1 : 0) + (slot2Id ? 1 : 0)} of 2 Selected`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* Slot 1 */}
+                      <div className="relative">
+                        {slot1Event ? (
+                          <div className="p-2 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50/70 transition-colors flex items-center justify-between gap-1.5 shadow-2xs">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span
+                                  className={`text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider ${
+                                    slot1Event.isProEvent
+                                      ? "bg-amber-400 text-amber-950 shadow-2xs"
+                                      : "bg-indigo-100 text-indigo-900"
+                                  }`}
+                                >
+                                  {slot1Event.isProEvent ? "⭐ FLAGSHIP" : "REGULAR"}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-semibold">Slot 1</span>
+                              </div>
+                              <div className="font-bold text-xs text-slate-900 truncate" title={slot1Event.name}>
+                                {slot1Event.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {slot1Event.schoolOrDept}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSlot1Id("");
+                                setOpenSlotPicker(1);
+                                setSlotSearch("");
+                              }}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100/60 transition-colors shrink-0 cursor-pointer"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenSlotPicker(openSlotPicker === 1 ? null : 1);
+                              setSlotSearch("");
+                            }}
+                            className={`w-full p-2.5 rounded-xl border-2 border-dashed text-left transition-all cursor-pointer flex items-center justify-between gap-2 group ${
+                              openSlotPicker === 1
+                                ? "border-primary bg-indigo-50/50 ring-2 ring-primary/20"
+                                : !slot1Id && submitError
+                                ? "border-rose-300 bg-rose-50/30 hover:border-rose-400"
+                                : "border-slate-200 hover:border-primary/60 bg-slate-50/50 hover:bg-indigo-50/30"
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span
+                                  className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider ${
+                                    passTier === "pro_pass" ? "bg-amber-100 text-amber-900 font-black" : "bg-slate-200 text-slate-700"
+                                  }`}
+                                >
+                                  {passTier === "pro_pass" ? "⭐ FLAGSHIP" : "REGULAR"}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-semibold">Slot 1</span>
+                              </div>
+                              <div className="text-xs font-semibold text-slate-600 group-hover:text-primary truncate">
+                                + Choose {passTier === "pro_pass" ? "Flagship Competition" : "1st Competition"}
+                              </div>
+                            </div>
+                            <div className="h-6 w-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-primary group-hover:border-primary shrink-0 shadow-2xs">
+                              <Search className="h-3 w-3" />
+                            </div>
+                          </button>
+                        )}
+
+                        {/* Dropdown Popover for Slot 1 */}
+                        {openSlotPicker === 1 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 z-30 rounded-xl border border-slate-300 bg-white shadow-xl p-2 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+                            <div className="relative">
+                              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                autoFocus
+                                value={slotSearch}
+                                onChange={(e) => setSlotSearch(e.target.value)}
+                                placeholder={
+                                  passTier === "pro_pass"
+                                    ? "Search 10 Flagship events..."
+                                    : "Search regular competitions..."
+                                }
+                                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
+                              />
+                              {slotSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSlotSearch("")}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
+                              {getFilteredSlotEvents(1).length === 0 ? (
+                                <div className="py-4 text-center text-xs text-slate-400">
+                                  No matching competitions
+                                </div>
+                              ) : (
+                                getFilteredSlotEvents(1).map((ev) => (
+                                  <div
+                                    key={ev.id}
+                                    onClick={() => {
+                                      if (!ev.isFull) {
+                                        setSlot1Id(ev.id);
+                                        setOpenSlotPicker(null);
+                                        setSlotSearch("");
+                                        setSubmitError(null);
+                                        if (!slot2Id) setOpenSlotPicker(2);
+                                      }
+                                    }}
+                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 ${
+                                      ev.isFull
+                                        ? "opacity-50 bg-slate-50 cursor-not-allowed"
+                                        : "hover:bg-indigo-50/80 cursor-pointer text-slate-800"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-1">
+                                      <div className="font-semibold truncate text-[11px] text-slate-900">{ev.name}</div>
+                                      <div className="text-[10px] text-slate-400 truncate">{ev.schoolOrDept}</div>
+                                    </div>
+                                    {ev.isFull ? (
+                                      <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 px-1 py-0.5 rounded">
+                                        Full
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-primary font-bold shrink-0">
+                                        Select
+                                      </span>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="pt-1 border-t border-slate-100 flex items-center justify-between px-1">
+                              <span className="text-[10px] text-slate-400">
+                                {getFilteredSlotEvents(1).length} options available
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setOpenSlotPicker(null)}
+                                className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2 py-0.5 cursor-pointer"
+                              >
+                                Close
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Slot 2 */}
+                      <div className="relative">
+                        {slot2Event ? (
+                          <div className="p-2 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50/70 transition-colors flex items-center justify-between gap-1.5 shadow-2xs">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider bg-indigo-100 text-indigo-900">
+                                  REGULAR
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-semibold">Slot 2</span>
+                              </div>
+                              <div className="font-bold text-xs text-slate-900 truncate" title={slot2Event.name}>
+                                {slot2Event.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {slot2Event.schoolOrDept}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSlot2Id("");
+                                setOpenSlotPicker(2);
+                                setSlotSearch("");
+                              }}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100/60 transition-colors shrink-0 cursor-pointer"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenSlotPicker(openSlotPicker === 2 ? null : 2);
+                              setSlotSearch("");
+                            }}
+                            className={`w-full p-2.5 rounded-xl border-2 border-dashed text-left transition-all cursor-pointer flex items-center justify-between gap-2 group ${
+                              openSlotPicker === 2
+                                ? "border-primary bg-indigo-50/50 ring-2 ring-primary/20"
+                                : !slot2Id && submitError
+                                ? "border-rose-300 bg-rose-50/30 hover:border-rose-400"
+                                : "border-slate-200 hover:border-primary/60 bg-slate-50/50 hover:bg-indigo-50/30"
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider bg-slate-200 text-slate-700">
+                                  REGULAR
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-semibold">Slot 2</span>
+                              </div>
+                              <div className="text-xs font-semibold text-slate-600 group-hover:text-primary truncate">
+                                + Choose {passTier === "pro_pass" ? "Regular Competition" : "2nd Competition"}
+                              </div>
+                            </div>
+                            <div className="h-6 w-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-primary group-hover:border-primary shrink-0 shadow-2xs">
+                              <Search className="h-3 w-3" />
+                            </div>
+                          </button>
+                        )}
+
+                        {/* Dropdown Popover for Slot 2 */}
+                        {openSlotPicker === 2 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 z-30 rounded-xl border border-slate-300 bg-white shadow-xl p-2 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+                            <div className="relative">
+                              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                autoFocus
+                                value={slotSearch}
+                                onChange={(e) => setSlotSearch(e.target.value)}
+                                placeholder="Search regular competitions..."
+                                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
+                              />
+                              {slotSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSlotSearch("")}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="max-h-36 overflow-y-auto space-y-0.5 pr-0.5">
+                              {getFilteredSlotEvents(2).length === 0 ? (
+                                <div className="py-4 text-center text-xs text-slate-400">
+                                  No matching competitions
+                                </div>
+                              ) : (
+                                getFilteredSlotEvents(2).map((ev) => (
+                                  <div
+                                    key={ev.id}
+                                    onClick={() => {
+                                      if (!ev.isFull) {
+                                        setSlot2Id(ev.id);
+                                        setOpenSlotPicker(null);
+                                        setSlotSearch("");
+                                        setSubmitError(null);
+                                      }
+                                    }}
+                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 ${
+                                      ev.isFull
+                                        ? "opacity-50 bg-slate-50 cursor-not-allowed"
+                                        : "hover:bg-indigo-50/80 cursor-pointer text-slate-800"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-1">
+                                      <div className="font-semibold truncate text-[11px] text-slate-900">{ev.name}</div>
+                                      <div className="text-[10px] text-slate-400 truncate">{ev.schoolOrDept}</div>
+                                    </div>
+                                    {ev.isFull ? (
+                                      <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 px-1 py-0.5 rounded">
+                                        Full
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-primary font-bold shrink-0">
+                                        Select
+                                      </span>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="pt-1 border-t border-slate-100 flex items-center justify-between px-1">
+                              <span className="text-[10px] text-slate-400">
+                                {getFilteredSlotEvents(2).length} options available
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setOpenSlotPicker(null)}
+                                className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2 py-0.5 cursor-pointer"
+                              >
+                                Close
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Student Identity Card (Pre-filled) */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Student Account
-                  </span>
-                  <div className="font-bold text-slate-900">
-                    {context.userProfile?.fullName || "Student Participant"}
-                  </div>
-                  <div className="text-slate-500 text-[11px]">
-                    {context.userProfile?.email} • {context.userProfile?.mobileNumber || "No Phone"}
-                  </div>
-                </div>
-                {context.userProfile?.collegeName && (
-                  <div className="sm:text-right text-[11px] text-slate-500 font-medium truncate max-w-xs">
-                    {context.userProfile.collegeName}
-                    {context.userProfile.registerNumber && (
-                      <span className="block font-mono text-[10px] text-slate-400">
-                        Reg: {context.userProfile.registerNumber}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Pass Tier & Amount Selection (Dynamic Event Rules) */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>Pass Tier &amp; Amount Paid <span className="text-rose-500">*</span></span>
-                  <span className="text-[10px] text-slate-400 font-normal">Choose tier matching your payment</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleTierChange("standard_pass")}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      passTier === "standard_pass"
-                        ? "border-primary bg-indigo-50/50 ring-2 ring-primary/20 shadow-xs"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-900">Standard Pass</span>
-                      <span className="font-mono font-extrabold text-sm text-primary">₹200</span>
+              {/* ─────────────────────────────────────────────────────────────
+                  STEP 2: PAYMENT TRANSACTION DETAILS
+                  ───────────────────────────────────────────────────────────── */}
+              {currentStep === 2 && (
+                <form onSubmit={handleSubmit} className="space-y-2.5 animate-in fade-in duration-150">
+                  {/* Selected Summary Card */}
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-gradient-to-r from-indigo-50 via-slate-50 to-amber-50/40 border border-slate-200 text-xs">
+                    <div className="space-y-0.5 min-w-0 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-xs">
+                          {passTier === "pro_pass" ? "⭐ Flagship Pass" : "Standard Pass"}
+                        </span>
+                        <span className="font-mono font-extrabold text-xs text-primary">₹{amount}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {slot1Event && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-semibold text-slate-700 shadow-2xs">
+                            <span className="truncate max-w-[120px]">{slot1Event.name}</span>
+                            {slot1Event.isProEvent ? (
+                              <span className="text-[8px] bg-amber-100 text-amber-900 font-extrabold px-1 rounded">FLAGSHIP</span>
+                            ) : (
+                              <span className="text-[8px] bg-slate-100 text-slate-600 font-bold px-1 rounded">REGULAR</span>
+                            )}
+                          </span>
+                        )}
+                        {slot2Event && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-semibold text-slate-700 shadow-2xs">
+                            <span className="truncate max-w-[120px]">{slot2Event.name}</span>
+                            <span className="text-[8px] bg-slate-100 text-slate-600 font-bold px-1 rounded">REGULAR</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                      Includes 2 Regular Competitions across all schools
-                    </p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(1)}
+                      className="px-2 py-1 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 text-primary font-bold text-[11px] shrink-0 cursor-pointer shadow-2xs transition-colors"
+                    >
+                      Change Events
+                    </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleTierChange("pro_pass")}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      passTier === "pro_pass"
-                        ? "border-amber-500 bg-amber-50/50 ring-2 ring-amber-500/20 shadow-xs"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-900 flex items-center gap-1">
-                        <span>⭐ Pro Pass</span>
-                      </span>
-                      <span className="font-mono font-extrabold text-sm text-amber-600">₹300</span>
+                  {submitError && (
+                    <div className="p-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs flex items-start gap-2 animate-in fade-in">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                      <span className="font-medium">{submitError}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                      Includes 1 Flagship Event + 1 Regular Event
-                    </p>
-                  </button>
-                </div>
-              </div>
+                  )}
 
-              {/* In-Modal Event Selector (Conditional if events not selected) */}
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5 text-primary" />
-                    <span>Select Your 2 Competitions</span>
-                  </label>
-                  <span className="text-xs font-mono font-bold text-primary">
-                    {selectedEventIds.length} / 2 Selected
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Select the competitions you paid for so the admin team can immediately issue your pass with them.
-                </p>
+                  {/* 2-Column Grid of Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Bank Reference / Transaction ID */}
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-bold text-slate-800">
+                        Bank Reference ID / Transaction Number <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={transactionId}
+                        onChange={(e) => setTransactionId(e.target.value)}
+                        placeholder="e.g. 428912345678 (12 digits)"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
+                      />
+                      <span className="text-[10px] text-slate-400 block">
+                        Found in Google Pay, PhonePe, Paytm, or bank SMS
+                      </span>
+                    </div>
 
-                {/* Search & Filter Bar */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={eventSearch}
-                      onChange={(e) => setEventSearch(e.target.value)}
-                      placeholder="Search competitions or department..."
-                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-primary"
+                    {/* Payment Method / App */}
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-bold text-slate-800">
+                        Payment App or Method <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary cursor-pointer"
+                      >
+                        <option value="Google Pay">Google Pay (UPI)</option>
+                        <option value="PhonePe">PhonePe (UPI)</option>
+                        <option value="Paytm">Paytm (UPI)</option>
+                        <option value="BHIM UPI / Other UPI">BHIM UPI / Other UPI</option>
+                        <option value="Debit Card">Debit Card</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Net Banking">Net Banking</option>
+                        <option value="College Registration Counter">College Registration Counter</option>
+                      </select>
+                      <span className="text-[10px] text-slate-400 block">
+                        App or service used to pay
+                      </span>
+                    </div>
+
+                    {/* Payment Date & Time */}
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-bold text-slate-800">
+                        Date &amp; Approximate Time <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        placeholder="e.g. Today, 2:30 PM"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
+                      />
+                      <span className="text-[10px] text-slate-400 block">
+                        When was money deducted?
+                      </span>
+                    </div>
+
+                    {/* Order ID (Optional) */}
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-bold text-slate-800">
+                        Order Number <span className="text-slate-400 font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={orderNumber}
+                        onChange={(e) => setOrderNumber(e.target.value)}
+                        placeholder="e.g. EUPH-ORD-XXXX"
+                        className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary font-mono"
+                      />
+                      <span className="text-[10px] text-slate-400 block">
+                        If shown on your screen
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Issue Category Dropdown */}
+                  <div className="space-y-0.5">
+                    <label className="text-xs font-bold text-slate-800">
+                      What happened with your payment? <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={issueType}
+                      onChange={(e) => setIssueType(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary cursor-pointer"
+                    >
+                      <option value="Amount debited from bank, but pass was not generated">
+                        Money was deducted from my bank, but pass was not generated
+                      </option>
+                      <option value="Transaction failed or timed out during payment">
+                        Payment timed out or showed failed, but money was deducted
+                      </option>
+                      <option value="Charged multiple times / double debit">
+                        Money was deducted more than once (double payment)
+                      </option>
+                      <option value="Events not linked to my payment">
+                        Payment went through, but my competitions are missing
+                      </option>
+                      <option value="Other payment dispute">
+                        Other payment problem
+                      </option>
+                    </select>
+                  </div>
+
+                  {/* Description / Remarks Textarea */}
+                  <div className="space-y-0.5">
+                    <label className="text-xs font-bold text-slate-800">
+                      Tell us what happened <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Brief note (e.g. Paid ₹200 on Google Pay at 2:30 PM, money was deducted, but the pass didn't generate)."
+                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary resize-none"
                     />
                   </div>
-                  <div className="flex rounded-xl bg-slate-200/80 p-0.5 text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setEventCategoryFilter("all")}
-                      className={`px-2 py-1 rounded-lg transition-colors ${
-                        eventCategoryFilter === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
-                      }`}
-                    >
-                      All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEventCategoryFilter("regular")}
-                      className={`px-2 py-1 rounded-lg transition-colors ${
-                        eventCategoryFilter === "regular" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
-                      }`}
-                    >
-                      Regular
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEventCategoryFilter("pro")}
-                      className={`px-2 py-1 rounded-lg transition-colors ${
-                        eventCategoryFilter === "pro" ? "bg-white text-amber-900 shadow-2xs" : "text-slate-600"
-                      }`}
-                    >
-                      Pro
-                    </button>
-                  </div>
-                </div>
+                </form>
+              )}
+            </div>
+          )}
+        </div>
 
-                {/* Event Chips List */}
-                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                  {filteredEvents.length === 0 ? (
-                    <div className="py-4 text-center text-[11px] text-slate-400">
-                      No matching competitions found.
-                    </div>
-                  ) : (
-                    filteredEvents.map((ev) => {
-                      const isSelected = selectedEventIds.includes(ev.id);
-                      const isFull = Boolean(ev.isFull);
-                      const isLocked = (passTier === "standard_pass" && ev.isProEvent) || isFull;
-
-                      return (
-                        <div
-                          key={ev.id}
-                          onClick={() => !isLocked && toggleEventSelection(ev.id, ev.isProEvent, ev.isFull)}
-                          className={`flex items-center justify-between p-2 rounded-xl text-xs transition-all border ${
-                            isFull
-                              ? "opacity-60 bg-rose-50/40 border-rose-200 cursor-not-allowed"
-                              : isLocked
-                              ? "opacity-50 bg-slate-100 border-slate-200 cursor-not-allowed"
-                              : isSelected
-                              ? "bg-indigo-50 border-primary text-slate-900 shadow-2xs cursor-pointer"
-                              : "bg-white border-slate-200/80 hover:border-slate-300 text-slate-700 cursor-pointer"
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <div className="font-semibold text-slate-900 truncate text-[11px] flex items-center gap-1">
-                              <span>{ev.name}</span>
-                              {isFull && (
-                                <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-black uppercase">
-                                  FULL
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-400 truncate">
-                              {ev.schoolOrDept}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {isFull ? (
-                              <span className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-0.5">
-                                <Lock className="h-2.5 w-2.5" /> Full
-                              </span>
-                            ) : ev.isProEvent ? (
-                              <span className="text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-black uppercase">
-                                PRO (₹300)
-                              </span>
-                            ) : (
-                              <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                                Regular
-                              </span>
-                            )}
-                            <div
-                              className={`h-4 w-4 rounded-md border flex items-center justify-center text-[10px] ${
-                                isFull
-                                  ? "border-rose-300 bg-rose-50 text-rose-500 cursor-not-allowed"
-                                  : isSelected
-                                  ? "bg-primary border-primary text-white"
-                                  : "border-slate-300 bg-white"
-                              }`}
-                            >
-                              {isFull ? "✕" : isSelected ? "✓" : null}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Mandatory Transaction Input Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* UTR / Transaction ID */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Bank UTR / Easebuzz Txn ID <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={transactionId}
-                    onChange={(e) => setTransactionId(e.target.value)}
-                    placeholder="e.g. 428912345678 or EUPH-..."
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
-                  />
-                  <span className="text-[10px] text-slate-400 block">
-                    Found in your Google Pay, PhonePe, or bank SMS
-                  </span>
-                </div>
-
-                {/* Payment Method / App */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Payment Method / App <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary cursor-pointer"
-                  >
-                    <option value="Google Pay">Google Pay (UPI)</option>
-                    <option value="PhonePe">PhonePe (UPI)</option>
-                    <option value="Paytm">Paytm (UPI)</option>
-                    <option value="BHIM UPI / Other UPI">BHIM UPI / Other UPI</option>
-                    <option value="Debit Card">Debit Card</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Net Banking">Net Banking</option>
-                    <option value="College Registration Counter">College Registration Counter</option>
-                  </select>
-                </div>
-
-                {/* Payment Date & Time */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Date &amp; Approximate Time <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    placeholder="e.g. Today, 2:30 PM or 08 Sep 2026"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-
-                {/* Order ID (Optional) */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Euphoria Order ID <span className="text-slate-400 font-normal">(Optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={orderNumber}
-                    onChange={(e) => setOrderNumber(e.target.value)}
-                    placeholder="e.g. EUPH-ORD-XXXX (if known)"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Issue Category Dropdown */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800">
-                  Issue Type <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={issueType}
-                  onChange={(e) => setIssueType(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary cursor-pointer"
-                >
-                  <option value="Amount debited from bank, but pass was not generated">
-                    Amount debited from bank, but pass was not generated
-                  </option>
-                  <option value="Transaction failed or timed out during payment">
-                    Transaction failed or timed out during payment
-                  </option>
-                  <option value="Charged multiple times / double debit">
-                    Charged multiple times / double debit
-                  </option>
-                  <option value="Events not linked to my payment">
-                    Events not linked to my payment
-                  </option>
-                  <option value="Other payment dispute">
-                    Other payment dispute
-                  </option>
-                </select>
-              </div>
-
-              {/* Description / Remarks Textarea */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-800">
-                  Detailed Explanation / Remarks <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Explain what happened (e.g. Paid ₹200 via GPay at 2:15 PM, money debited with UTR 4289..., but site showed timeout screen)."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary resize-none"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+        {/* Fixed Footer Bar for Form (Always visible, never overlaps content) */}
+        {isShowingForm && (
+          <div className="shrink-0 px-3.5 sm:px-5 py-2.5 bg-slate-50/95 border-t border-slate-100 flex items-center justify-between gap-2">
+            {currentStep === 1 ? (
+              <>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-600 hover:bg-white transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
+
+                <div className="flex items-center gap-2">
+                  {!isStep1Complete && (
+                    <span className="text-[11px] text-amber-600 font-semibold hidden sm:inline">
+                      {step1ValidationMessage}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleContinueToStep2}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md shadow-primary/20 cursor-pointer transition-all"
+                  >
+                    <span>Continue to Payment Details</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => {
+                    setSubmitError(null);
+                    setCurrentStep(1);
+                  }}
+                  className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-white transition-colors cursor-pointer"
+                >
+                  <span>← Back to Events</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
                   disabled={isPending}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
                 >
                   {isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       <span>Submitting Request...</span>
                     </>
                   ) : (
                     <>
-                      <span>Submit Payment Issue</span>
-                      <ArrowRight className="h-4 w-4" />
+                      <span>Submit Payment Help Request</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </>
                   )}
                 </button>
-              </div>
-            </form>
-          )}
-        </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
