@@ -255,6 +255,16 @@ export function CartProvider({
   // Validation engine for Pro Event and slot limits taking confirmed passes into account
   const canSelectEvent = useCallback(
     (event: PublicEvent): SelectionValidation => {
+      // 0. Check event participant limit capacity (lock if full)
+      const regCount = (event.registrations || []).length;
+      const limit = Number(event.participant_limit || 100);
+      if (regCount >= limit) {
+        return {
+          allowed: false,
+          reason: `Slot limit full (${regCount}/${limit} seats filled)`,
+        };
+      }
+
       // 1. Check if already confirmed in database
       if (confirmedEvents.some((c) => c.eventId === event.id)) {
         return {

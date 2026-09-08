@@ -30,6 +30,7 @@ import { MobileFloatingDock } from "@/components/home/mobile-floating-dock";
 import { DroneLottie } from "@/components/home/drone-lottie";
 import { HeroCtaButton } from "@/components/home/hero-cta-button";
 import { ClosingCtaButton } from "@/components/home/closing-cta-button";
+import { PaymentSupportBanner } from "@/components/home/payment-support-banner";
 
 export const revalidate = 60;
 
@@ -41,7 +42,7 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════════════════════
           HERO SECTION — Co-Branded Institutional Presentation, 3D Drone & Registration Focus
       ═══════════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-white via-slate-50/70 to-slate-100/50 border-b border-slate-200/80 pt-3 sm:pt-5 pb-8 sm:pb-12">
+      <section className="relative overflow-hidden bg-gradient-to-b from-white via-slate-50/70 to-slate-100/50 border-b border-slate-200/80 pt-3 sm:pt-4 pb-8 sm:pb-12">
         {/* Dynamic Canvas Background */}
         <HeroParticleCanvas />
 
@@ -50,6 +51,9 @@ export default function HomePage() {
           <div className="hero-orb-1 absolute -top-40 -left-20 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(79,70,229,0.12)_0%,rgba(99,102,241,0.03)_50%,transparent_75%)] blur-3xl" />
           <div className="hero-orb-2 absolute -top-24 -right-16 w-[550px] h-[550px] bg-[radial-gradient(circle,rgba(6,182,212,0.1)_0%,rgba(14,165,233,0.02)_50%,transparent_75%)] blur-3xl" />
         </div>
+
+        {/* Top Announcement & Payment Resolution Marquee */}
+        <PaymentSupportBanner />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">

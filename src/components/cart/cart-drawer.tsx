@@ -139,6 +139,18 @@ export function CartDrawer({
 
     const eventIds = selectedEvents.map((e) => e.id);
 
+    // Client-side pre-flight: Drop payment immediately if any event in cart has reached full capacity
+    const fullEvent = selectedEvents.find(
+      (e) => (e.registrations || []).length >= (e.participant_limit || 100)
+    );
+    if (fullEvent) {
+      setErrorMessage(
+        `Payment Dropped: "${fullEvent.name}" has reached maximum participant capacity. Please remove this event from your cart to proceed.`
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
     // 1. Create Easebuzz Order Server-Side & obtain access_key
     const orderRes = await createEasebuzzOrderAction(eventIds, needsAccommodation, false);
 
@@ -427,6 +439,14 @@ export function CartDrawer({
                           </span>
                         </div>
                       </div>
+
+                      {/* Full Capacity Warning Badge */}
+                      {((evt.registrations || []).length >= (evt.participant_limit || 100)) && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
+                          <Lock className="h-3 w-3 text-rose-500 shrink-0" />
+                          <span>Slot Full ({(evt.registrations || []).length}/{evt.participant_limit || 100}) — Remove to proceed</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -549,27 +569,44 @@ export function CartDrawer({
               </div>
             ) : (
               /* Regular New Pass Purchase Buttons */
-              <button
-                onClick={() => {
-                  if (!user) {
-                    window.location.href = `/login?redirect=/events`;
-                    return;
-                  }
-                  setIsConfirmModalOpen(true);
-                }}
-                disabled={isSubmitting}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <span>Securing Payment Order...</span>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 text-cyan-200" />
-                    <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
-                    <ArrowRight className="h-4 w-4 ml-0.5" />
-                  </>
-                )}
-              </button>
+              (() => {
+                const hasFullEventInCart = selectedEvents.some(
+                  (e) => (e.registrations || []).length >= (e.participant_limit || 100)
+                );
+                return (
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        window.location.href = `/login?redirect=/events`;
+                        return;
+                      }
+                      if (hasFullEventInCart) return;
+                      setIsConfirmModalOpen(true);
+                    }}
+                    disabled={isSubmitting || hasFullEventInCart}
+                    className={`w-full inline-flex items-center justify-center gap-2 rounded-xl py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg transition-all ${
+                      hasFullEventInCart
+                        ? "bg-rose-600/80 cursor-not-allowed shadow-none"
+                        : "bg-primary hover:bg-primary-hover active:scale-[0.99] shadow-primary/25 cursor-pointer disabled:opacity-50"
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <span>Securing Payment Order...</span>
+                    ) : hasFullEventInCart ? (
+                      <>
+                        <Lock className="h-4 w-4" />
+                        <span>Remove Full Competition to Pay</span>
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4 text-cyan-200" />
+                        <span>Proceed to Confirm ({formatCurrency(pricing.totalAmount)})</span>
+                        <ArrowRight className="h-4 w-4 ml-0.5" />
+                      </>
+                    )}
+                  </button>
+                );
+              })()
             )}
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
@@ -751,11 +788,17 @@ export function CartDrawer({
                   setIsConfirmModalOpen(false);
                   handleEasebuzzCheckout();
                 }}
-                disabled={isSubmitting}
+                disabled={isSubmitting || selectedEvents.some((e) => (e.registrations || []).length >= (e.participant_limit || 100))}
                 className="flex-1 py-3 px-4 rounded-xl text-white text-xs font-bold shadow-md bg-primary hover:bg-primary-hover shadow-primary/20 transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
               >
-                <span>Confirm &amp; Pay {formatCurrency(pricing.totalAmount)}</span>
-                <ArrowRight className="h-3.5 w-3.5" />
+                {selectedEvents.some((e) => (e.registrations || []).length >= (e.participant_limit || 100)) ? (
+                  <span>Slot Full — Cannot Pay</span>
+                ) : (
+                  <>
+                    <span>Confirm &amp; Pay {formatCurrency(pricing.totalAmount)}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
               </button>
             </div>
           </div>

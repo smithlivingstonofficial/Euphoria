@@ -94,11 +94,36 @@ export async function createEasebuzzOrderAction(
     // Fetch selected events to calculate pass tier & amount server-side
     const { data: selectedEvts, error: evtsError } = await supabase
       .from("events")
-      .select("id, name, is_pro_event")
+      .select("id, name, is_pro_event, participant_limit, status")
       .in("id", eventIds);
 
     if (evtsError || !selectedEvts || selectedEvts.length === 0) {
       return { success: false, error: "Invalid events selected." };
+    }
+
+    // ── STRICT PRE-FLIGHT CAPACITY VERIFICATION ──────────────────────────
+    // Drop payment immediately if any selected competition has reached maximum capacity
+    for (const evt of selectedEvts) {
+      if (evt.status !== "published" && evt.status !== "registration_open") {
+        return {
+          success: false,
+          error: `Payment Dropped: Registrations for "${evt.name}" are currently closed. Please remove this event from your cart.`,
+        };
+      }
+
+      const limit = Number(evt.participant_limit || 100);
+      const { count: currentRegCount } = await supabase
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", evt.id)
+        .eq("status", "confirmed");
+
+      if ((currentRegCount || 0) >= limit) {
+        return {
+          success: false,
+          error: `Payment Cancelled: The competition "${evt.name}" has reached full capacity (${currentRegCount}/${limit} slots filled). Payment has been dropped to prevent overbooking. Please select an available competition.`,
+        };
+      }
     }
 
     // Determine pass price server-side: Pro Pass = ₹300, Standard Pass = ₹200. Test mode = ₹1.00
@@ -485,11 +510,28 @@ export async function bypassTestRegisterAction(
       };
     }
 
-    // Fetch selected events to calculate pass tier
+    // Fetch selected events to calculate pass tier and verify capacity
     const { data: selectedEvts } = await supabase
       .from("events")
-      .select("id, name, is_pro_event")
+      .select("id, name, is_pro_event, participant_limit")
       .in("id", eventIds);
+
+    // Drop registration if any selected event is full
+    for (const evt of selectedEvts || []) {
+      const limit = Number(evt.participant_limit || 100);
+      const { count: currentRegCount } = await supabase
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", evt.id)
+        .eq("status", "confirmed");
+
+      if ((currentRegCount || 0) >= limit) {
+        return {
+          success: false,
+          error: `Registration Blocked: "${evt.name}" has reached full capacity (${currentRegCount}/${limit} slots filled). Please choose another competition.`,
+        };
+      }
+    }
 
     const hasProEvent = selectedEvts?.some((e) => Boolean(e.is_pro_event)) || false;
     const testTxnid = `EUPH26-TESTBYPASS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;

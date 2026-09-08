@@ -288,6 +288,29 @@ export async function claimSecondSlotAction(eventId: string) {
       return { success: false, error: "You are already registered for this event." };
     }
 
+    // Verify slot 2 event capacity before claiming
+    const { data: targetEvent } = await supabase
+      .from("events")
+      .select("id, name, participant_limit, status")
+      .eq("id", eventId)
+      .single();
+
+    if (targetEvent) {
+      const limit = Number(targetEvent.participant_limit || 100);
+      const { count: regCount } = await supabase
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("status", "confirmed");
+
+      if ((regCount || 0) >= limit) {
+        return {
+          success: false,
+          error: `Claim Blocked: "${targetEvent.name}" has reached full capacity (${regCount}/${limit} seats filled). Please choose another competition.`,
+        };
+      }
+    }
+
     // Call atomic PostgreSQL function
     const { data, error } = await supabase.rpc("fn_claim_second_slot_atomic", {
       p_user_id: user.id,

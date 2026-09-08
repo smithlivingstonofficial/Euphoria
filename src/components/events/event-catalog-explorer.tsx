@@ -934,6 +934,7 @@ export function EventCatalogExplorer({
               const theme = getCategoryTheme(evt.category?.name, isPro);
               const regCount = (evt.registrations || []).length;
               const limit = evt.participant_limit || 100;
+              const isSlotFull = regCount >= limit;
               const isSelected = isEventSelected(evt.id);
               const isConfirmed = isEventConfirmed(evt.id);
               const validation = canSelectEvent(evt);
@@ -946,6 +947,8 @@ export function EventCatalogExplorer({
                   className={`group relative rounded-2xl border bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
                     isConfirmed
                       ? "border-emerald-300 bg-gradient-to-b from-emerald-50/40 via-white to-white"
+                      : isSlotFull
+                      ? "border-rose-200 bg-slate-50/60"
                       : isPro
                       ? "border-amber-300 bg-gradient-to-b from-amber-50/30 via-white to-white"
                       : "border-slate-200/90"
@@ -956,6 +959,8 @@ export function EventCatalogExplorer({
                     className={`h-1.5 w-full bg-gradient-to-r ${
                       isConfirmed
                         ? "from-emerald-500 to-teal-500"
+                        : isSlotFull
+                        ? "from-rose-500 to-rose-600"
                         : theme.accent
                     }`}
                   />
@@ -968,6 +973,11 @@ export function EventCatalogExplorer({
                           <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
                             <CheckCircle2 className="h-3 w-3" />
                             <span>ON YOUR PASS</span>
+                          </span>
+                        ) : isSlotFull ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                            <Lock className="h-3 w-3" />
+                            <span>SLOT FULL</span>
                           </span>
                         ) : isPro ? (
                           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-2xs">
@@ -1036,7 +1046,9 @@ export function EventCatalogExplorer({
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
                         <Users className="h-3.5 w-3.5 text-slate-400" />
                         <span>
-                          <strong className="text-slate-800 font-bold">{regCount}</strong> / {limit} Seats
+                          <strong className={isSlotFull ? "text-rose-600 font-black" : "text-slate-800 font-bold"}>
+                            {regCount}
+                          </strong> / {limit} Seats {isSlotFull && <span className="text-rose-600 font-black text-[10px] ml-1">(FULL)</span>}
                         </span>
                       </div>
 
@@ -1074,6 +1086,16 @@ export function EventCatalogExplorer({
                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                             <span>Confirmed</span>
                           </span>
+                        ) : isSlotFull ? (
+                          <button
+                            type="button"
+                            disabled
+                            title="Competition slot limit reached. Registration closed."
+                            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold bg-rose-50 text-rose-700 border border-rose-200 cursor-not-allowed opacity-90 shadow-2xs"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-rose-500" />
+                            <span>Slot Full</span>
+                          </button>
                         ) : isSelected ? (
                           <button
                             type="button"
@@ -1344,9 +1366,15 @@ export function EventCatalogExplorer({
                       <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
                         {activeModalEvent.participant_limit || 100} Seats
                       </span>
-                      <span className="text-[11px] font-semibold text-emerald-600 block font-mono font-bold">
-                        Registration Open
-                      </span>
+                      {((activeModalEvent.registrations || []).length >= (activeModalEvent.participant_limit || 100)) ? (
+                        <span className="text-[11px] font-semibold text-rose-600 block font-mono font-bold flex items-center gap-1">
+                          <Lock className="h-3 w-3" /> Slot Limit Full
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-emerald-600 block font-mono font-bold">
+                          Registration Open
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -1559,6 +1587,15 @@ export function EventCatalogExplorer({
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span>On Active Pass</span>
                   </span>
+                ) : ((activeModalEvent.registrations || []).length >= (activeModalEvent.participant_limit || 100)) ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2.5 text-xs font-bold cursor-not-allowed shadow-2xs"
+                  >
+                    <Lock className="h-4 w-4 text-rose-500" />
+                    <span>Slot Full / Capacity Reached</span>
+                  </button>
                 ) : isEventSelected(activeModalEvent.id) ? (
                   <button
                     type="button"

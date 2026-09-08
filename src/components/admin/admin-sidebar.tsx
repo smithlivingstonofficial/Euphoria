@@ -21,6 +21,7 @@ import {
   CreditCard,
   Crown,
   ShieldAlert,
+  MessageSquareWarning,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 
@@ -58,6 +59,11 @@ const NAV_SECTIONS = [
         href: "/admin/payments",
         label: "Payment Transactions",
         icon: CreditCard,
+      },
+      {
+        href: "/admin/payment-requests",
+        label: "Payment Requests",
+        icon: MessageSquareWarning,
       },
       {
         href: "/admin/payments/recovery",
