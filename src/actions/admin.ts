@@ -2,6 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { fetchAllSupabasePages } from "@/lib/supabase/paginate";
 import {
   checkEasebuzzTransactionStatus,
   resolveEventIds,
@@ -159,8 +160,8 @@ export async function getAdminOverviewMetrics() {
       { data: events },
       { count: totalAttendance },
       { data: categories },
-      { data: passes },
-      { data: orders },
+      passes,
+      orders,
     ] = await Promise.all([
       adminClient.from("profiles").select("*", { count: "exact", head: true }),
       adminClient
@@ -171,12 +172,25 @@ export async function getAdminOverviewMetrics() {
         .from("profiles")
         .select("*", { count: "exact", head: true })
         .eq("participant_type", "external"),
-      adminClient.from("event_registrations").select("*", { count: "exact", head: true }),
+      adminClient
+        .from("event_registrations")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "confirmed"),
       adminClient.from("events").select("id, name, registration_fee, participant_limit, status, category_id, is_pro_event"),
       adminClient.from("attendance").select("*", { count: "exact", head: true }),
       adminClient.from("event_categories").select("id, name"),
-      adminClient.from("delegate_passes").select("id, pass_tier, amount_paid, slots_used, status"),
-      adminClient.from("orders").select("id, amount, status"),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("id, pass_tier, amount_paid, slots_used, status")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("orders")
+          .select("id, amount, status")
+          .range(from, to)
+      ),
     ]);
 
     // Calculate revenue from paid delegate passes / orders
@@ -502,62 +516,63 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
   try {
     const adminClient = await createAdminClient();
 
-    let query = adminClient
-      .from("event_registrations")
-      .select(`
-        id,
-        slot_number,
-        registration_code,
-        status,
-        payment_status,
-        created_at,
-        qr_secret_nonce,
-        pass:delegate_passes (
+    const data = await fetchAllSupabasePages((from, to) => {
+      let q = adminClient
+        .from("event_registrations")
+        .select(`
           id,
-          pass_code,
-          pass_tier,
-          amount_paid,
-          slots_used,
-          status
-        ),
-        user:profiles (
-          id,
-          full_name,
-          email,
-          mobile_number,
-          gender,
-          participant_type,
-          college_name,
-          department,
-          course,
-          year_of_study,
-          register_number
-        ),
-        event:events (
-          id,
-          name,
-          is_pro_event,
-          registration_fee,
-          event_date,
-          venue,
-          category:event_categories (
-            name
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          created_at,
+          qr_secret_nonce,
+          pass:delegate_passes (
+            id,
+            pass_code,
+            pass_tier,
+            amount_paid,
+            slots_used,
+            status
+          ),
+          user:profiles (
+            id,
+            full_name,
+            email,
+            mobile_number,
+            gender,
+            participant_type,
+            college_name,
+            department,
+            course,
+            year_of_study,
+            register_number
+          ),
+          event:events (
+            id,
+            name,
+            is_pro_event,
+            registration_fee,
+            event_date,
+            venue,
+            category:event_categories (
+              name
+            )
+          ),
+          attendance (
+            id,
+            scanned_at,
+            scan_method
           )
-        ),
-        attendance (
-          id,
-          scanned_at,
-          scan_method
-        )
-      `)
-      .order("created_at", { ascending: false });
+        `)
+        .order("created_at", { ascending: false });
 
-    if (eventId && eventId !== "all") {
-      query = query.eq("event_id", eventId);
-    }
+      if (eventId && eventId !== "all") {
+        q = q.eq("event_id", eventId);
+      }
 
-    const { data, error } = await query;
-    if (error) throw error;
+      return q.range(from, to);
+    });
 
     // Check orders and profiles for accommodation requests
     const userIds = Array.from(new Set((data || []).map((r: any) => r.user?.id).filter(Boolean)));
@@ -565,17 +580,21 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
 
     if (userIds.length > 0) {
       try {
-        const { data: userOrders } = await adminClient
-          .from("orders")
-          .select("user_id, metadata")
-          .in("user_id", userIds)
-          .eq("status", "paid");
+        const chunkSize = 500;
+        for (let i = 0; i < userIds.length; i += chunkSize) {
+          const slice = userIds.slice(i, i + chunkSize);
+          const { data: userOrders } = await adminClient
+            .from("orders")
+            .select("user_id, metadata")
+            .in("user_id", slice)
+            .eq("status", "paid");
 
-        (userOrders || []).forEach((ord: any) => {
-          if (ord.metadata?.needs_accommodation === true || ord.metadata?.needs_accommodation === "true") {
-            accommodationMap.set(ord.user_id, true);
-          }
-        });
+          (userOrders || []).forEach((ord: any) => {
+            if (ord.metadata?.needs_accommodation === true || ord.metadata?.needs_accommodation === "true") {
+              accommodationMap.set(ord.user_id, true);
+            }
+          });
+        }
       } catch (ordErr) {
         console.warn("Accommodation orders fetch notice:", ordErr);
       }
@@ -1326,24 +1345,27 @@ export async function getAllOrdersAdmin() {
   try {
     const adminClient = await createAdminClient();
 
-    const [
-      { data: orders, error: ordersErr },
-      { data: profiles },
-      { data: passes },
-    ] = await Promise.all([
-      adminClient
-        .from("orders")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      adminClient
-        .from("profiles")
-        .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number, city"),
-      adminClient
-        .from("delegate_passes")
-        .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status"),
+    const [orders, profiles, passes] = await Promise.all([
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("profiles")
+          .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number, city")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status")
+          .range(from, to)
+      ),
     ]);
-
-    if (ordersErr) throw ordersErr;
 
     const profileMap = new Map<string, any>();
     (profiles || []).forEach((p) => profileMap.set(p.id, p));
@@ -1919,54 +1941,61 @@ export async function getAllUsersAndPassesAdmin() {
     const adminClient = await createAdminClient();
 
     // Fetch all profiles, passes, registrations, roles, and orders in parallel
-    const [
-      { data: profiles, error: pErr },
-      { data: passes, error: passErr },
-      { data: registrations, error: regErr },
-      { data: roleAssignments, error: roleErr },
-      { data: orders, error: ordErr },
-    ] = await Promise.all([
-      adminClient
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false }),
-      adminClient
-        .from("delegate_passes")
-        .select("*"),
-      adminClient
-        .from("event_registrations")
-        .select(`
-          id,
-          user_id,
-          slot_number,
-          registration_code,
-          status,
-          payment_status,
-          event:events (
+    const [profiles, passes, registrations, roleAssignments, orders] = await Promise.all([
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("profiles")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("*")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select(`
             id,
-            name,
-            slug,
-            is_pro_event,
-            venue,
-            event_date,
-            start_time,
-            category:event_categories (name)
-          ),
-          attendance (
-            id,
-            scanned_at
-          )
-        `),
-      adminClient
-        .from("user_role_assignments")
-        .select("user_id, role_id"),
-      adminClient
-        .from("orders")
-        .select("id, user_id, order_number, amount, status, provider, created_at")
-        .order("created_at", { ascending: false }),
+            user_id,
+            slot_number,
+            registration_code,
+            status,
+            payment_status,
+            event:events (
+              id,
+              name,
+              slug,
+              is_pro_event,
+              venue,
+              event_date,
+              start_time,
+              category:event_categories (name)
+            ),
+            attendance (
+              id,
+              scanned_at
+            )
+          `)
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("user_role_assignments")
+          .select("user_id, role_id")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("orders")
+          .select("id, user_id, order_number, amount, status, provider, created_at")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
     ]);
-
-    if (pErr) throw pErr;
 
     // Index related data by user_id
     const passMap = new Map<string, any>();
@@ -2500,21 +2529,28 @@ export async function getPaymentIssuesAndDiscrepanciesAdmin() {
 
     const adminClient = await createAdminClient();
 
-    const [
-      { data: allOrders, error: ordErr },
-      { data: passes, error: passErr },
-      { data: profiles, error: profErr },
-      { data: events },
-    ] = await Promise.all([
-      adminClient.from("orders").select("*").order("created_at", { ascending: false }),
-      adminClient.from("delegate_passes").select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status"),
-      adminClient.from("profiles").select("id, full_name, email, mobile_number, register_number, college_name, department, participant_type, is_profile_completed"),
+    const [allOrders, passes, profiles, { data: events }] = await Promise.all([
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("profiles")
+          .select("id, full_name, email, mobile_number, register_number, college_name, department, participant_type, is_profile_completed")
+          .range(from, to)
+      ),
       adminClient.from("events").select("id, name, is_pro_event"),
     ]);
-
-    if (ordErr) throw ordErr;
-    if (passErr) throw passErr;
-    if (profErr) throw profErr;
 
     const profileMap = new Map<string, any>();
     (profiles || []).forEach((p) => profileMap.set(p.id, p));
@@ -3168,22 +3204,23 @@ export async function getEventsSlotControlAdmin(): Promise<{
     const eventIds = allEventsList.map((e) => e.id);
 
     // 2. Fetch confirmed registrations with user profile data for KLU classification
-    const { data: regs, error: regsErr } = await adminClient
-      .from("event_registrations")
-      .select(`
-        id,
-        event_id,
-        status,
-        user:profiles (
+    const regs = await fetchAllSupabasePages((from, to) =>
+      adminClient
+        .from("event_registrations")
+        .select(`
           id,
-          email,
-          participant_type
-        )
-      `)
-      .in("event_id", eventIds)
-      .eq("status", "confirmed");
-
-    if (regsErr) throw regsErr;
+          event_id,
+          status,
+          user:profiles (
+            id,
+            email,
+            participant_type
+          )
+        `)
+        .in("event_id", eventIds)
+        .eq("status", "confirmed")
+        .range(from, to)
+    );
 
     // Aggregate counts per event
     const internalCounts: Record<string, number> = {};
@@ -3449,17 +3486,21 @@ export async function bulkUpdateEventSlotControlAdmin(params: {
       if (error) throw error;
     } else if (params.action === "reserve_for_externals") {
       // For each event, set internal_limit to current internal registration count
-      const { data: regs } = await adminClient
-        .from("event_registrations")
-        .select(`
-          event_id,
-          user:profiles (
-            email,
-            participant_type
-          )
-        `)
-        .in("event_id", params.eventIds)
-        .eq("status", "confirmed");
+      const regs = await fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select(`
+            event_id,
+            status,
+            user:profiles (
+              email,
+              participant_type
+            )
+          `)
+          .in("event_id", params.eventIds)
+          .eq("status", "confirmed")
+          .range(from, to)
+      );
 
       const internalCounts: Record<string, number> = {};
       (regs || []).forEach((r: any) => {

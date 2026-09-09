@@ -21,7 +21,7 @@ export default async function PaymentHelpPage() {
       <Navbar user={context.userProfile ? { email: context.userProfile.email } : undefined} />
 
       {/* Main Page Body: Tight top padding directly below the 57px fixed navbar */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 pt-[66px] sm:pt-[70px] pb-10">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-2.5 sm:px-6 lg:px-8 pt-[64px] sm:pt-[70px] pb-10 overflow-x-hidden">
         <PaymentHelpClient initialContext={context} />
       </main>
 

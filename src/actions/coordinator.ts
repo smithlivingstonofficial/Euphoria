@@ -2,6 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { fetchAllSupabasePages } from "@/lib/supabase/paginate";
 
 export interface CoordinatorEventItem {
   id: string;
@@ -357,30 +358,38 @@ export async function getCoordinatorWorkspaceData() {
     const eventIds = eventsData.map((e) => e.id);
 
     // Fetch registration and attendance counts safely
-    let registrations: { id: string; event_id: string; slot_number?: number }[] = [];
+    let registrations: { id: string; event_id: string; slot_number?: number; user?: any }[] = [];
     let attendances: { id: string; event_id: string }[] = [];
 
     try {
       const [regRes, attRes] = await Promise.all([
-        adminClient
-          .from("event_registrations")
-          .select(`
-            id,
-            event_id,
-            slot_number,
-            user:profiles (
-              email,
-              participant_type
-            )
-          `)
-          .in("event_id", eventIds),
-        adminClient
-          .from("attendance")
-          .select("id, event_id")
-          .in("event_id", eventIds),
+        fetchAllSupabasePages((from, to) =>
+          adminClient
+            .from("event_registrations")
+            .select(`
+              id,
+              event_id,
+              slot_number,
+              status,
+              user:profiles (
+                email,
+                participant_type
+              )
+            `)
+            .in("event_id", eventIds)
+            .eq("status", "confirmed")
+            .range(from, to)
+        ),
+        fetchAllSupabasePages((from, to) =>
+          adminClient
+            .from("attendance")
+            .select("id, event_id")
+            .in("event_id", eventIds)
+            .range(from, to)
+        ),
       ]);
-      registrations = regRes.data || [];
-      attendances = attRes.data || [];
+      registrations = regRes || [];
+      attendances = attRes || [];
     } catch {
       // safe fallback
     }
@@ -512,7 +521,8 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
       adminClient
         .from("event_registrations")
         .select("id", { count: "exact", head: true })
-        .eq("event_id", eventId),
+        .eq("event_id", eventId)
+        .eq("status", "confirmed"),
       adminClient
         .from("attendance")
         .select("id", { count: "exact", head: true })
@@ -521,7 +531,8 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         .from("event_registrations")
         .select("id", { count: "exact", head: true })
         .eq("event_id", eventId)
-        .eq("slot_number", 1),
+        .eq("slot_number", 1)
+        .eq("status", "confirmed"),
       adminClient
         .from("event_registrations")
         .select(`
@@ -558,6 +569,7 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
           )
         `)
         .eq("event_id", eventId)
+        .eq("status", "confirmed")
         .order("created_at", { ascending: false })
         .range(0, 9), // Strictly first 10 for Page 1!
     ]);
@@ -704,6 +716,7 @@ export async function getPaginatedEventAttendees(
         )
       `, { count: "exact" })
       .eq("event_id", eventId)
+      .eq("status", "confirmed")
       .order("created_at", { ascending: false });
 
     // 1. Filter by Pass Tier if specified
@@ -882,6 +895,7 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
           )
         `)
         .eq("event_id", eventId)
+        .eq("status", "confirmed")
         .order("created_at", { ascending: false }),
     ]);
 
@@ -1634,7 +1648,7 @@ export async function exportOverallEventsSummaryCSVAction() {
       };
     }
 
-    const [{ data: events }, { data: registrations }, { data: attendances }] = await Promise.all([
+    const [{ data: events }, registrations, attendances] = await Promise.all([
       adminClient
         .from("events")
         .select(`
@@ -1654,16 +1668,24 @@ export async function exportOverallEventsSummaryCSVAction() {
           category:event_categories (name)
         `)
         .order("school_or_dept", { ascending: true }),
-      adminClient
-        .from("event_registrations")
-        .select(`
-          event_id,
-          slot_number,
-          user:profiles (email, participant_type)
-        `),
-      adminClient
-        .from("attendance")
-        .select("event_id"),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select(`
+            event_id,
+            slot_number,
+            status,
+            user:profiles (email, participant_type)
+          `)
+          .eq("status", "confirmed")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("attendance")
+          .select("event_id")
+          .range(from, to)
+      ),
     ]);
 
     // Build counts
@@ -1833,61 +1855,61 @@ export async function generateCustomReportAction(params: CustomReportParams) {
       }
     }
 
-    // Build base query
-    let query = adminClient
-      .from("event_registrations")
-      .select(`
-        id,
-        event_id,
-        slot_number,
-        registration_code,
-        status,
-        payment_status,
-        created_at,
-        event:events (
+    const rawRegistrations = await fetchAllSupabasePages((from, to) => {
+      let q = adminClient
+        .from("event_registrations")
+        .select(`
           id,
-          name,
-          school_or_dept,
-          venue,
-          event_date,
-          start_time,
-          end_time,
-          is_pro_event
-        ),
-        pass:delegate_passes (
-          id,
-          pass_code,
-          pass_tier,
-          amount_paid,
-          slots_used
-        ),
-        user:profiles (
-          id,
-          full_name,
-          email,
-          mobile_number,
-          register_number,
-          college_name,
-          department,
-          course,
-          year_of_study,
-          participant_type
-        ),
-        attendance (
-          id,
-          scanned_at,
-          scan_method
-        )
-      `)
-      .order("created_at", { ascending: false });
+          event_id,
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          created_at,
+          event:events (
+            id,
+            name,
+            school_or_dept,
+            venue,
+            event_date,
+            start_time,
+            end_time,
+            is_pro_event
+          ),
+          pass:delegate_passes (
+            id,
+            pass_code,
+            pass_tier,
+            amount_paid,
+            slots_used
+          ),
+          user:profiles (
+            id,
+            full_name,
+            email,
+            mobile_number,
+            register_number,
+            college_name,
+            department,
+            course,
+            year_of_study,
+            participant_type
+          ),
+          attendance (
+            id,
+            scanned_at,
+            scan_method
+          )
+        `)
+        .eq("status", "confirmed")
+        .order("created_at", { ascending: false });
 
-    // Apply Scope Filter
-    if (params.scope === "event" && params.eventId) {
-      query = query.eq("event_id", params.eventId);
-    }
+      if (params.scope === "event" && params.eventId) {
+        q = q.eq("event_id", params.eventId);
+      }
 
-    const { data: rawRegistrations, error: fetchErr } = await query;
-    if (fetchErr) throw fetchErr;
+      return q.range(from, to);
+    });
 
     let filtered = rawRegistrations || [];
 

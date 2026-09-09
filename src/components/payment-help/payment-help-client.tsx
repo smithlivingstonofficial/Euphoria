@@ -25,6 +25,11 @@ import {
   ChevronRight,
   ChevronDown,
   Filter,
+  HelpCircle,
+  Calendar,
+  Hash,
+  Star,
+  User,
 } from "lucide-react";
 import {
   submitPaymentIssue,
@@ -58,6 +63,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
     "Amount debited from bank, but pass was not generated"
   );
   const [description, setDescription] = useState("");
+  const [showUtrHelp, setShowUtrHelp] = useState(false);
 
   // 2-Slot Event Selection State
   const [slot1Id, setSlot1Id] = useState<string>("");
@@ -137,6 +143,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
   );
 
   const isSlotsComplete = Boolean(slot1Id && slot2Id);
+  const chosenCount = (slot1Id ? 1 : 0) + (slot2Id ? 1 : 0);
 
   // Handle tier switch
   const handleTierChange = (newTier: "standard_pass" | "pro_pass") => {
@@ -158,6 +165,22 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
     } else {
       setSlot2Id("");
     }
+  };
+
+  const handleSetCurrentTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    setPaymentDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+    setSubmitError(null);
+  };
+
+  const handleAddRemarkTemplate = (template: string) => {
+    setDescription((prev) => (prev ? `${prev} ${template}` : template));
+    setSubmitError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,51 +261,61 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-3.5 animate-in fade-in duration-200">
+    <div className="w-full max-w-full lg:max-w-6xl mx-auto space-y-3.5 min-w-0 animate-in fade-in duration-200">
       {/* ─────────────────────────────────────────────────────────────
-          1. ULTRA-COMPACT UNIFIED HEADER RIBBON (~44px tall)
+          1. ULTRA-COMPACT UNIFIED HEADER RIBBON
           ───────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white rounded-2xl border border-slate-200/90 px-4 py-2.5 shadow-2xs">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-7 w-7 rounded-lg bg-indigo-50 border border-indigo-200 text-primary flex items-center justify-center shrink-0">
-            <CreditCard className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight font-display">
-                Payment Help &amp; Pass Activation
-              </h1>
-              {context.isAdmin && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[10px] font-black uppercase">
-                  <Zap className="h-2.5 w-2.5 text-amber-600" /> Admin Test
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 truncate hidden sm:block">
-              Choose your 2 competitions and enter your bank reference ID to issue your pass
-            </p>
-          </div>
-        </div>
+      {/* ─────────────────────────────────────────────────────────────
+          1. ULTRA-COMPACT UNIFIED HEADER RIBBON
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/90 p-2 sm:p-3 shadow-2xs relative overflow-hidden">
+        {/* Subtle decorative gradient top accent */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-indigo-500 to-purple-500" />
 
-        {/* Right side: Participant info + Admin desk link */}
-        <div className="flex items-center gap-2 shrink-0">
-          {context.userProfile && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs">
-              <span className="font-bold text-slate-900">{context.userProfile.fullName}</span>
-              <span className="text-slate-400 text-[11px] hidden md:inline">({context.userProfile.email})</span>
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-primary to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <CreditCard className="h-3.5 w-3.5" />
             </div>
-          )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-xs sm:text-sm md:text-base font-black text-slate-900 tracking-tight font-display truncate">
+                  Payment Help &amp; Pass Activation
+                </h1>
+                {context.isAdmin && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[9px] font-black uppercase shrink-0">
+                    <Zap className="h-2 w-2 text-amber-600" /> Admin
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] sm:text-xs text-slate-500 truncate leading-tight mt-0.2">
+                Choose 2 events &amp; verify bank UTR to issue pass
+              </p>
+            </div>
+          </div>
 
-          {context.isAdmin && (
-            <Link
-              href="/admin/payment-requests"
-              target="_blank"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition-colors shadow-2xs"
-            >
-              <span>Desk</span>
-              <ExternalLink className="h-3 w-3 text-amber-700" />
-            </Link>
-          )}
+          {/* User info & Desk link */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {context.userProfile && (
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-50 border border-slate-200/90 text-slate-700 text-[11px] shadow-2xs max-w-[120px] sm:max-w-none">
+                <div className="h-3.5 w-3.5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold shrink-0">
+                  {context.userProfile.fullName ? context.userProfile.fullName.charAt(0).toUpperCase() : "U"}
+                </div>
+                <span className="font-bold text-slate-900 truncate">{context.userProfile.fullName}</span>
+              </div>
+            )}
+
+            {context.isAdmin && (
+              <Link
+                href="/admin/payment-requests"
+                target="_blank"
+                className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-[10px] font-bold transition-colors shadow-2xs shrink-0"
+              >
+                <span>Desk</span>
+                <ExternalLink className="h-2.5 w-2.5 text-amber-700" />
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -464,20 +497,20 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
           </div>
 
           {/* 3-Step Visual Progress Stepper */}
-          <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 sm:p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80">
             {/* Step 1: Submitted */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 p-2 sm:p-1 rounded-xl bg-white sm:bg-transparent border sm:border-0 border-slate-200/60 shadow-2xs sm:shadow-none">
               <div className="h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs">
                 ✓
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-bold text-slate-900 truncate">1. Submitted</div>
-                <div className="text-[9px] text-slate-500 truncate">Details Received</div>
+                <div className="text-xs font-bold text-slate-900 truncate">1. Submitted</div>
+                <div className="text-[10px] text-slate-500 truncate">Details Received</div>
               </div>
             </div>
 
             {/* Step 2: Gateway & Admin Review */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 p-2 sm:p-1 rounded-xl bg-white sm:bg-transparent border sm:border-0 border-slate-200/60 shadow-2xs sm:shadow-none">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${
                   activeTicket.status === "resolved" || activeTicket.gatewayVerified
@@ -494,8 +527,8 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   : "2"}
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-bold text-slate-900 truncate">2. Verification</div>
-                <div className="text-[9px] text-slate-500 truncate">
+                <div className="text-xs font-bold text-slate-900 truncate">2. Verification</div>
+                <div className="text-[10px] text-slate-500 truncate">
                   {activeTicket.gatewayVerified
                     ? "Easebuzz Matched"
                     : activeTicket.status === "rejected"
@@ -506,7 +539,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
             </div>
 
             {/* Step 3: Pass Activated */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 p-2 sm:p-1 rounded-xl bg-white sm:bg-transparent border sm:border-0 border-slate-200/60 shadow-2xs sm:shadow-none">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${
                   activeTicket.status === "resolved"
@@ -517,8 +550,8 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                 {activeTicket.status === "resolved" ? "✓" : "3"}
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-bold text-slate-900 truncate">3. Pass Issued</div>
-                <div className="text-[9px] text-slate-500 truncate">
+                <div className="text-xs font-bold text-slate-900 truncate">3. Pass Issued</div>
+                <div className="text-[10px] text-slate-500 truncate">
                   {activeTicket.status === "resolved" ? "Gate Pass Ready" : "Awaiting Approval"}
                 </div>
               </div>
@@ -715,19 +748,22 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 sm:gap-4 items-start w-full min-w-0">
             {/* ═════════════════════════════════════════════════════════
-                LEFT COLUMN: PASS & COMPETITIONS (7 of 12 Cols)
+                LEFT COLUMN: PASS & COMPETITIONS (Equal 1st Col)
             ═════════════════════════════════════════════════════════ */}
-            <div className="lg:col-span-7 space-y-3">
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs space-y-3">
+            <div className="w-full min-w-0 space-y-2.5">
+              <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs space-y-3 relative overflow-hidden">
+                {/* Top decorative accent line matching Step 2 */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-indigo-500 to-purple-500" />
+
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 pt-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-[11px] font-bold shadow-2xs">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-indigo-600 text-white text-xs font-black shadow-xs">
                       1
                     </span>
-                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 font-display">
+                    <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 font-display">
                       Choose Your Pass &amp; 2 Competitions
                     </h2>
                   </div>
@@ -736,95 +772,108 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                     className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-colors ${
                       isSlotsComplete
                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                        : "bg-slate-100 text-slate-600"
+                        : chosenCount === 1
+                        ? "bg-amber-100 text-amber-800 border border-amber-300"
+                        : "bg-slate-100 text-slate-600 border border-slate-200"
                     }`}
                   >
-                    {isSlotsComplete ? "✓ 2 of 2 Chosen" : `${(slot1Id ? 1 : 0) + (slot2Id ? 1 : 0)} of 2 Chosen`}
+                    {isSlotsComplete ? "✓ 2 of 2 Ready" : `${chosenCount} of 2 Chosen`}
                   </span>
                 </div>
 
-                {/* Dual Pass Cards (Compact & High-End) */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* Dual Pass Cards (Compact 2-Col Grid) */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-2.5 w-full">
                   {/* Standard Pass */}
                   <button
                     type="button"
                     onClick={() => handleTierChange("standard_pass")}
-                    className={`group relative p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    className={`group relative p-2 sm:p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                       passTier === "standard_pass"
-                        ? "border-primary bg-gradient-to-br from-indigo-50/80 to-purple-50/30 ring-2 ring-primary/15 shadow-xs"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                        ? "border-primary bg-gradient-to-b from-indigo-50/90 to-white ring-2 ring-primary/20 shadow-xs"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-1 w-full">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span
-                          className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors shrink-0 ${
-                            passTier === "standard_pass"
-                              ? "border-primary bg-primary text-white"
-                              : "border-slate-300 bg-white"
-                          }`}
-                        >
-                          {passTier === "standard_pass" && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                        </span>
-                        <span className="font-bold text-xs sm:text-sm text-slate-900 truncate">
-                          Standard Pass
-                        </span>
-                      </div>
-                      <span className="font-mono font-black text-xs sm:text-sm text-primary shrink-0">
+                    <div className="flex items-center justify-between w-full">
+                      <span
+                        className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-all shrink-0 ${
+                          passTier === "standard_pass"
+                            ? "border-primary bg-primary text-white shadow-2xs"
+                            : "border-slate-300 bg-white group-hover:border-slate-400"
+                        }`}
+                      >
+                        {passTier === "standard_pass" && <Check className="h-2 w-2 stroke-[3]" />}
+                      </span>
+                      <span className="font-mono font-black text-xs text-primary bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
                         ₹200
                       </span>
                     </div>
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 leading-tight">
-                      Any 2 regular competitions across depts
-                    </p>
+
+                    <div className="mt-1.5">
+                      <div className="font-extrabold text-xs text-slate-900 leading-tight">
+                        Standard Pass
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                        2 Regular Events
+                      </p>
+                    </div>
+
+                    <div className="mt-1.5 pt-1 border-t border-slate-100/90 flex items-center gap-1 text-[9px] font-semibold text-slate-600">
+                      <CheckCircle2 className={`h-2.5 w-2.5 shrink-0 ${passTier === "standard_pass" ? "text-primary" : "text-slate-400"}`} />
+                      <span className="truncate">Across any depts</span>
+                    </div>
                   </button>
 
                   {/* Flagship Pass */}
                   <button
                     type="button"
                     onClick={() => handleTierChange("pro_pass")}
-                    className={`group relative p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    className={`group relative p-2 sm:p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                       passTier === "pro_pass"
-                        ? "border-amber-500 bg-gradient-to-br from-amber-50/90 to-yellow-50/30 ring-2 ring-amber-400/20 shadow-xs"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                        ? "border-amber-500 bg-gradient-to-b from-amber-50/90 to-white ring-2 ring-amber-400/25 shadow-xs"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-1 w-full">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span
-                          className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors shrink-0 ${
-                            passTier === "pro_pass"
-                              ? "border-amber-600 bg-amber-500 text-white"
-                              : "border-slate-300 bg-white"
-                          }`}
-                        >
-                          {passTier === "pro_pass" && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                        </span>
-                        <span className="font-bold text-xs sm:text-sm text-slate-900 truncate flex items-center gap-1">
-                          <span>⭐ Flagship</span>
-                        </span>
-                      </div>
-                      <span className="font-mono font-black text-xs sm:text-sm text-amber-600 shrink-0">
+                    <div className="flex items-center justify-between w-full">
+                      <span
+                        className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-all shrink-0 ${
+                          passTier === "pro_pass"
+                            ? "border-amber-600 bg-amber-500 text-white shadow-2xs"
+                            : "border-slate-300 bg-white group-hover:border-slate-400"
+                        }`}
+                      >
+                        {passTier === "pro_pass" && <Check className="h-2 w-2 stroke-[3]" />}
+                      </span>
+                      <span className="font-mono font-black text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
                         ₹300
                       </span>
                     </div>
-                    <p className="text-[10px] sm:text-[11px] text-slate-500 mt-1 leading-tight">
-                      1 Flagship Event + 1 Regular Event
-                    </p>
+
+                    <div className="mt-1.5">
+                      <div className="font-extrabold text-xs text-slate-900 leading-tight flex items-center gap-0.5">
+                        <span>⭐ Flagship Pass</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                        1 Star + 1 Regular
+                      </p>
+                    </div>
+
+                    <div className="mt-1.5 pt-1 border-t border-slate-100/90 flex items-center gap-1 text-[9px] font-semibold text-slate-600">
+                      <Star className={`h-2.5 w-2.5 shrink-0 ${passTier === "pro_pass" ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
+                      <span className="truncate">1 Star Flagship Incl.</span>
+                    </div>
                   </button>
                 </div>
 
                 {/* Compact Department Filter Strip */}
-                <div className="flex items-center gap-2 bg-slate-50/90 px-2.5 py-1.5 rounded-xl border border-slate-200/70 text-xs">
-                  <div className="flex items-center gap-1 text-slate-500 font-bold text-[11px] shrink-0">
+                <div className="flex items-center gap-1.5 bg-slate-50/90 px-2.5 py-1 rounded-lg border border-slate-200/80 text-xs shadow-2xs w-full max-w-full">
+                  <div className="flex items-center gap-1 text-slate-500 font-bold text-[10px] shrink-0">
                     <Filter className="h-3 w-3 text-slate-400" />
-                    <span className="hidden sm:inline">Filter Dept:</span>
-                    <span className="sm:hidden">Dept:</span>
+                    <span>Dept:</span>
                   </div>
                   <select
                     value={selectedFilterDept}
                     onChange={(e) => setSelectedFilterDept(e.target.value)}
-                    className="flex-1 bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer truncate"
+                    className="flex-1 min-w-0 bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer truncate max-w-full py-0.5"
                   >
                     <option value="All">All Departments ({availableEvents.length} events)</option>
                     {passTier === "pro_pass" && (
@@ -838,20 +887,20 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   </select>
                 </div>
 
-                {/* 2 Competition Slots (Side-by-side on sm+ screens) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* 2 Competition Slots (Compact Side-by-Side or Stacked) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5 w-full">
                   {/* Slot 1 Box */}
                   <div
-                    className={`p-2.5 rounded-xl border space-y-1.5 transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-xl border space-y-1.5 transition-all w-full max-w-full overflow-hidden ${
                       slot1Id
-                        ? "bg-indigo-50/40 border-indigo-200"
-                        : "bg-slate-50/60 border-slate-200/80"
+                        ? "bg-indigo-50/40 border-indigo-200/90 shadow-2xs"
+                        : "bg-slate-50/70 border-slate-200/80"
                     }`}
                   >
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                      <span className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-1.5 min-w-0">
                         <span
-                          className={`text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider ${
+                          className={`text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider shrink-0 ${
                             passTier === "pro_pass"
                               ? "bg-amber-100 text-amber-900 border border-amber-300"
                               : "bg-indigo-100 text-indigo-900 border border-indigo-200"
@@ -859,13 +908,15 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                         >
                           {passTier === "pro_pass" ? "⭐ FLAGSHIP" : "REGULAR"}
                         </span>
-                        <span className="text-[11px]">Slot 1 <span className="text-rose-500">*</span></span>
+                        <span className="text-[11px] font-extrabold text-slate-900 truncate">
+                          Slot 1 <span className="text-rose-500">*</span>
+                        </span>
                       </span>
                       {slot1Event && (
                         <button
                           type="button"
                           onClick={() => handleRemoveSlot(1)}
-                          className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
+                          className="text-[10px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer shrink-0"
                         >
                           Clear
                         </button>
@@ -879,10 +930,10 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                         setSlot1Id(id);
                         setSubmitError(null);
                       }}
-                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer truncate shadow-2xs transition-all"
+                      className="w-full max-w-full h-8.5 px-2.5 py-1 text-xs bg-white border border-slate-200 hover:border-slate-300 focus:border-primary rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer shadow-2xs transition-all truncate"
                     >
                       <option value="">
-                        -- Choose {passTier === "pro_pass" ? "Flagship Event" : "Slot 1 Event"} --
+                        -- Choose {passTier === "pro_pass" ? "⭐ Flagship Event" : "Slot 1 Event"} --
                       </option>
                       {(passTier === "pro_pass" ? flagshipEvents : regularEvents)
                         .filter((ev) => {
@@ -898,9 +949,12 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                     </select>
 
                     {slot1Event && (
-                      <div className="flex items-center justify-between gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 animate-in fade-in duration-100">
-                        <span className="font-bold truncate">✓ {slot1Event.name}</span>
-                        <span className="text-emerald-600 shrink-0 font-medium truncate max-w-[110px]">
+                      <div className="flex items-center justify-between gap-1 text-[10px] text-emerald-900 bg-emerald-50/90 border border-emerald-200 rounded-lg px-2 py-0.5 animate-in fade-in duration-100 max-w-full overflow-hidden">
+                        <span className="font-bold truncate flex items-center gap-1 min-w-0 flex-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                          <span className="truncate">{slot1Event.name}</span>
+                        </span>
+                        <span className="text-emerald-700 shrink-0 font-medium text-[9px] truncate max-w-[95px] bg-white/80 px-1 py-0.2 rounded border border-emerald-200">
                           {slot1Event.schoolOrDept}
                         </span>
                       </div>
@@ -909,24 +963,26 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
 
                   {/* Slot 2 Box */}
                   <div
-                    className={`p-2.5 rounded-xl border space-y-1.5 transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-xl border space-y-1.5 transition-all w-full max-w-full overflow-hidden ${
                       slot2Id
-                        ? "bg-indigo-50/40 border-indigo-200"
-                        : "bg-slate-50/60 border-slate-200/80"
+                        ? "bg-indigo-50/40 border-indigo-200/90 shadow-2xs"
+                        : "bg-slate-50/70 border-slate-200/80"
                     }`}
                   >
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider bg-indigo-100 text-indigo-900 border border-indigo-200">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider bg-indigo-100 text-indigo-900 border border-indigo-200 shrink-0">
                           REGULAR
                         </span>
-                        <span className="text-[11px]">Slot 2 <span className="text-rose-500">*</span></span>
+                        <span className="text-[11px] font-extrabold text-slate-900 truncate">
+                          Slot 2 <span className="text-rose-500">*</span>
+                        </span>
                       </span>
                       {slot2Event && (
                         <button
                           type="button"
                           onClick={() => handleRemoveSlot(2)}
-                          className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
+                          className="text-[10px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer shrink-0"
                         >
                           Clear
                         </button>
@@ -940,7 +996,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                         setSlot2Id(id);
                         setSubmitError(null);
                       }}
-                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer truncate shadow-2xs transition-all"
+                      className="w-full max-w-full h-8.5 px-2.5 py-1 text-xs bg-white border border-slate-200 hover:border-slate-300 focus:border-primary rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer shadow-2xs transition-all truncate"
                     >
                       <option value="">
                         -- Choose Slot 2 Regular Event --
@@ -960,9 +1016,12 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                     </select>
 
                     {slot2Event && (
-                      <div className="flex items-center justify-between gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 animate-in fade-in duration-100">
-                        <span className="font-bold truncate">✓ {slot2Event.name}</span>
-                        <span className="text-emerald-600 shrink-0 font-medium truncate max-w-[110px]">
+                      <div className="flex items-center justify-between gap-1 text-[10px] text-emerald-900 bg-emerald-50/90 border border-emerald-200 rounded-lg px-2 py-0.5 animate-in fade-in duration-100 max-w-full overflow-hidden">
+                        <span className="font-bold truncate flex items-center gap-1 min-w-0 flex-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                          <span className="truncate">{slot2Event.name}</span>
+                        </span>
+                        <span className="text-emerald-700 shrink-0 font-medium text-[9px] truncate max-w-[95px] bg-white/80 px-1 py-0.2 rounded border border-emerald-200">
                           {slot2Event.schoolOrDept}
                         </span>
                       </div>
@@ -970,73 +1029,184 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   </div>
                 </div>
 
-                {/* Confirmation Status Banner when both chosen */}
-                {isSlotsComplete && (
-                  <div className="p-2 rounded-xl bg-emerald-50/90 border border-emerald-200/90 flex items-center gap-2 text-xs text-emerald-950 animate-in fade-in duration-150">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-bold text-[11px]">
-                      Both competitions selected! Now enter your bank payment details on the right.
-                    </span>
+                {/* Pass Package Confirmation or Guidelines (Symmetrically balances Step 1 with Step 2) */}
+                {isSlotsComplete ? (
+                  <div className="rounded-xl bg-gradient-to-br from-emerald-50/90 to-teal-50/40 border border-emerald-200/90 p-2.5 sm:p-3 space-y-2 animate-in fade-in duration-150 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold text-emerald-950 flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <span>Package Configured — Ready to Activate</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-black text-emerald-800 bg-white/90 px-2 py-0.5 rounded-md border border-emerald-200">
+                        {formatCurrency(amount)}
+                      </span>
+                    </div>
+                    <div className="space-y-1 text-[11px]">
+                      <div className="flex items-center justify-between bg-white/80 px-2 py-1 rounded-lg border border-emerald-100 text-slate-700">
+                        <span className="truncate font-semibold flex items-center gap-1 min-w-0">
+                          <span className="text-slate-400 font-mono text-[10px]">#1</span>
+                          <span className="truncate">{slot1Event?.name}</span>
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1 py-0.2 rounded shrink-0 ml-1">
+                          {slot1Event?.isProEvent ? "⭐ Flagship" : "Regular"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white/80 px-2 py-1 rounded-lg border border-emerald-100 text-slate-700">
+                        <span className="truncate font-semibold flex items-center gap-1 min-w-0">
+                          <span className="text-slate-400 font-mono text-[10px]">#2</span>
+                          <span className="truncate">{slot2Event?.name}</span>
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1 py-0.2 rounded shrink-0 ml-1">
+                          Regular
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-emerald-800 font-medium leading-tight">
+                      👉 Next: Enter your 12-digit Bank UTR in Step 2 on the right to match your transaction.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-slate-50/80 border border-slate-200/80 p-2.5 sm:p-3 space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                      <span className="flex items-center gap-1 text-slate-800">
+                        <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span>Festival Pass Inclusions &amp; Guarantee</span>
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-mono">Euphoria &apos;26</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] text-slate-600">
+                      <div className="flex items-start gap-1">
+                        <Check className="h-3 w-3 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="leading-tight">All pro-shows &amp; cultural night stage access</span>
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <Check className="h-3 w-3 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="leading-tight">Automatic reservation of both competition slots</span>
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <Check className="h-3 w-3 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="leading-tight">Instant verification directly with Easebuzz logs</span>
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <Check className="h-3 w-3 text-emerald-600 shrink-0 mt-0.5" />
+                        <span className="leading-tight">Digital QR Gate Pass issued to your student portal</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
             {/* ═════════════════════════════════════════════════════════
-                RIGHT COLUMN: PAYMENT VERIFICATION FORM (5 of 12 Cols)
+                RIGHT COLUMN: PAYMENT VERIFICATION FORM (Equal 2nd Col)
             ═════════════════════════════════════════════════════════ */}
-            <div className="lg:col-span-5 space-y-3">
+            <div className="w-full min-w-0 space-y-2.5">
               <form
                 onSubmit={handleSubmit}
-                className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs space-y-3"
+                className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs space-y-3 relative overflow-hidden"
               >
+                {/* Top decorative accent line */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-indigo-500 to-purple-500" />
+
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 pt-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white text-[11px] font-bold shadow-2xs">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-indigo-600 text-white text-xs font-black shadow-xs">
                       2
                     </span>
-                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 font-display">
+                    <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 font-display">
                       Verify Bank Payment
                     </h2>
                   </div>
 
-                  <span className="font-mono font-black text-xs text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
-                    Amount: {formatCurrency(amount)}
+                  <span className="font-mono font-black text-xs text-primary bg-indigo-50/90 border border-indigo-200/90 px-2.5 py-1 rounded-lg shadow-2xs flex items-center gap-1">
+                    <span>Amount:</span>
+                    <span>{formatCurrency(amount)}</span>
                   </span>
                 </div>
 
                 {/* 1. Bank Reference ID (UTR) */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                    <span>
-                      Bank Reference / Transaction ID <span className="text-rose-500">*</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">12-digit UTR/Ref</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={transactionId}
-                    onChange={(e) => setTransactionId(e.target.value)}
-                    placeholder="e.g. 408123456789 or TXN98765432"
-                    className="w-full px-3 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                  />
-                  <p className="text-[10px] text-slate-400 leading-tight">
-                    Found in your bank debit SMS or UPI receipt (UTR / Ref ID).
-                  </p>
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-slate-800 flex items-center gap-1 text-[11px] sm:text-xs">
+                      <Hash className="h-3 w-3 text-primary" />
+                      <span>Bank Reference / UTR ID <span className="text-rose-500">*</span></span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowUtrHelp(!showUtrHelp)}
+                      className="text-[10px] font-bold text-primary bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-100 px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <HelpCircle className="h-2.5 w-2.5" />
+                      <span>{showUtrHelp ? "Hide guide" : "Where to find UTR?"}</span>
+                    </button>
+                  </div>
+
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      required
+                      value={transactionId}
+                      onChange={(e) => {
+                        setTransactionId(e.target.value);
+                        setSubmitError(null);
+                      }}
+                      placeholder="e.g. 408123456789 or TXN98765432"
+                      className="w-full h-9 pl-3 pr-20 text-xs sm:text-sm font-mono tracking-wider bg-slate-50/80 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all shadow-2xs"
+                    />
+                    {transactionId.trim().length >= 12 && (
+                      <span className="absolute right-2 text-[10px] font-bold text-emerald-700 bg-emerald-100/90 border border-emerald-300 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 pointer-events-none animate-in fade-in duration-150">
+                        <Check className="h-2.5 w-2.5 stroke-[3]" />
+                        <span>12 Digits</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Expandable UTR Helper Accordion */}
+                  {showUtrHelp && (
+                    <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-50/90 to-purple-50/40 border border-indigo-200/90 text-xs text-slate-700 space-y-1.5 animate-in fade-in duration-150 shadow-2xs">
+                      <div className="font-bold text-indigo-950 flex items-center gap-1 text-[11px]">
+                        <Info className="h-3 w-3 text-primary shrink-0" />
+                        <span>Where to find your 12-digit UTR on your payment app:</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-100">
+                          <strong className="text-emerald-700 block">Google Pay</strong>
+                          <span className="text-slate-600">UPI Transaction ID</span>
+                        </div>
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-100">
+                          <strong className="text-purple-700 block">PhonePe</strong>
+                          <span className="text-slate-600">UTR in History</span>
+                        </div>
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-100">
+                          <strong className="text-sky-700 block">Paytm</strong>
+                          <span className="text-slate-600">UPI Ref Number</span>
+                        </div>
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-100">
+                          <strong className="text-amber-800 block">Bank SMS</strong>
+                          <span className="text-slate-600">12-digit Ref in SMS</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!showUtrHelp && (
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Found in your bank debit SMS or UPI receipt (12-digit UTR / Ref ID).
+                    </p>
+                  )}
                 </div>
 
                 {/* 2. Payment Method & Date (2 cols) */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-800">
+                <div className="grid grid-cols-2 gap-2 w-full">
+                  <div className="space-y-0.5 w-full min-w-0">
+                    <label className="text-[11px] font-bold text-slate-800">
                       Payment App <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={paymentMethod}
                       onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary"
+                      className="w-full max-w-full h-9 px-2 text-xs bg-slate-50/80 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 cursor-pointer shadow-2xs truncate transition-all"
                     >
                       <option value="Google Pay">Google Pay</option>
                       <option value="PhonePe">PhonePe</option>
@@ -1049,29 +1219,40 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-800">
-                      Payment Time <span className="text-rose-500">*</span>
-                    </label>
+                  <div className="space-y-0.5 w-full min-w-0">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                        <Calendar className="h-2.5 w-2.5 text-slate-400 shrink-0" />
+                        <span className="truncate">Payment Time <span className="text-rose-500">*</span></span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleSetCurrentTime}
+                        className="text-[9px] font-bold text-primary hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.2 rounded transition-colors cursor-pointer"
+                        title="Set to current date and time"
+                      >
+                        ⚡ Now
+                      </button>
+                    </div>
                     <input
                       type="datetime-local"
                       required
                       value={paymentDate}
                       onChange={(e) => setPaymentDate(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary"
+                      className="w-full max-w-full h-9 px-2 text-xs bg-slate-50/80 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 shadow-2xs transition-all"
                     />
                   </div>
                 </div>
 
                 {/* 3. Issue Type */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
+                <div className="space-y-0.5">
+                  <label className="text-[11px] font-bold text-slate-800">
                     What happened? <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={issueType}
                     onChange={(e) => setIssueType(e.target.value)}
-                    className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary"
+                    className="w-full max-w-full h-9 px-2.5 text-xs bg-slate-50/80 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 cursor-pointer shadow-2xs truncate transition-all"
                   >
                     <option value="Amount debited from bank, but pass was not generated">
                       Money deducted, but pass not generated
@@ -1091,17 +1272,46 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
 
                 {/* 4. Notes Textarea */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Brief Note / Remarks <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-800">
+                      Brief Note / Remarks <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">Quick details</span>
+                  </div>
                   <textarea
                     required
                     rows={2}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g. Paid ₹200 on GPay, money was deducted, but pass didn't show up."
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary resize-none"
+                    placeholder="e.g. Paid ₹200 on GPay, money deducted from bank, pass not generated."
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 resize-none shadow-2xs transition-all"
                   />
+
+                  {/* Quick suggestion tags */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate-400 font-medium">Quick chips:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddRemarkTemplate("Amount debited from bank.")}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      + Debited
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddRemarkTemplate("GPay success receipt attached.")}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      + GPay Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddRemarkTemplate("Double debited from account.")}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      + Double Paid
+                    </button>
+                  </div>
                 </div>
 
                 {/* Optional Order Number Link */}
@@ -1110,21 +1320,21 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                     <button
                       type="button"
                       onClick={() => setShowOrderField(true)}
-                      className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-bold text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
                     >
                       <span>+ Add Website Order Number (Optional)</span>
                     </button>
                   ) : (
-                    <div className="space-y-1 animate-in fade-in duration-100">
-                      <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                        <span>Order Number / Merchant Ref</span>
+                    <div className="space-y-0.5 animate-in fade-in duration-100">
+                      <label className="text-[10px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Website Order Number / Merchant Ref</span>
                         <button
                           type="button"
                           onClick={() => {
                             setShowOrderField(false);
                             setOrderNumber("");
                           }}
-                          className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                          className="text-[9px] text-slate-400 hover:text-slate-600 font-semibold cursor-pointer"
                         >
                           Remove
                         </button>
@@ -1134,7 +1344,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                         value={orderNumber}
                         onChange={(e) => setOrderNumber(e.target.value)}
                         placeholder="e.g. EUPH-ORD-12345"
-                        className="w-full px-3 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-primary"
+                        className="w-full h-8.5 px-2.5 text-xs font-mono bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-primary rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary/20 shadow-2xs transition-all"
                       />
                     </div>
                   )}
@@ -1145,21 +1355,29 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    className={`w-full h-10 sm:h-11 px-4 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
                       !isSlotsComplete
-                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
-                        : "bg-primary hover:bg-primary-hover text-white shadow-primary/25 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
+                        ? "bg-slate-100 text-slate-500 border border-slate-200/80 cursor-not-allowed shadow-none"
+                        : "bg-gradient-to-r from-primary via-indigo-600 to-purple-600 hover:from-primary-hover hover:via-indigo-700 hover:to-purple-700 text-white shadow-primary/25 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99]"
                     }`}
                   >
                     {isPending ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Verifying &amp; Submitting...</span>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Verifying with Payment Gateway...</span>
                       </>
                     ) : !isSlotsComplete ? (
-                      <span>Select 2 Competitions to Submit</span>
+                      <span className="flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-slate-400" />
+                        <span>
+                          {chosenCount === 0
+                            ? "Select 2 Competitions in Step 1 (0/2)"
+                            : "Choose 1 More Competition in Step 1 (1/2)"}
+                        </span>
+                      </span>
                     ) : (
                       <>
+                        <Sparkles className="h-4 w-4 text-amber-300" />
                         <span>Submit Pass Request ({formatCurrency(amount)})</span>
                         <ArrowRight className="h-4 w-4" />
                       </>
@@ -1167,7 +1385,7 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   </button>
 
                   <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                     <span>Verified directly against gateway transaction records</span>
                   </div>
                 </div>

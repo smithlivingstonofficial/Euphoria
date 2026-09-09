@@ -149,8 +149,9 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
 
     const rows = listToExport.map((evt, idx) => {
       const sched = getEventSchedule(evt);
-      const regCount = (evt.registrations || []).length;
-      const firstSlotCount = (evt.registrations || []).filter((r) => r.slot_number === 1).length;
+      const confirmedRegs = (evt.registrations || []).filter((r) => r.status === "confirmed");
+      const regCount = confirmedRegs.length;
+      const firstSlotCount = confirmedRegs.filter((r) => r.slot_number === 1).length;
       const limit = evt.participant_limit || 100;
       const available = Math.max(0, limit - regCount);
       const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
@@ -288,8 +289,9 @@ export function EventsAdminTable({ initialEvents }: { initialEvents: EventItem[]
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredEvents.map((evt) => {
-                  const regCount = (evt.registrations || []).length;
-                  const firstSlotCount = (evt.registrations || []).filter((r) => r.slot_number === 1).length;
+                  const confirmedRegs = (evt.registrations || []).filter((r) => r.status === "confirmed");
+                  const regCount = confirmedRegs.length;
+                  const firstSlotCount = confirmedRegs.filter((r) => r.slot_number === 1).length;
                   const limit = evt.participant_limit || 100;
                   const fillPct = Math.min(100, Math.round((regCount / limit) * 100));
                   const isPro = Boolean(evt.is_pro_event);
