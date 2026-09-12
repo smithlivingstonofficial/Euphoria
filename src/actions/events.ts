@@ -15,7 +15,7 @@ async function fetchPublicEventsRaw() {
       supabase = await createClient();
     }
 
-    const [{ data: events, error: eventsError }, { data: categories }] =
+    const [{ data: events, error: eventsError }, { data: categories }, { data: stats }] =
       await Promise.all([
         supabase
           .from("events")
@@ -44,14 +44,6 @@ async function fetchPublicEventsRaw() {
               id,
               name,
               slug
-            ),
-            registrations:event_registrations (
-              id,
-              status,
-              user:profiles (
-                email,
-                participant_type
-              )
             )
           `)
           .order("event_date", { ascending: true })
@@ -60,21 +52,22 @@ async function fetchPublicEventsRaw() {
           .from("event_categories")
           .select("id, name, slug")
           .order("display_order", { ascending: true }),
+        supabase
+          .from("vw_public_events_stats")
+          .select("event_id, total_registered, internal_registered")
       ]);
 
     if (eventsError) throw eventsError;
 
+    const statsMap = (stats || []).reduce((acc: any, curr: any) => {
+      acc[curr.event_id] = curr;
+      return acc;
+    }, {});
+
     const processedEvents = (events || []).map((evt: any) => {
-      const allRegs = (evt.registrations || []).filter((r: any) => r.status === "confirmed");
-      let internalCount = 0;
-      allRegs.forEach((r: any) => {
-        const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
-        const email = (userObj?.email || "").toLowerCase();
-        if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
-          internalCount++;
-        }
-      });
-      const totalCount = allRegs.length;
+      const eventStats = statsMap[evt.id] || { total_registered: 0, internal_registered: 0 };
+      const totalCount = Number(eventStats.total_registered || 0);
+      const internalCount = Number(eventStats.internal_registered || 0);
       const externalCount = Math.max(0, totalCount - internalCount);
 
       const partLimit = Number(evt.participant_limit || 100);
