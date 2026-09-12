@@ -954,7 +954,7 @@ export function EventCatalogExplorer({
             {filteredEvents.map((evt) => {
               const isPro = Boolean(evt.is_pro_event);
               const theme = getCategoryTheme(evt.category?.name, isPro);
-              const regCount = (evt.registrations || []).length;
+              const regCount = evt.total_registered ?? (evt.registrations || []).length;
               const limit = evt.participant_limit || 100;
               const isSlotFull = regCount >= limit || evt.is_total_full;
               const isKluQuotaBlocked = Boolean(evt.is_klu_blocked || evt.allow_internal === false);
@@ -1413,7 +1413,7 @@ export function EventCatalogExplorer({
                       <span className="font-extrabold text-slate-900 block text-xs sm:text-sm leading-snug">
                         {activeModalEvent.participant_limit || 100} Seats
                       </span>
-                      {((activeModalEvent.registrations || []).length >= (activeModalEvent.participant_limit || 100)) ? (
+                      {((activeModalEvent.total_registered ?? (activeModalEvent.registrations || []).length) >= (activeModalEvent.participant_limit || 100)) ? (
                         <span className="text-[11px] font-semibold text-rose-600 block font-mono font-bold flex items-center gap-1">
                           <Lock className="h-3 w-3" /> Slot Limit Full
                         </span>
@@ -1634,7 +1634,7 @@ export function EventCatalogExplorer({
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     <span>On Active Pass</span>
                   </span>
-                ) : ((activeModalEvent.registrations || []).length >= (activeModalEvent.participant_limit || 100)) ? (
+                ) : ((activeModalEvent.total_registered ?? (activeModalEvent.registrations || []).length) >= (activeModalEvent.participant_limit || 100)) ? (
                   <button
                     type="button"
                     disabled
