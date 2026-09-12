@@ -2,11 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
-import { PaymentReconciler } from "@/components/cart/payment-reconciler";
 import { getPublicPricingSettings } from "@/actions/events";
-import { getUserPassSummary } from "@/actions/passes";
-import { createClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
 
 const fontSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -51,74 +47,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = cookies();
-  const hasAuthCookie = cookieStore.getAll().some(
-    (c) => c.name.startsWith("sb-") && c.name.includes("-auth-token")
-  );
-
-  const [pricing, authData] = await Promise.all([
+  const [pricing] = await Promise.all([
     getPublicPricingSettings(),
-    hasAuthCookie
-      ? (async () => {
-          try {
-            const supabase = await createClient();
-            const {
-              data: { user },
-            } = await supabase.auth.getUser();
-            return user;
-          } catch {
-            return null;
-          }
-        })()
-      : Promise.resolve(null),
   ]);
-
-  const authUser = authData;
-  let userProfile = null;
-  let userPass = undefined;
-  let confirmedEvents: any[] = [];
-
-  if (authUser) {
-    const supabase = await createClient();
-    const [{ data: p }, passRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, email, full_name, participant_type")
-        .eq("id", authUser.id)
-        .maybeSingle(),
-      getUserPassSummary(),
-    ]);
-
-    if (p) {
-      userProfile = {
-        id: p.id,
-        email: p.email,
-        fullName: p.full_name,
-        participantType: p.participant_type as "internal" | "external",
-      };
-    }
-
-    if (passRes.success && passRes.data) {
-      userPass = {
-        hasPass: passRes.data.hasPass,
-        passCode: passRes.data.passCode,
-        passTier: passRes.data.passTier,
-        amountPaid: passRes.data.amountPaid,
-        totalSlots: passRes.data.totalSlots,
-        slotsUsed: passRes.data.slotsUsed,
-        remainingSlots: passRes.data.remainingSlots,
-      };
-
-      confirmedEvents = passRes.data.registeredEvents.map((r) => ({
-        id: r.registrationId,
-        eventId: r.eventId,
-        name: r.name,
-        isProEvent: r.isProEvent,
-        slotNumber: r.slotNumber,
-        registrationCode: passRes.data?.passCode || "",
-      }));
-    }
-  }
 
   return (
     <html
@@ -129,11 +60,7 @@ export default async function RootLayout({
       <body className="min-h-screen bg-background text-slate-900 font-sans antialiased selection:bg-primary selection:text-white flex flex-col">
         <AppProviders
           initialPricing={pricing}
-          initialPass={userPass}
-          initialConfirmedEvents={confirmedEvents}
-          user={userProfile}
         >
-          {authUser && (!userPass || !userPass.hasPass) && <PaymentReconciler />}
           {children}
         </AppProviders>
       </body>

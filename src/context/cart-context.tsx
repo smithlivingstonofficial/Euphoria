@@ -87,6 +87,12 @@ interface CartContextType {
   needsAccommodation: boolean;
   setNeedsAccommodation: (val: boolean) => void;
   toggleNeedsAccommodation: () => void;
+  user?: {
+    id: string;
+    email: string;
+    fullName?: string;
+    participantType?: "internal" | "external" | null;
+  } | null;
 }
 
 const DEFAULT_PRICING: PricingSettings = {
@@ -113,11 +119,13 @@ export function CartProvider({
   initialPricing = DEFAULT_PRICING,
   initialPass,
   initialConfirmedEvents = [],
+  user = null,
 }: {
   children: React.ReactNode;
   initialPricing?: PricingSettings;
   initialPass?: UserPassInfo;
   initialConfirmedEvents?: ConfirmedEventItem[];
+  user?: CartContextType["user"];
 }) {
   const [selectedEvents, setSelectedEvents] = useState<PublicEvent[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -255,6 +263,9 @@ export function CartProvider({
   // Validation engine for Pro Event, slot limits, and KLU quota guards
   const canSelectEvent = useCallback(
     (event: PublicEvent, userInfo?: { isInternal?: boolean; isGuest?: boolean }): SelectionValidation => {
+      const isInternal = userInfo?.isInternal ?? Boolean(user?.participantType === "internal" || user?.email?.toLowerCase().endsWith("@klu.ac.in"));
+      const isGuest = userInfo?.isGuest ?? !user;
+
       // 0. Check event participant limit capacity (lock if full)
       const regCount = (event.registrations || []).length;
       const limit = Number(event.participant_limit || 100);
@@ -268,13 +279,13 @@ export function CartProvider({
       // 0b. Check Kalasalingam University (@klu.ac.in) vs External Quotas
       const isEventKluBlocked = event.is_klu_blocked || event.allow_internal === false;
       if (isEventKluBlocked) {
-        if (userInfo?.isGuest) {
+        if (isGuest) {
           return {
             allowed: false,
             reason: "External Delegates Only (Sign in with external email to unlock)",
           };
         }
-        if (userInfo?.isInternal) {
+        if (isInternal) {
           return {
             allowed: false,
             reason: "KLU student quota full. Remaining seats reserved exclusively for external delegates.",
@@ -282,7 +293,7 @@ export function CartProvider({
         }
       }
 
-      if (event.allow_external === false && userInfo && !userInfo.isInternal) {
+      if (event.allow_external === false && !isInternal) {
         return {
           allowed: false,
           reason: "Reserved exclusively for Kalasalingam University students.",
@@ -517,6 +528,7 @@ export function CartProvider({
         needsAccommodation,
         setNeedsAccommodation: handleSetAccommodation,
         toggleNeedsAccommodation,
+        user,
       }}
     >
       {children}

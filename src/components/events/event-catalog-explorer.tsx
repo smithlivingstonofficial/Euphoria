@@ -40,10 +40,10 @@ import {
 import { formatCurrency, formatDate, formatTime, formatEventTimeRange } from "@/lib/utils";
 import { getEventSchedule } from "@/lib/schedule";
 import { useCart } from "@/context/cart-context";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { claimSecondSlotAction } from "@/actions/passes";
 
-export interface PublicEvent {
+export type PublicEvent = {
   id: string;
   name: string;
   slug: string;
@@ -85,7 +85,7 @@ export interface PublicEvent {
       participant_type?: string;
     };
   }>;
-}
+};
 
 export function parseEventMetadata(event: PublicEvent) {
   const description = event?.description || "";
@@ -281,46 +281,14 @@ export function EventCatalogExplorer({
   categories = [],
   initialTrack = "",
   initialQuery = "",
-  user,
 }: {
   initialEvents: PublicEvent[];
   categories: Array<{ id: string; name: string; slug: string }>;
   initialTrack?: string;
   initialQuery?: string;
-  user?: {
-    id: string;
-    email: string;
-    fullName?: string;
-    participantType?: "internal" | "external" | null;
-    isInternal?: boolean;
-  } | null;
 }) {
-  const isGuest = !user;
-  const isInternalUser = Boolean(
-    user?.isInternal ||
-    user?.participantType === "internal" ||
-    (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"))
-  );
-  const isExternalUser = Boolean(user && !isInternalUser);
-  const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [selectedDate, setSelectedDate] = useState<string>("all");
-  const router = useRouter();
-  const [selectedSchool, setSelectedSchool] = useState<string>("all");
-  const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
-  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(true);
-  const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
-
-  // Dedicated Slot #2 Claim Modal State
-  const [claimingSlot2Event, setClaimingSlot2Event] = useState<PublicEvent | null>(null);
-  const [isSubmittingSlot2, setIsSubmittingSlot2] = useState<boolean>(false);
-  const [slot2Error, setSlot2Error] = useState<string | null>(null);
-  const [slot2Success, setSlot2Success] = useState<{
-    eventName: string;
-    passCode: string;
-  } | null>(null);
-
-  // Cart Context Hook
   const {
+    user,
     isEventSelected,
     isEventConfirmed,
     toggleEvent,
@@ -334,6 +302,34 @@ export function EventCatalogExplorer({
     userPass,
     setUserPassState,
   } = useCart();
+
+  const isGuest = !user;
+  const isInternalUser = Boolean(
+    user?.participantType === "internal" ||
+    (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"))
+  );
+  const isExternalUser = Boolean(user && !isInternalUser);
+
+  const searchParams = useSearchParams();
+  const initialSearchQuery = searchParams.get("q") || initialQuery || "";
+  const initialSchoolFilter = searchParams.get("track") || initialTrack || "all";
+
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [selectedDate, setSelectedDate] = useState<string>("all");
+  const router = useRouter();
+  const [selectedSchool, setSelectedSchool] = useState<string>(initialSchoolFilter);
+  const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
+  const [showSchoolCards, setShowSchoolCards] = useState<boolean>(initialSchoolFilter === "all" && initialSearchQuery === "");
+  const [activeModalEvent, setActiveModalEvent] = useState<PublicEvent | null>(null);
+
+  // Dedicated Slot #2 Claim Modal State
+  const [claimingSlot2Event, setClaimingSlot2Event] = useState<PublicEvent | null>(null);
+  const [isSubmittingSlot2, setIsSubmittingSlot2] = useState<boolean>(false);
+  const [slot2Error, setSlot2Error] = useState<string | null>(null);
+  const [slot2Success, setSlot2Success] = useState<{
+    eventName: string;
+    passCode: string;
+  } | null>(null);
 
   const totalConfirmedCount = confirmedEvents.length;
   const isPassFull = totalConfirmedCount >= 2;
