@@ -357,68 +357,49 @@ export async function getCoordinatorWorkspaceData() {
 
     const eventIds = eventsData.map((e) => e.id);
 
-    // Fetch registration and attendance counts safely
-    let registrations: { id: string; event_id: string; slot_number?: number; user?: any }[] = [];
-    let attendances: { id: string; event_id: string }[] = [];
-
-    try {
-      const [regRes, attRes] = await Promise.all([
-        fetchAllSupabasePages((from, to) =>
-          adminClient
-            .from("event_registrations")
-            .select(`
-              id,
-              event_id,
-              slot_number,
-              status,
-              user:profiles (
-                email,
-                participant_type
-              )
-            `)
-            .in("event_id", eventIds)
-            .eq("status", "confirmed")
-            .range(from, to)
-        ),
-        fetchAllSupabasePages((from, to) =>
-          adminClient
-            .from("attendance")
-            .select("id, event_id")
-            .in("event_id", eventIds)
-            .range(from, to)
-        ),
-      ]);
-      registrations = regRes || [];
-      attendances = attRes || [];
-    } catch {
-      // safe fallback
-    }
-
+    // Fetch pre-aggregated event stats and attendance counts (High-Efficiency Egress Optimization)
     const regCountMap: Record<string, number> = {};
     const firstSlotCountMap: Record<string, number> = {};
     const kluCountMap: Record<string, number> = {};
     const externalCountMap: Record<string, number> = {};
-
-    registrations.forEach((r: any) => {
-      regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
-      if (r.slot_number === 1) {
-        firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
-      }
-
-      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
-      const email = (userObj?.email || "").toLowerCase().trim();
-      const isInternal = userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in");
-      if (isInternal) {
-        kluCountMap[r.event_id] = (kluCountMap[r.event_id] || 0) + 1;
-      } else {
-        externalCountMap[r.event_id] = (externalCountMap[r.event_id] || 0) + 1;
-      }
-    });
-
     const attendCountMap: Record<string, number> = {};
-    attendances.forEach((a) => {
-      attendCountMap[a.event_id] = (attendCountMap[a.event_id] || 0) + 1;
-    });
+
+    try {
+      const [statsRes, slot1Res, attRes] = await Promise.all([
+        adminClient
+          .from("vw_public_events_stats")
+          .select("event_id, total_registered, internal_registered")
+          .in("event_id", eventIds),
+        adminClient
+          .from("event_registrations")
+          .select("event_id")
+          .in("event_id", eventIds)
+          .eq("status", "confirmed")
+          .eq("slot_number", 1),
+        adminClient
+          .from("attendance")
+          .select("event_id")
+          .in("event_id", eventIds),
+      ]);
+
+      (statsRes.data || []).forEach((s: any) => {
+        const total = Number(s.total_registered || 0);
+        const internal = Number(s.internal_registered || 0);
+        regCountMap[s.event_id] = total;
+        kluCountMap[s.event_id] = internal;
+        externalCountMap[s.event_id] = Math.max(0, total - internal);
+      });
+
+      (slot1Res.data || []).forEach((r: any) => {
+        firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
+      });
+
+      (attRes.data || []).forEach((a: any) => {
+        attendCountMap[a.event_id] = (attendCountMap[a.event_id] || 0) + 1;
+      });
+    } catch {
+      // safe fallback
+    }
 
     const formattedEvents: CoordinatorEventItem[] = eventsData.map((evt) => {
       let roleType: "staff" | "student" | "admin" | "overall_coordinator" = "staff";

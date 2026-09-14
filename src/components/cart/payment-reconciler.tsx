@@ -17,18 +17,31 @@ export function PaymentReconciler() {
     if (checkedRef.current) return;
     checkedRef.current = true;
 
+    // Check if auto-reconciler has already executed in this browser session
+    try {
+      if (sessionStorage.getItem("euphoria_reconciler_checked") === "true") {
+        return;
+      }
+    } catch {
+      // Safe fallback
+    }
+
     // Run slight delay so initial render completes
     const timer = setTimeout(async () => {
       try {
+        sessionStorage.setItem("euphoria_reconciler_checked", "true");
         const res = await reconcileUserPendingPaymentAction();
         if (res.success && res.reconciled) {
           console.log("🎉 Euphoria Payment Auto-Reconciled:", res.passCode);
+          try {
+            sessionStorage.removeItem("euphoria_auth_cache_v2");
+          } catch {}
           router.refresh();
         }
       } catch {
         // Silently swallow errors on passive background check
       }
-    }, 1500);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, [router]);

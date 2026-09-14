@@ -207,30 +207,32 @@ export async function getUserPaymentIssueContext(): Promise<{
       }
     }
 
-    // 5. Fetch Public Events Catalog for in-modal event selector with capacity and KLU quota checks
-    const { data: eventsList } = await adminClient
-      .from("events")
-      .select(`
-        id,
-        name,
-        is_pro_event,
-        school_or_dept,
-        event_date,
-        participant_limit,
-        internal_limit,
-        allow_internal,
-        allow_external,
-        registrations:event_registrations (
+    // 5. Fetch Public Events Catalog with pre-aggregated stats (High-Efficiency Egress Optimization)
+    const [{ data: eventsList }, { data: statsList }] = await Promise.all([
+      adminClient
+        .from("events")
+        .select(`
           id,
-          status,
-          user:profiles (
-            email,
-            participant_type
-          )
-        )
-      `)
-      .in("status", ["published", "registration_open"])
-      .order("name", { ascending: true });
+          name,
+          is_pro_event,
+          school_or_dept,
+          event_date,
+          participant_limit,
+          internal_limit,
+          allow_internal,
+          allow_external
+        `)
+        .in("status", ["published", "registration_open"])
+        .order("name", { ascending: true }),
+      adminClient
+        .from("vw_public_events_stats")
+        .select("event_id, total_registered, internal_registered"),
+    ]);
+
+    const statsMap = (statsList || []).reduce((acc: any, curr: any) => {
+      acc[curr.event_id] = curr;
+      return acc;
+    }, {});
 
     const isInternalUser = (profile?.participant_type === "internal") || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
 
@@ -256,17 +258,10 @@ export async function getUserPaymentIssueContext(): Promise<{
           }
         : null,
       availableEvents: (eventsList || []).map((e: any) => {
-        const allRegs = (e.registrations || []).filter((r: any) => r.status === "confirmed" || !r.status);
-        let intCount = 0;
-        allRegs.forEach((r: any) => {
-          const u = Array.isArray(r.user) ? r.user[0] : r.user;
-          const mail = (u?.email || "").toLowerCase();
-          if (u?.participant_type === "internal" || mail.endsWith("@klu.ac.in")) {
-            intCount++;
-          }
-        });
+        const eventStats = statsMap[e.id] || { total_registered: 0, internal_registered: 0 };
+        const regCount = Number(eventStats.total_registered || 0);
+        const intCount = Number(eventStats.internal_registered || 0);
 
-        const regCount = allRegs.length;
         const limit = Number(e.participant_limit || 100);
         const intLimit = e.internal_limit !== null && e.internal_limit !== undefined ? Number(e.internal_limit) : null;
         const allowInt = e.allow_internal !== false;

@@ -66,7 +66,7 @@ export async function getUserPassSummary(): Promise<{
       // Fallback direct query if view isn't cached yet
       const { data: passData } = await supabase
         .from("delegate_passes")
-        .select("*")
+        .select("id, pass_code, pass_tier, amount_paid, total_slots, slots_used, status")
         .eq("user_id", user.id)
         .eq("status", "active")
         .maybeSingle();
@@ -89,8 +89,7 @@ export async function getUserPassSummary(): Promise<{
             venue,
             event_date,
             start_time,
-            end_time,
-            description
+            end_time
           )
         `)
         .eq("user_id", user.id)

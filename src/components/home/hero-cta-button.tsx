@@ -3,65 +3,23 @@
 import Link from "next/link";
 import { Ticket, ArrowRight } from "lucide-react";
 import { useCart } from "@/context/cart-context";
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 export function HeroCtaButton() {
-  const { userPass } = useCart();
-  const [authState, setAuthState] = useState<{
-    isLoggedIn: boolean;
-    hasPass: boolean;
-    isProfileCompleted: boolean;
-  }>({
-    isLoggedIn: false,
-    hasPass: Boolean(userPass?.hasPass),
-    isProfileCompleted: false,
-  });
+  const { userPass, user } = useCart();
 
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+  const isLoggedIn = Boolean(user);
+  const hasPass = Boolean(userPass?.hasPass);
+  const isProfileCompleted = Boolean(user?.isProfileCompleted);
 
-        const [{ data: profile }, { data: passData }] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("is_profile_completed")
-            .eq("id", user.id)
-            .maybeSingle(),
-          supabase
-            .from("delegate_passes")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("status", "active")
-            .maybeSingle(),
-        ]);
-
-        setAuthState({
-          isLoggedIn: true,
-          hasPass: Boolean(passData || userPass?.hasPass),
-          isProfileCompleted: Boolean(profile?.is_profile_completed),
-        });
-      } catch {
-        // Fallback gracefully
-      }
-    }
-    checkAuth();
-  }, [userPass?.hasPass]);
-
-  const targetHref = !authState.isLoggedIn
+  const targetHref = !isLoggedIn
     ? "/register"
-    : authState.hasPass
+    : hasPass
     ? "/dashboard/passes"
-    : authState.isProfileCompleted
+    : isProfileCompleted
     ? "/events"
     : "/complete-profile";
 
-  const buttonText = authState.hasPass
+  const buttonText = hasPass
     ? "View My Delegate Pass"
     : "Register & Get Pass (₹200)";
 

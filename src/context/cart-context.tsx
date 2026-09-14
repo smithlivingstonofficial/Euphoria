@@ -92,6 +92,8 @@ interface CartContextType {
     email: string;
     fullName?: string;
     participantType?: "internal" | "external" | null;
+    role?: "admin" | "super_admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator" | "participant";
+    isProfileCompleted?: boolean;
   } | null;
 }
 

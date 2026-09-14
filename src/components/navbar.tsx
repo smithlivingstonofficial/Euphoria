@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Sparkles,
   Layers,
@@ -26,74 +26,56 @@ import { useCart } from "@/context/cart-context";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { EuphoriaLogo } from "@/components/brand/euphoria-logo";
 
-import { createClient } from "@/lib/supabase/client";
-
 interface NavbarProps {
   user?: {
     email: string;
     role?: string;
     participantType?: string;
+    hasPass?: boolean;
+    passCode?: string;
+    isSuperAdmin?: boolean;
   } | null;
 }
 
-export function Navbar({ user: propUser }: NavbarProps) {
+export function Navbar({
+  user: propUser,
+}: {
+  user?: NavbarProps["user"];
+}) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [activeUser, setActiveUser] = useState<NavbarProps["user"]>(propUser || null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
-  const { selectedEvents, openCart } = useCart();
+  const { selectedEvents, openCart, user: contextUser } = useCart();
 
-  useEffect(() => {
-    if (propUser) {
-      setActiveUser(propUser);
-      return;
+  // Zero-network: seamlessly derive activeUser from propUser or client Context cache
+  const activeUser = useMemo(() => {
+    if (propUser) return propUser;
+    if (contextUser) {
+      const isCoordinatorPath = pathname.startsWith("/coordinator");
+      const isAdminPath = pathname.startsWith("/admin");
+      const r = contextUser.role;
+      const isAdminRole = r === "admin" || r === "super_admin" || isAdminPath;
+      const isCoordRole =
+        r === "staff_coordinator" ||
+        r === "student_coordinator" ||
+        r === "overall_coordinator" ||
+        isCoordinatorPath;
+
+      return {
+        email: contextUser.email || "",
+        role: isAdminRole ? "admin" : isCoordRole ? "staff_coordinator" : "participant",
+      };
     }
-
-    async function loadClientSession() {
-      try {
-        const supabase = createClient();
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
-
-        if (authUser) {
-          const isCoordinatorPath = pathname.startsWith("/coordinator");
-          const isAdminPath = pathname.startsWith("/admin");
-
-          const { data: roleAss } = await supabase
-            .from("user_role_assignments")
-            .select("role_id")
-            .eq("user_id", authUser.id);
-
-          const roles = (roleAss || []).map((r: any) => r.role_id);
-          const isAdminRole = roles.includes("admin") || isAdminPath;
-          const isCoordRole =
-            roles.includes("staff_coordinator") ||
-            roles.includes("student_coordinator") ||
-            roles.includes("coordinator") ||
-            roles.includes("faculty") ||
-            isCoordinatorPath;
-
-          setActiveUser({
-            email: authUser.email || "",
-            role: isAdminRole ? "admin" : isCoordRole ? "staff_coordinator" : "participant",
-          });
-        } else if (pathname.startsWith("/coordinator") || pathname.startsWith("/admin")) {
-          // If on coordinator page, fallback to path role representation
-          setActiveUser({
-            email: "coordinator@klu.ac.in",
-            role: pathname.startsWith("/admin") ? "admin" : "staff_coordinator",
-          });
-        }
-      } catch {
-        // Safe fallback
-      }
+    if (pathname.startsWith("/coordinator") || pathname.startsWith("/admin")) {
+      return {
+        email: "coordinator@klu.ac.in",
+        role: pathname.startsWith("/admin") ? "admin" : "staff_coordinator",
+      };
     }
-
-    loadClientSession();
-  }, [propUser, pathname]);
+    return null;
+  }, [propUser, contextUser, pathname]);
 
   const user = activeUser;
 

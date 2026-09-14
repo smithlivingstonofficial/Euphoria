@@ -146,6 +146,95 @@ export async function verifyStaffSession() {
   return { authorized: true, user: authInfo.user, roleLevel: authInfo.roleLevel };
 }
 
+interface CachedFinancialTelemetry {
+  timestamp: number;
+  totalRevenue: number;
+  totalOrders: number;
+  paidOrders: number;
+  pendingOrders: number;
+  failedOrders: number;
+}
+
+let cachedFinancialTelemetry: CachedFinancialTelemetry | null = null;
+const FINANCIAL_CACHE_TTL_MS = 30 * 1000; // 30s in-memory cache to maintain zero extra egress overhead
+
+export async function invalidateFinancialTelemetryCache() {
+  cachedFinancialTelemetry = null;
+}
+
+export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<{
+  totalRevenue: number;
+  totalOrders: number;
+  paidOrders: number;
+  pendingOrders: number;
+  failedOrders: number;
+}> {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    cachedFinancialTelemetry &&
+    now - cachedFinancialTelemetry.timestamp < FINANCIAL_CACHE_TTL_MS
+  ) {
+    return {
+      totalRevenue: cachedFinancialTelemetry.totalRevenue,
+      totalOrders: cachedFinancialTelemetry.totalOrders,
+      paidOrders: cachedFinancialTelemetry.paidOrders,
+      pendingOrders: cachedFinancialTelemetry.pendingOrders,
+      failedOrders: cachedFinancialTelemetry.failedOrders,
+    };
+  }
+
+  const adminClient = await createAdminClient();
+
+  const [
+    { count: totalOrders },
+    { count: paidOrders },
+    { count: pendingOrders },
+    { count: failedOrders },
+    paidRows,
+  ] = await Promise.all([
+    adminClient.from("orders").select("*", { count: "exact", head: true }),
+    adminClient.from("orders").select("*", { count: "exact", head: true }).eq("status", "paid"),
+    adminClient
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .in("status", ["pending", "created", "attempted"]),
+    adminClient
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .in("status", ["failed", "cancelled"]),
+    fetchAllSupabasePages<{ amount: number }>((from, to) =>
+      adminClient
+        .from("orders")
+        .select("amount")
+        .eq("status", "paid")
+        .range(from, to)
+    ),
+  ]);
+
+  let totalRevenue = 0;
+  (paidRows || []).forEach((r) => {
+    totalRevenue += Number(r.amount || 0);
+  });
+
+  cachedFinancialTelemetry = {
+    timestamp: now,
+    totalRevenue,
+    totalOrders: totalOrders || 0,
+    paidOrders: paidOrders || 0,
+    pendingOrders: pendingOrders || 0,
+    failedOrders: failedOrders || 0,
+  };
+
+  return {
+    totalRevenue,
+    totalOrders: totalOrders || 0,
+    paidOrders: paidOrders || 0,
+    pendingOrders: pendingOrders || 0,
+    failedOrders: failedOrders || 0,
+  };
+}
+
 // 1. Overview Metrics
 export async function getAdminOverviewMetrics() {
   try {
@@ -160,8 +249,11 @@ export async function getAdminOverviewMetrics() {
       { data: events },
       { count: totalAttendance },
       { data: categories },
-      passes,
-      orders,
+      { count: totalPasses },
+      { count: totalProPasses },
+      { count: totalStandardPasses },
+      finances,
+      { data: eventStats },
     ] = await Promise.all([
       adminClient.from("profiles").select("*", { count: "exact", head: true }),
       adminClient
@@ -179,60 +271,123 @@ export async function getAdminOverviewMetrics() {
       adminClient.from("events").select("id, name, registration_fee, participant_limit, status, category_id, is_pro_event"),
       adminClient.from("attendance").select("*", { count: "exact", head: true }),
       adminClient.from("event_categories").select("id, name"),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("delegate_passes")
-          .select("id, pass_tier, amount_paid, slots_used, status")
-          .range(from, to)
-      ),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("orders")
-          .select("id, amount, status")
-          .range(from, to)
-      ),
+      adminClient
+        .from("delegate_passes")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active"),
+      adminClient
+        .from("delegate_passes")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+        .eq("pass_tier", "pro_pass"),
+      adminClient
+        .from("delegate_passes")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+        .eq("pass_tier", "standard_pass"),
+      getAdminFinancialTelemetry(),
+      adminClient.from("vw_public_events_stats").select("event_id, total_registered, internal_registered"),
     ]);
 
-    // Calculate revenue from paid delegate passes / orders
-    let totalRevenue = 0;
-    let totalProPasses = 0;
-    let totalStandardPasses = 0;
+    // Calculate revenue from paid orders or pass tiers (0 full-table egress)
+    let totalRevenue = finances.totalRevenue;
+    if (totalRevenue === 0) {
+      totalRevenue = (totalProPasses || 0) * 300 + (totalStandardPasses || 0) * 200;
+    }
 
-    (passes || []).forEach((pass) => {
-      if (pass.status === "active") {
-        totalRevenue += Number(pass.amount_paid || 0);
-        if (pass.pass_tier === "pro_pass") {
-          totalProPasses += 1;
-        } else {
-          totalStandardPasses += 1;
-        }
-      }
+    // Process top competitions and capacity saturation
+    const statsMap = new Map<string, { total: number; internal: number }>();
+    (eventStats || []).forEach((s: any) => {
+      statsMap.set(s.event_id, {
+        total: Number(s.total_registered || 0),
+        internal: Number(s.internal_registered || 0),
+      });
     });
 
-    // Fallback if passes table is empty yet orders exist
-    if (totalRevenue === 0 && orders && orders.length > 0) {
-      orders.forEach((o) => {
-        if (o.status === "paid") {
-          totalRevenue += Number(o.amount || 0);
-        }
-      });
-    }
+    const enrichedEvents = (events || []).map((e: any) => {
+      const stat = statsMap.get(e.id) || { total: 0, internal: 0 };
+      const limit = Number(e.participant_limit || 100);
+      const saturationPct = limit > 0 ? Math.min(100, Math.round((stat.total / limit) * 100)) : 0;
+      return {
+        id: e.id,
+        name: e.name,
+        categoryId: e.category_id,
+        limit,
+        registered: stat.total,
+        internal: stat.internal,
+        external: Math.max(0, stat.total - stat.internal),
+        saturationPct,
+        isPro: Boolean(e.is_pro_event),
+      };
+    });
+
+    enrichedEvents.sort((a, b) => b.registered - a.registered);
+    const topEvents = enrichedEvents.slice(0, 6);
+
+    // Event category breakdown
+    const categoryMap = new Map<string, { id: string; name: string; eventCount: number; registrationCount: number }>();
+    (categories || []).forEach((c: any) => {
+      categoryMap.set(c.id, { id: c.id, name: c.name, eventCount: 0, registrationCount: 0 });
+    });
+    enrichedEvents.forEach((e) => {
+      if (e.categoryId && categoryMap.has(e.categoryId)) {
+        const item = categoryMap.get(e.categoryId)!;
+        item.eventCount++;
+        item.registrationCount += e.registered;
+      }
+    });
+    const categoryStats = Array.from(categoryMap.values()).filter((c) => c.eventCount > 0);
+
+    const passCount = totalPasses || 0;
+    const proPassCount = totalProPasses || 0;
+    const standardPassCount = totalStandardPasses || 0;
+    const partCount = totalParticipants || 0;
+    const internalCount = internalParticipants || 0;
+    const externalCount = externalParticipants || 0;
+
+    const passConversionRate = partCount > 0 ? Math.round((passCount / partCount) * 100) : 0;
+    const proPassPct = passCount > 0 ? Math.round((proPassCount / passCount) * 100) : 0;
+    const standardPassPct = 100 - proPassPct;
+
+    const internalPct = partCount > 0 ? Math.round((internalCount / partCount) * 100) : 0;
+    const externalPct = 100 - internalPct;
+
+    const orderMetrics = {
+      totalOrders: finances.totalOrders,
+      paidOrders: finances.paidOrders,
+      pendingOrders: finances.pendingOrders,
+      failedOrders: finances.failedOrders,
+      totalRevenue: finances.totalRevenue,
+      paidPercentage: finances.totalOrders > 0 ? Math.round((finances.paidOrders / finances.totalOrders) * 100) : 0,
+      pendingPercentage: finances.totalOrders > 0 ? Math.round((finances.pendingOrders / finances.totalOrders) * 100) : 0,
+      failedPercentage: finances.totalOrders > 0 ? Math.round((finances.failedOrders / finances.totalOrders) * 100) : 0,
+    };
 
     return {
       success: true,
       data: {
-        totalParticipants: totalParticipants || 0,
-        internalParticipants: internalParticipants || 0,
-        externalParticipants: externalParticipants || 0,
+        totalParticipants: partCount,
+        internalParticipants: internalCount,
+        externalParticipants: externalCount,
+        internalPercentage: internalPct,
+        externalPercentage: externalPct,
         totalRegistrations: totalRegistrations || 0,
-        totalPasses: (passes || []).length,
-        totalProPasses,
-        totalStandardPasses,
+        totalPasses: passCount,
+        totalProPasses: proPassCount,
+        totalStandardPasses: standardPassCount,
+        proPassPercentage: proPassPct,
+        standardPassPercentage: standardPassPct,
+        proPassRevenue: proPassCount * 300,
+        standardPassRevenue: standardPassCount * 200,
+        passConversionRate,
         totalEvents: (events || []).length,
         activeEvents: (events || []).filter((e) => e.status === "registration_open" || e.status === "published").length,
         totalRevenue,
         totalAttendance: totalAttendance || 0,
         categories: categories || [],
+        categoryStats,
+        topEvents,
+        orderMetrics,
       },
     };
   } catch (err: unknown) {
@@ -254,12 +409,6 @@ export async function getAllEventsAdmin() {
           id,
           name,
           slug
-        ),
-        registrations:event_registrations (
-          id,
-          status,
-          payment_status,
-          slot_number
         )
       `)
       .order("created_at", { ascending: false });
@@ -618,6 +767,42 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
   }
 }
 
+// 6b. Fetch Lightweight Recent Registrations for Admin Overview (High-Efficiency Limit)
+export async function getRecentRegistrationsAdmin(limit = 8) {
+  try {
+    const adminClient = await createAdminClient();
+    const { data, error } = await adminClient
+      .from("event_registrations")
+      .select(`
+        id,
+        registration_code,
+        payment_status,
+        created_at,
+        user:profiles (
+          full_name,
+          email,
+          participant_type,
+          college_name
+        ),
+        event:events (
+          name,
+          school_or_dept
+        ),
+        attendance (
+          id
+        )
+      `)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return { success: true, registrations: data || [] };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch recent registrations";
+    return { success: false, error: msg, registrations: [] };
+  }
+}
+
 // 7. Manual Attendance Check-In
 export async function manualAttendanceCheckIn(registrationId: string) {
   try {
@@ -727,7 +912,7 @@ export async function getAllCoordinatorsAdmin() {
         created_at,
         user:profiles!user_role_assignments_user_id_fkey (id, full_name, email, mobile_number, department)
       `),
-      adminClient.from("profiles").select("id, full_name, email, mobile_number, department, participant_type"),
+      adminClient.from("profiles").select("id, full_name, email, mobile_number, department, participant_type").eq("participant_type", "internal"),
       adminClient.from("events").select("id, name, description, coordinator_emails, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
     ]);
 
@@ -1500,33 +1685,15 @@ export async function getPaginatedOrdersAdmin(params: {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    // 1. Lightweight Telemetry summary (single scalar select across orders)
-    const { data: summaryRows } = await adminClient
-      .from("orders")
-      .select("amount, status");
-
-    let totalRev = 0;
-    let paidCount = 0;
-    let pendingCount = 0;
-    let failedCount = 0;
-
-    (summaryRows || []).forEach((r) => {
-      if (r.status === "paid") {
-        totalRev += Number(r.amount || 0);
-        paidCount++;
-      } else if (r.status === "failed") {
-        failedCount++;
-      } else {
-        pendingCount++;
-      }
-    });
+    // 1. Financial Telemetry summary (exact counts & paging across all orders)
+    const finances = await getAdminFinancialTelemetry();
 
     const metrics: AdminPaymentMetrics = {
-      totalRev,
-      paidCount,
-      pendingCount,
-      failedCount,
-      totalCount: (summaryRows || []).length,
+      totalRev: finances.totalRevenue,
+      paidCount: finances.paidOrders,
+      pendingCount: finances.pendingOrders,
+      failedCount: finances.failedOrders,
+      totalCount: finances.totalOrders,
     };
 
     // 2. Build Paginated Orders Query
@@ -2287,8 +2454,7 @@ export async function getSuperAdminDashboardData() {
       { count: eventsCount },
       { count: categoriesCount },
       { count: passesCount },
-      { count: ordersCount },
-      { data: paidOrders },
+      finances,
     ] = await Promise.all([
       adminClient
         .from("user_role_assignments")
@@ -2301,8 +2467,7 @@ export async function getSuperAdminDashboardData() {
       adminClient.from("events").select("*", { count: "exact", head: true }),
       adminClient.from("event_categories").select("*", { count: "exact", head: true }),
       adminClient.from("delegate_passes").select("*", { count: "exact", head: true }),
-      adminClient.from("orders").select("*", { count: "exact", head: true }),
-      adminClient.from("orders").select("amount").eq("status", "paid"),
+      getAdminFinancialTelemetry(),
     ]);
 
     if (aErr) {
@@ -2314,10 +2479,8 @@ export async function getSuperAdminDashboardData() {
       throw pErr;
     }
 
-    const totalRevenue = (paidOrders || []).reduce(
-      (sum, o) => sum + Number(o.amount || 0),
-      0
-    );
+    const totalRevenue = finances.totalRevenue;
+    const ordersCount = finances.totalOrders;
 
     const profileMap = new Map<string, any>();
     (profiles || []).forEach((p) => {
@@ -2867,6 +3030,7 @@ export async function resolvePaymentAndIssuePassAction(params: {
       await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", userId);
     }
 
+    await invalidateFinancialTelemetryCache();
     revalidateTag("public-events");
     revalidatePath("/", "layout");
     revalidatePath("/admin", "layout");
@@ -3008,6 +3172,7 @@ export async function batchReconcileAttemptedOrdersAction() {
       }
     }
 
+    await invalidateFinancialTelemetryCache();
     revalidateTag("public-events");
     revalidatePath("/", "layout");
     revalidatePath("/admin", "layout");
@@ -3203,41 +3368,19 @@ export async function getEventsSlotControlAdmin(): Promise<{
     const allEventsList = events || [];
     const eventIds = allEventsList.map((e) => e.id);
 
-    // 2. Fetch confirmed registrations with user profile data for KLU classification
-    const regs = await fetchAllSupabasePages((from, to) =>
-      adminClient
-        .from("event_registrations")
-        .select(`
-          id,
-          event_id,
-          status,
-          user:profiles (
-            id,
-            email,
-            participant_type
-          )
-        `)
-        .in("event_id", eventIds)
-        .eq("status", "confirmed")
-        .range(from, to)
-    );
+    // 2. Fetch pre-aggregated event stats directly from DB view (Zero-Egress Overhead)
+    const { data: statsList } = await adminClient
+      .from("vw_public_events_stats")
+      .select("event_id, total_registered, internal_registered")
+      .in("event_id", eventIds);
 
     // Aggregate counts per event
     const internalCounts: Record<string, number> = {};
     const totalCounts: Record<string, number> = {};
 
-    (regs || []).forEach((r: any) => {
-      const eId = r.event_id;
-      totalCounts[eId] = (totalCounts[eId] || 0) + 1;
-
-      const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
-      const userEmail = (userObj?.email || "").toLowerCase().trim();
-      const pType = userObj?.participant_type || "";
-
-      const isKlu = pType === "internal" || userEmail.endsWith("@klu.ac.in");
-      if (isKlu) {
-        internalCounts[eId] = (internalCounts[eId] || 0) + 1;
-      }
+    (statsList || []).forEach((s: any) => {
+      totalCounts[s.event_id] = Number(s.total_registered || 0);
+      internalCounts[s.event_id] = Number(s.internal_registered || 0);
     });
 
     let kluBlockedCount = 0;
@@ -3485,30 +3628,15 @@ export async function bulkUpdateEventSlotControlAdmin(params: {
 
       if (error) throw error;
     } else if (params.action === "reserve_for_externals") {
-      // For each event, set internal_limit to current internal registration count
-      const regs = await fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("event_registrations")
-          .select(`
-            event_id,
-            status,
-            user:profiles (
-              email,
-              participant_type
-            )
-          `)
-          .in("event_id", params.eventIds)
-          .eq("status", "confirmed")
-          .range(from, to)
-      );
+      // For each event, set internal_limit to current internal registration count from pre-aggregated view
+      const { data: statsList } = await adminClient
+        .from("vw_public_events_stats")
+        .select("event_id, internal_registered")
+        .in("event_id", params.eventIds);
 
       const internalCounts: Record<string, number> = {};
-      (regs || []).forEach((r: any) => {
-        const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
-        const email = (userObj?.email || "").toLowerCase();
-        if (userObj?.participant_type === "internal" || email.endsWith("@klu.ac.in")) {
-          internalCounts[r.event_id] = (internalCounts[r.event_id] || 0) + 1;
-        }
+      (statsList || []).forEach((s: any) => {
+        internalCounts[s.event_id] = Number(s.internal_registered || 0);
       });
 
       for (const eId of params.eventIds) {
