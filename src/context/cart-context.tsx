@@ -336,9 +336,17 @@ export function CartProvider({
       }
 
       const isCandidatePro = Boolean(event.is_pro_event);
+      const isCandidateFirstPrefOnly = Boolean(event.first_preference_only);
 
-      // CASE A: User has 1 CONFIRMED event in database
+      // CASE A: User has 1 CONFIRMED event in database (Selecting Slot 2)
       if (totalConfirmed === 1) {
+        if (isCandidateFirstPrefOnly) {
+          return {
+            allowed: false,
+            reason: "1st preference only (Cannot be selected as 2nd slot)",
+          };
+        }
+
         const slot1Event = confirmedEvents[0];
         const isSlot1Pro = Boolean(slot1Event.isProEvent);
 
@@ -365,12 +373,19 @@ export function CartProvider({
 
       // CASE B: User has 0 CONFIRMED events in database
       if (totalConfirmed === 0) {
-        // Slot 1 (Cart empty)
+        // Slot 1 (Cart empty) -> Allowed even if first_preference_only
         if (totalInCart === 0) {
           return { allowed: true };
         }
 
-        // Slot 2 (1 item in cart)
+        // Slot 2 (1 item in cart) -> Block if candidate is first_preference_only
+        if (isCandidateFirstPrefOnly) {
+          return {
+            allowed: false,
+            reason: "1st preference only (Cannot be selected as 2nd slot)",
+          };
+        }
+
         const cartFirstEvent = selectedEvents[0];
         const isCartFirstPro = Boolean(cartFirstEvent.is_pro_event);
 

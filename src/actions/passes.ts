@@ -297,13 +297,32 @@ export async function claimSecondSlotAction(eventId: string) {
     const isInternalUser = profile?.participant_type === "internal" || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
 
     // Verify slot 2 event capacity before claiming
-    const { data: targetEvent } = await supabase
+    let targetEvent: any = null;
+    const { data: eventWithCol, error: evtColErr } = await supabase
       .from("events")
-      .select("id, name, participant_limit, internal_limit, allow_internal, allow_external, status")
+      .select("id, name, participant_limit, internal_limit, allow_internal, allow_external, first_preference_only, status")
       .eq("id", eventId)
       .single();
 
+    if (evtColErr) {
+      const { data: eventFallback } = await supabase
+        .from("events")
+        .select("id, name, participant_limit, internal_limit, allow_internal, allow_external, status")
+        .eq("id", eventId)
+        .single();
+      targetEvent = eventFallback;
+    } else {
+      targetEvent = eventWithCol;
+    }
+
     if (targetEvent) {
+      if (Boolean(targetEvent.first_preference_only)) {
+        return {
+          success: false,
+          error: `Claim Blocked: "${targetEvent.name}" is restricted to First Preference only and cannot be claimed as a 2nd event slot.`,
+        };
+      }
+
       if (isInternalUser && targetEvent.allow_internal === false) {
         return {
           success: false,

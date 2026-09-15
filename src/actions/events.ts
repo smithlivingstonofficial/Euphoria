@@ -15,7 +15,8 @@ async function fetchPublicEventsRaw() {
       supabase = await createClient();
     }
 
-    const [{ data: events, error: eventsError }, { data: categories }, { data: stats }] =
+    let eventsData: any[] = [];
+    const [{ data: eventsWithCol, error: eventsError }, { data: categories }, { data: stats }] =
       await Promise.all([
         supabase
           .from("events")
@@ -36,6 +37,7 @@ async function fetchPublicEventsRaw() {
             internal_limit,
             allow_internal,
             allow_external,
+            first_preference_only,
             is_pro_event,
             brochure_url,
             status,
@@ -57,14 +59,52 @@ async function fetchPublicEventsRaw() {
           .select("event_id, total_registered, internal_registered")
       ]);
 
-    if (eventsError) throw eventsError;
+    if (eventsError) {
+      // Fallback if column migration not yet run
+      const { data: eventsFallback, error: fallbackErr } = await supabase
+        .from("events")
+        .select(`
+          id,
+          name,
+          slug,
+          short_description,
+          description,
+          rules,
+          school_or_dept,
+          venue,
+          event_date,
+          start_time,
+          end_time,
+          registration_fee,
+          participant_limit,
+          internal_limit,
+          allow_internal,
+          allow_external,
+          is_pro_event,
+          brochure_url,
+          status,
+          category_id,
+          category:event_categories (
+            id,
+            name,
+            slug
+          )
+        `)
+        .order("event_date", { ascending: true })
+        .order("start_time", { ascending: true });
+
+      if (fallbackErr) throw fallbackErr;
+      eventsData = eventsFallback || [];
+    } else {
+      eventsData = eventsWithCol || [];
+    }
 
     const statsMap = (stats || []).reduce((acc: any, curr: any) => {
       acc[curr.event_id] = curr;
       return acc;
     }, {});
 
-    const processedEvents = (events || []).map((evt: any) => {
+    const processedEvents = eventsData.map((evt: any) => {
       const eventStats = statsMap[evt.id] || { total_registered: 0, internal_registered: 0 };
       const totalCount = Number(eventStats.total_registered || 0);
       const internalCount = Number(eventStats.internal_registered || 0);
@@ -85,6 +125,7 @@ async function fetchPublicEventsRaw() {
         internal_limit: intLimit,
         allow_internal: allowInt,
         allow_external: allowExt,
+        first_preference_only: Boolean(evt.first_preference_only),
         total_registered: totalCount,
         internal_registered: internalCount,
         external_registered: externalCount,

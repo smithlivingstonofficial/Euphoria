@@ -3279,6 +3279,7 @@ export interface AdminEventSlotControlItem {
   internal_limit: number | null;
   allow_internal: boolean;
   allow_external: boolean;
+  first_preference_only: boolean;
   is_pro_event: boolean;
   status: string;
   category: {
@@ -3335,8 +3336,9 @@ export async function getEventsSlotControlAdmin(): Promise<{
 
     const adminClient = await createAdminClient();
 
-    // 1. Fetch all events with categories
-    const { data: events, error: eventsErr } = await adminClient
+    // 1. Fetch all events with categories (resilient to first_preference_only column presence)
+    let allEventsList: any[] = [];
+    const { data: eventsWithCol, error: colErr } = await adminClient
       .from("events")
       .select(`
         id,
@@ -3351,6 +3353,7 @@ export async function getEventsSlotControlAdmin(): Promise<{
         internal_limit,
         allow_internal,
         allow_external,
+        first_preference_only,
         is_pro_event,
         status,
         category:event_categories (
@@ -3363,9 +3366,40 @@ export async function getEventsSlotControlAdmin(): Promise<{
       .order("start_time", { ascending: true })
       .order("name", { ascending: true });
 
-    if (eventsErr) throw eventsErr;
+    if (colErr) {
+      // Graceful fallback if migration column is not yet executed in Supabase
+      const { data: eventsFallback, error: fallbackErr } = await adminClient
+        .from("events")
+        .select(`
+          id,
+          name,
+          slug,
+          school_or_dept,
+          venue,
+          event_date,
+          start_time,
+          end_time,
+          participant_limit,
+          internal_limit,
+          allow_internal,
+          allow_external,
+          is_pro_event,
+          status,
+          category:event_categories (
+            id,
+            name,
+            slug
+          )
+        `)
+        .order("event_date", { ascending: true })
+        .order("start_time", { ascending: true })
+        .order("name", { ascending: true });
 
-    const allEventsList = events || [];
+      if (fallbackErr) throw fallbackErr;
+      allEventsList = eventsFallback || [];
+    } else {
+      allEventsList = eventsWithCol || [];
+    }
     const eventIds = allEventsList.map((e) => e.id);
 
     // 2. Fetch pre-aggregated event stats directly from DB view (Zero-Egress Overhead)
@@ -3430,6 +3464,7 @@ export async function getEventsSlotControlAdmin(): Promise<{
         internal_limit: intLimit,
         allow_internal: allowInt,
         allow_external: allowExt,
+        first_preference_only: Boolean(evt.first_preference_only),
         is_pro_event: Boolean(evt.is_pro_event),
         status: evt.status,
         category: catObj || null,
@@ -3486,6 +3521,7 @@ export async function updateEventSlotControlAdmin(params: {
   internal_limit?: number | null;
   allow_internal?: boolean;
   allow_external?: boolean;
+  first_preference_only?: boolean;
   autoBlockInternalOnExpand?: boolean;
 }): Promise<{
   success: boolean;
@@ -3559,6 +3595,10 @@ export async function updateEventSlotControlAdmin(params: {
       updates.allow_external = Boolean(params.allow_external);
     }
 
+    if (params.first_preference_only !== undefined) {
+      updates.first_preference_only = Boolean(params.first_preference_only);
+    }
+
     // 2. Perform DB update
     const { data: updated, error: updateErr } = await adminClient
       .from("events")
@@ -3567,7 +3607,15 @@ export async function updateEventSlotControlAdmin(params: {
       .select()
       .single();
 
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      if (updateErr.message?.includes("first_preference_only") || updateErr.code === "PGRST204") {
+        return {
+          success: false,
+          error: "Database migration pending: Please execute migration '20260915000011_add_first_preference_only.sql' in your Supabase SQL Editor to enable this column.",
+        };
+      }
+      throw updateErr;
+    }
 
     // 3. Multi-role Cache Invalidation to guarantee atomic UI updates across users, coordinators, and admins
     revalidateTag("public-events");
@@ -3593,7 +3641,7 @@ export async function updateEventSlotControlAdmin(params: {
  */
 export async function bulkUpdateEventSlotControlAdmin(params: {
   eventIds: string[];
-  action: "reserve_for_externals" | "unblock_klu" | "block_klu" | "increase_capacity";
+  action: "reserve_for_externals" | "unblock_klu" | "block_klu" | "increase_capacity" | "enable_first_pref" | "disable_first_pref";
   increaseBy?: number;
 }): Promise<{
   success: boolean;
@@ -3624,6 +3672,20 @@ export async function bulkUpdateEventSlotControlAdmin(params: {
       const { error } = await adminClient
         .from("events")
         .update({ allow_internal: true, internal_limit: null })
+        .in("id", params.eventIds);
+
+      if (error) throw error;
+    } else if (params.action === "enable_first_pref") {
+      const { error } = await adminClient
+        .from("events")
+        .update({ first_preference_only: true })
+        .in("id", params.eventIds);
+
+      if (error) throw error;
+    } else if (params.action === "disable_first_pref") {
+      const { error } = await adminClient
+        .from("events")
+        .update({ first_preference_only: false })
         .in("id", params.eventIds);
 
       if (error) throw error;

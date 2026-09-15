@@ -92,13 +92,38 @@ export async function createEasebuzzOrderAction(
     }
 
     // Fetch selected events to calculate pass tier & amount server-side
-    const { data: selectedEvts, error: evtsError } = await supabase
+    let selectedEvts: any[] | null = null;
+    const { data: evtsWithCol, error: evtsColErr } = await supabase
       .from("events")
-      .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external, status")
+      .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external, first_preference_only, status")
       .in("id", eventIds);
 
-    if (evtsError || !selectedEvts || selectedEvts.length === 0) {
-      return { success: false, error: "Invalid events selected." };
+    if (evtsColErr) {
+      const { data: evtsFallback, error: evtsError } = await supabase
+        .from("events")
+        .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external, status")
+        .in("id", eventIds);
+      if (evtsError || !evtsFallback || evtsFallback.length === 0) {
+        return { success: false, error: "Invalid events selected." };
+      }
+      selectedEvts = evtsFallback;
+    } else {
+      if (!evtsWithCol || evtsWithCol.length === 0) {
+        return { success: false, error: "Invalid events selected." };
+      }
+      selectedEvts = evtsWithCol;
+    }
+
+    // Check slot 2 first_preference_only restriction
+    const slot2EventId = eventIds.length === 2 ? eventIds[1] : (activeRegs.length === 1 ? eventIds[0] : null);
+    if (slot2EventId) {
+      const slot2Evt = selectedEvts.find((e) => e.id === slot2EventId);
+      if (slot2Evt && Boolean(slot2Evt.first_preference_only)) {
+        return {
+          success: false,
+          error: `Registration Blocked: "${slot2Evt.name}" can only be selected as your first preference/slot 1. Please choose a different competition for slot 2.`,
+        };
+      }
     }
 
     const isInternalUser = profile.participant_type === "internal" || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
@@ -559,10 +584,33 @@ export async function bypassTestRegisterAction(
     }
 
     // Fetch selected events to calculate pass tier and verify capacity
-    const { data: selectedEvts } = await supabase
+    let selectedEvts: any[] | null = null;
+    const { data: evtsWithCol } = await supabase
       .from("events")
-      .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external")
+      .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external, first_preference_only")
       .in("id", eventIds);
+
+    if (!evtsWithCol) {
+      const { data: evtsFallback } = await supabase
+        .from("events")
+        .select("id, name, is_pro_event, participant_limit, internal_limit, allow_internal, allow_external")
+        .in("id", eventIds);
+      selectedEvts = evtsFallback || [];
+    } else {
+      selectedEvts = evtsWithCol;
+    }
+
+    // Check slot 2 first_preference_only restriction
+    const mockSlot2EventId = eventIds.length === 2 ? eventIds[1] : (activeRegs.length === 1 ? eventIds[0] : null);
+    if (mockSlot2EventId) {
+      const slot2Evt = (selectedEvts || []).find((e: any) => e.id === mockSlot2EventId);
+      if (slot2Evt && Boolean(slot2Evt.first_preference_only)) {
+        return {
+          success: false,
+          error: `Registration Blocked: "${slot2Evt.name}" can only be selected as your first preference/slot 1. Please choose a different competition for slot 2.`,
+        };
+      }
+    }
 
     const isInternalUser = profile.participant_type === "internal" || (user.email || "").toLowerCase().endsWith("@klu.ac.in");
 

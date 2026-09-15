@@ -4,11 +4,9 @@ import {
   Calendar,
   CreditCard,
   QrCode,
-  Plus,
   ArrowRight,
   TrendingUp,
   ShieldCheck,
-  Megaphone,
   FileSpreadsheet,
   CheckCircle2,
   Clock,
@@ -21,6 +19,7 @@ import {
 import { getAdminOverviewMetrics, getRecentRegistrationsAdmin } from "@/actions/admin";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { AdminDashboardVisuals } from "@/components/admin/admin-dashboard-visuals";
+import { MetricInfoTooltip } from "@/components/admin/metric-info-tooltip";
 
 export const dynamic = "force-dynamic";
 
@@ -48,48 +47,31 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Quick Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Executive Event Operations
-            </h1>
-            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-              Live Production
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Real-time analytics, registrations roster, financial telemetry &amp; pass verification
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
-          <Link
-            href="/admin/events/new"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary-hover transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Create Event</span>
-          </Link>
-          <Link
-            href="/admin/announcements"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
-          >
-            <Megaphone className="h-4 w-4 text-slate-500" />
-            <span>Broadcast Alert</span>
-          </Link>
-        </div>
-      </div>
-
       {/* KPI Cards Grid - 5 Executive Telemetry Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Card 1: Total Revenue Collected */}
         <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Total Revenue</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-500">Total Revenue</span>
+                <MetricInfoTooltip
+                  title="Total Revenue Collected"
+                  description="Gross settled revenue collected in INR from successful delegate pass transactions."
+                  subMetrics={[
+                    {
+                      label: "Settled: 100% Easebuzz",
+                      explanation: "100% of payments were captured and settled through the Easebuzz payment gateway without manual offline reconciliation.",
+                    },
+                    {
+                      label: "Live Gateway",
+                      explanation: "Production webhooks automatically verify each order and issue the delegate pass.",
+                    },
+                  ]}
+                  contextNote="Only confirmed 'paid' orders are counted. Pending, attempted, and cancelled checkouts are excluded."
+                  align="left"
+                />
+              </div>
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                 <CreditCard className="h-4 w-4" />
               </div>
@@ -108,7 +90,27 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Passes Issued</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-500">Passes Issued</span>
+                <MetricInfoTooltip
+                  title="Festival Passes Issued"
+                  description="Total active delegate passes issued to participants who completed checkout."
+                  subMetrics={[
+                    {
+                      label: "Pro Pass",
+                      value: metrics.totalProPasses,
+                      explanation: "Tier offering access to pro shows, guest events, flagship competitions, and workshops.",
+                    },
+                    {
+                      label: "Standard Pass",
+                      value: metrics.totalStandardPasses,
+                      explanation: "Tier granting campus fest entry and participation in standard competitions.",
+                    },
+                  ]}
+                  contextNote="A delegate pass is required to participate in events. Each pass has a unique QR ticket for campus check-in."
+                  align="left"
+                />
+              </div>
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
                 <Ticket className="h-4 w-4" />
               </div>
@@ -127,7 +129,27 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Total Participants</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-500">Total Participants</span>
+                <MetricInfoTooltip
+                  title="Total Registered Participants"
+                  description="Total unique user accounts and student profiles created on the Euphoria portal."
+                  subMetrics={[
+                    {
+                      label: "KARE (Internal)",
+                      value: metrics.internalParticipants,
+                      explanation: "Students registered with Kalasalingam Academy internal student credentials.",
+                    },
+                    {
+                      label: "External (Ext)",
+                      value: metrics.externalParticipants,
+                      explanation: "Participants registered from other universities, engineering colleges, and schools.",
+                    },
+                  ]}
+                  contextNote="Why higher than Passes? Some students registered an account on the portal but haven't finished paying for their delegate pass yet."
+                  align="center"
+                />
+              </div>
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-primary">
                 <Users className="h-4 w-4" />
               </div>
@@ -146,7 +168,27 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Event Registrations</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-500">Event Registrations</span>
+                <MetricInfoTooltip
+                  title="Event Slot Registrations"
+                  description="Cumulative total of competition seats and slots booked across all festival events."
+                  subMetrics={[
+                    {
+                      label: "Active Events",
+                      value: metrics.activeEvents,
+                      explanation: "Competitions currently open with published slots accepting registrations.",
+                    },
+                    {
+                      label: "Total Events",
+                      value: metrics.totalEvents,
+                      explanation: "Total competitions and activities listed across the festival catalog.",
+                    },
+                  ]}
+                  contextNote="Why higher than Passes? One pass holder can register for multiple events (averaging ~1.7 competition slots per participant)."
+                  align="right"
+                />
+              </div>
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
                 <Calendar className="h-4 w-4" />
               </div>
@@ -165,7 +207,25 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">Attendance Scans</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-500">Attendance Scans</span>
+                <MetricInfoTooltip
+                  title="Venue Attendance Scans"
+                  description="Total physical check-ins recorded on-ground by coordinators scanning participant QR codes at gates or halls."
+                  subMetrics={[
+                    {
+                      label: "Scanner: Active",
+                      explanation: "The QR check-in camera scanner is operational for coordinators and staff.",
+                    },
+                    {
+                      label: "Scanner → Link",
+                      explanation: "Direct shortcut to launch the camera scanning tool for ticket validation.",
+                    },
+                  ]}
+                  contextNote="Shows 0 before the festival begins. Increments in real-time as coordinators scan QR passes at the entrance gates."
+                  align="right"
+                />
+              </div>
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                 <QrCode className="h-4 w-4" />
               </div>

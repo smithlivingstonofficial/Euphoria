@@ -435,7 +435,7 @@ export function SlotsControlClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSchool, setSelectedSchool] = useState("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
-  const [selectedFilter, setSelectedFilter] = useState<"all" | "klu_blocked" | "klu_allowed" | "full">("all");
+  const [selectedFilter, setSelectedFilter] = useState<"all" | "klu_blocked" | "klu_allowed" | "full" | "first_pref_only">("all");
 
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
@@ -496,6 +496,7 @@ export function SlotsControlClient({
 
       if (selectedFilter === "klu_blocked" && !evt.is_klu_blocked) return false;
       if (selectedFilter === "klu_allowed" && evt.is_klu_blocked) return false;
+      if (selectedFilter === "first_pref_only" && !evt.first_preference_only) return false;
       if (selectedFilter === "full" && !evt.is_total_full) return false;
 
       return true;
@@ -556,6 +557,33 @@ export function SlotsControlClient({
         });
       } else {
         setFeedback({ type: "error", message: res.error || "Failed to update toggle." });
+      }
+    });
+  };
+
+  // Quick 1-click toggle First Preference Only
+  const handleToggleFirstPref = async (evt: AdminEventSlotControlItem) => {
+    const newFirstPrefOnly = !evt.first_preference_only;
+    startTransition(async () => {
+      const res = await updateEventSlotControlAdmin({
+        eventId: evt.id,
+        first_preference_only: newFirstPrefOnly,
+      });
+
+      if (res.success) {
+        setEvents((prev) =>
+          prev.map((item) =>
+            item.id === evt.id ? { ...item, first_preference_only: newFirstPrefOnly } : item
+          )
+        );
+        setFeedback({
+          type: "success",
+          message: newFirstPrefOnly
+            ? `First preference restriction enabled for "${evt.name}". (Can only be chosen in slot 1)`
+            : `First preference restriction removed for "${evt.name}".`,
+        });
+      } else {
+        setFeedback({ type: "error", message: res.error || "Failed to update first preference setting." });
       }
     });
   };
@@ -990,6 +1018,7 @@ export function SlotsControlClient({
                 <option value="all">All Slot States</option>
                 <option value="klu_blocked">KLU Blocked / Capped</option>
                 <option value="klu_allowed">KLU Open</option>
+                <option value="first_pref_only">1st Preference Only</option>
                 <option value="full">100% Full</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -1038,6 +1067,22 @@ export function SlotsControlClient({
               </button>
               <button
                 type="button"
+                onClick={async () => {
+                  if (confirm(`Restrict ${selectedEventIds.length} selected events to First Preference Only?`)) {
+                    await bulkUpdateEventSlotControlAdmin({
+                      eventIds: selectedEventIds,
+                      action: "enable_first_pref",
+                    });
+                    setSelectedEventIds([]);
+                    handleRefresh();
+                  }
+                }}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3 py-1 text-[11px] font-bold text-white transition-colors cursor-pointer"
+              >
+                1st Pref Only for Selected
+              </button>
+              <button
+                type="button"
                 onClick={() => setSelectedEventIds([])}
                 className="text-slate-400 hover:text-white text-[11px] px-2 py-1"
               >
@@ -1068,6 +1113,7 @@ export function SlotsControlClient({
                 <th className="px-4 py-3.5">Internal Quota Cap</th>
                 <th className="px-4 py-3.5">KLU Access</th>
                 <th className="px-4 py-3.5">External Access</th>
+                <th className="px-4 py-3.5">1st Pref Only</th>
                 <th className="px-4 py-3.5 text-right">Quick Expansion</th>
               </tr>
             </thead>
@@ -1112,6 +1158,12 @@ export function SlotsControlClient({
                             ) : (
                               <span className="inline-flex items-center gap-1 rounded bg-emerald-50 text-emerald-800 font-extrabold px-1.5 py-0.2 text-[9px] border border-emerald-200">
                                 <span>KLU OPEN</span>
+                              </span>
+                            )}
+                            {evt.first_preference_only && (
+                              <span className="inline-flex items-center gap-1 rounded bg-indigo-50 text-indigo-900 border border-indigo-200 font-extrabold px-1.5 py-0.2 text-[9px]">
+                                <Layers className="h-2.5 w-2.5 text-indigo-600" />
+                                <span>1ST PREF ONLY</span>
                               </span>
                             )}
                           </div>
@@ -1234,6 +1286,32 @@ export function SlotsControlClient({
                         </button>
                       </td>
 
+                      {/* First Preference Only Switch */}
+                      <td className="px-4 py-4">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFirstPref(evt)}
+                          disabled={isPending}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                            evt.first_preference_only ? "bg-indigo-600" : "bg-slate-300"
+                          }`}
+                          role="switch"
+                          aria-checked={evt.first_preference_only}
+                          title={
+                            evt.first_preference_only
+                              ? "Restricted to 1st preference only (cannot be 2nd slot). Click to allow in all slots."
+                              : "Allowed in all slots. Click to restrict to 1st preference only."
+                          }
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                              evt.first_preference_only ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </td>
+
                       {/* Action: Expand & Reserve for Externals */}
                       <td className="px-4 py-4 text-right">
                         <button
@@ -1251,7 +1329,7 @@ export function SlotsControlClient({
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-xs text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-xs text-slate-400">
                     No competitions match your search or filter criteria.
                   </td>
                 </tr>

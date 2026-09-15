@@ -60,6 +60,7 @@ export type PublicEvent = {
   internal_limit?: number | null;
   allow_internal?: boolean;
   allow_external?: boolean;
+  first_preference_only?: boolean;
   total_registered?: number;
   internal_registered?: number;
   external_registered?: number;
@@ -1018,6 +1019,13 @@ export function EventCatalogExplorer({
                             <span>REGULAR EVENT</span>
                           </span>
                         )}
+
+                        {evt.first_preference_only && (
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 text-violet-800 border border-violet-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                            <Layers className="h-2.5 w-2.5 text-violet-600" />
+                            <span>1ST PREF ONLY</span>
+                          </span>
+                        )}
                       </div>
 
                       {sched.isTwoDay ? (
@@ -1256,6 +1264,12 @@ export function EventCatalogExplorer({
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600/90 text-white px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs backdrop-blur-md">
                     <Zap className="h-3.5 w-3.5" />
                     <span>REGULAR COMPETITION</span>
+                  </span>
+                )}
+                {activeModalEvent.first_preference_only && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-600 text-white px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs backdrop-blur-md border border-violet-400/40">
+                    <Layers className="h-3 w-3" />
+                    <span>1ST PREFERENCE ONLY</span>
                   </span>
                 )}
                 {(() => {
