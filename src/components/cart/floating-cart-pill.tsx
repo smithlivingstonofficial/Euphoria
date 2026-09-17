@@ -17,7 +17,8 @@ export function FloatingCartPill({
   if (
     pathname?.startsWith("/admin") ||
     pathname?.startsWith("/coordinator") ||
-    pathname === "/payment-help"
+    pathname === "/payment-help" ||
+    pathname?.startsWith("/cash-registration")
   ) {
     return null;
   }

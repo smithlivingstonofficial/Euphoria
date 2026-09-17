@@ -67,6 +67,7 @@ export interface PublicEventForCash {
   external_registered: number;
   is_total_full: boolean;
   is_internal_full: boolean;
+  is_klu_blocked?: boolean;
   category?: {
     id: string;
     name: string;
@@ -299,6 +300,7 @@ export async function getCashRegistrationPageData(): Promise<{
         external_registered: externalRegistered,
         is_total_full: isTotalFull,
         is_internal_full: isInternalFull,
+        is_klu_blocked: !ev.allow_internal || isInternalFull,
         category: ev.category || null,
       };
     });
