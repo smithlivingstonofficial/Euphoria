@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -32,6 +32,10 @@ import {
   ArrowLeft,
   Trash2,
   UserCheck,
+  Ticket,
+  ChevronRight,
+  Flame,
+  Award,
 } from "lucide-react";
 import {
   CashRegistrationRequest,
@@ -78,11 +82,15 @@ export function CashRegistrationClient({
   const [slot2Event, setSlot2Event] = useState<PublicEventForCash | null>(null);
   const [needsAccommodation, setNeedsAccommodation] = useState(false);
 
-  // Filters state (identical to user side event page)
+  // Filters state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [selectedTier, setSelectedTier] = useState<"all" | "pro" | "normal">("all");
+
+  // Sticky dock visibility observer
+  const slotBuilderRef = useRef<HTMLDivElement>(null);
+  const [showFloatingDock, setShowFloatingDock] = useState(false);
 
   // Submission & Feedback state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,6 +102,23 @@ export function CashRegistrationClient({
     profile?.participant_type === "internal" ||
     profile?.email?.toLowerCase()?.endsWith("@klu.ac.in")
   );
+
+  // Scroll listener for floating bottom dock
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!slotBuilderRef.current) return;
+      const rect = slotBuilderRef.current.getBoundingClientRect();
+      // When the bottom of the slot builder card scrolls off the top of screen
+      if (rect.bottom < 120) {
+        setShowFloatingDock(true);
+      } else {
+        setShowFloatingDock(false);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Copy helper
   const handleCopyCode = (code: string) => {
@@ -120,9 +145,9 @@ export function CashRegistrationClient({
       slot2Event.start_time &&
       slot1Event.start_time === slot2Event.start_time
     ) {
-      return `Timing Warning: "${slot1Event.name}" and "${slot2Event.name}" both begin at ${formatTime(
+      return `Timing Alert: "${slot1Event.name}" and "${slot2Event.name}" both begin at ${formatTime(
         slot1Event.start_time
-      )} on ${formatDate(slot1Event.event_date)}. Ensure you can participate in both.`;
+      )} on ${formatDate(slot1Event.event_date)}. Please verify you can participate in both.`;
     }
     return null;
   }, [slot1Event, slot2Event]);
@@ -189,14 +214,14 @@ export function CashRegistrationClient({
 
     // Rule: Slot 2 cannot be Pro
     if (event.is_pro_event) {
-      setErrorMessage(`"${event.name}" is a Flagship event. Flagship events must be selected as Slot 1.`);
+      setErrorMessage(`"${event.name}" is a Flagship competition. Flagship competitions must be assigned to Slot 1.`);
       return;
     }
 
     // Rule: Slot 2 cannot be first_preference_only
     if (event.first_preference_only) {
       setErrorMessage(
-        `"${event.name}" is designated as 1st preference only and cannot be assigned to Slot 2. Please select it for Slot 1.`
+        `"${event.name}" is designated as 1st preference only and cannot be assigned to Slot 2. Please choose it for Slot 1.`
       );
       return;
     }
@@ -244,7 +269,7 @@ export function CashRegistrationClient({
   // Submit cash request
   const handleSubmitRequest = async () => {
     if (!slot1Event && !slot2Event) {
-      setErrorMessage("Please select at least 1 event to register.");
+      setErrorMessage("Please select at least 1 competition to register.");
       return;
     }
 
@@ -312,7 +337,11 @@ export function CashRegistrationClient({
   // Cancel existing pending request
   const handleCancelRequest = async () => {
     if (!existingRequest) return;
-    if (!confirm("Are you sure you want to cancel this cash registration request? You can select different events after cancelling.")) {
+    if (
+      !confirm(
+        "Are you sure you want to cancel this cash registration request? You can select different events after cancelling."
+      )
+    ) {
       return;
     }
 
@@ -340,60 +369,98 @@ export function CashRegistrationClient({
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. HEADER & VERIFIED USER BAR */}
-      <div className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Dashboard</span>
-            </Link>
-            <span className="text-slate-300">•</span>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              Cash on Hand Registration
-            </span>
+    <div className="space-y-6 pb-20">
+      {/* 1. HERO BANNER & PARTICIPANT CARD */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl text-white">
+        {/* Ambient Glowing Blobs */}
+        <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-emerald-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 -bottom-20 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            {/* Breadcrumb & Live Portal Badge */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white text-xs font-semibold backdrop-blur-xs transition-all border border-white/10"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Dashboard</span>
+              </Link>
+              <span className="text-slate-500 text-xs">•</span>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>Campus Desk Registration Portal</span>
+              </div>
+            </div>
+
+            {/* Title & Tagline */}
+            <div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/25">
+                  <Banknote className="h-6 w-6" />
+                </span>
+                <span>Cash On Hand Registration</span>
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-300 font-normal mt-2 leading-relaxed max-w-xl">
+                Select your 2 festival competitions, generate your unique cash reference voucher, and complete payment directly at the Euphoria Help Counter on campus.
+              </p>
+            </div>
+
+            {/* 3-Step Process Indicator */}
+            <div className="grid grid-cols-3 gap-2 pt-2 text-[11px] font-semibold text-slate-300">
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-xs">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black">
+                  1
+                </span>
+                <span className="truncate">Select 2 Events</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-xs">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-400 text-slate-950 text-[10px] font-black">
+                  2
+                </span>
+                <span className="truncate">Get Cash Code</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-xs">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-slate-950 text-[10px] font-black">
+                  3
+                </span>
+                <span className="truncate">Pay at Counter</span>
+              </div>
+            </div>
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/30">
-              <Banknote className="h-5 w-5" />
-            </span>
-            Cash On Hand Event Selection
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-2xl">
-            Select your 2 festival competitions (Slot 1 and Slot 2). Submit your cash request and complete payment at the registration desk on campus.
-          </p>
-        </div>
-
-        {/* Verified Participant Badge Card */}
-        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 shrink-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white font-black text-sm shadow-xs">
-            {profile?.full_name?.charAt(0)?.toUpperCase() || "P"}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-900 truncate max-w-[150px]">
-                {profile?.full_name}
-              </span>
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+          {/* Participant Profile Badge */}
+          <div className="relative z-10 flex items-center gap-3.5 p-4 bg-white/10 border border-white/15 backdrop-blur-md rounded-2xl shrink-0 shadow-lg">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-purple-600 text-white font-black text-lg shadow-md">
+              {profile?.full_name?.charAt(0)?.toUpperCase() || "P"}
             </div>
-            <div className="text-[11px] text-slate-500 font-medium truncate">
-              {isInternal ? "KARE Student" : profile?.college_name || "External Delegate"}
+            <div className="min-w-0 pr-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-extrabold text-white truncate max-w-[170px]">
+                  {profile?.full_name}
+                </span>
+                <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+              </div>
+              <div className="text-xs text-slate-300 font-medium truncate mt-0.5">
+                {isInternal ? "Kalasalingam Student (KARE)" : profile?.college_name || "External Delegate"}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="text-[10px] text-emerald-300 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  {isInternal ? "Internal Pass Eligible" : "External Delegate"}
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/60 px-1.5 py-0.2 rounded">
-              Verified Profile
-            </span>
           </div>
         </div>
       </div>
 
       {/* ERROR ALERT */}
       {errorMessage && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900 text-xs sm:text-sm font-semibold flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+        <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950 text-xs sm:text-sm font-semibold flex items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-2.5">
             <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
@@ -401,7 +468,7 @@ export function CashRegistrationClient({
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-rose-500 hover:text-rose-800 p-1 rounded-lg"
+            className="text-rose-500 hover:text-rose-800 p-1 rounded-lg transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -410,67 +477,69 @@ export function CashRegistrationClient({
 
       {/* 2. CASE A: USER ALREADY HAS ACTIVE PASS */}
       {hasActivePass && activePass && (
-        <div className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50 p-6 sm:p-8 shadow-sm text-center space-y-4">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-600/30">
-            <CheckCircle2 className="h-7 w-7" />
+        <div className="rounded-3xl border border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50/50 to-emerald-50 p-6 sm:p-10 shadow-lg text-center space-y-5">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-600/30">
+            <CheckCircle2 className="h-8 w-8" />
           </div>
-          <div className="space-y-1">
-            <h2 className="text-lg sm:text-xl font-black text-emerald-950">
+          <div className="space-y-2 max-w-xl mx-auto">
+            <h2 className="text-xl sm:text-2xl font-black text-emerald-950 tracking-tight">
               You Already Possess an Active Festival Pass!
             </h2>
-            <p className="text-xs sm:text-sm text-emerald-800 max-w-lg mx-auto">
-              Your pass code is <strong className="font-mono">{activePass.passCode}</strong>. You have confirmed {activePass.slotsUsed} of {activePass.totalSlots} event slots. You do not need to register via cash.
+            <p className="text-xs sm:text-sm text-emerald-900 leading-relaxed">
+              Your official pass code is <strong className="font-mono font-bold bg-white/80 px-2 py-0.5 rounded-md border border-emerald-200">{activePass.passCode}</strong>. You have confirmed {activePass.slotsUsed} of {activePass.totalSlots} event slots. You do not need to register via cash.
             </p>
           </div>
-          <div className="pt-2">
+          <div className="pt-2 flex items-center justify-center gap-3">
             <Link
               href="/dashboard/passes"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-6 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-emerald-800 transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-6 py-3 text-xs sm:text-sm font-bold text-white shadow-lg hover:bg-emerald-800 transition-all cursor-pointer"
             >
               <QrCode className="h-4 w-4" />
               <span>View Digital Pass & QR Code</span>
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>
       )}
 
-      {/* 3. CASE B: USER HAS EXISTING PENDING CASH REQUEST */}
+      {/* 3. CASE B: USER HAS EXISTING PENDING CASH REQUEST (Ticket Voucher Style) */}
       {!hasActivePass && existingRequest && existingRequest.status === "pending" && (
-        <div className="rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/60 via-orange-50/30 to-amber-50/60 p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-200/80 pb-5">
+        <div className="rounded-3xl border-2 border-amber-300 bg-white shadow-xl overflow-hidden">
+          {/* Voucher Header Strip */}
+          <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 p-5 sm:p-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/20">
-                <Banknote className="h-6 w-6" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs text-white shadow-inner">
+                <Ticket className="h-6 w-6" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-900 bg-amber-200/60 px-2.5 py-0.5 rounded-full border border-amber-300">
-                    Pending Cash Verification
+                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-950 bg-white/90 px-2.5 py-0.5 rounded-full">
+                    Awaiting Cash Verification
                   </span>
-                  <span className="text-xs text-slate-500 font-medium">
+                  <span className="text-xs text-amber-100 font-medium">
                     Requested on {formatDate(existingRequest.createdAt)}
                   </span>
                 </div>
-                <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-1">
-                  Cash on Hand Registration Request Queued
+                <h2 className="text-lg sm:text-xl font-black text-white mt-1">
+                  Cash on Hand Registration Voucher Queued
                 </h2>
               </div>
             </div>
 
-            {/* Request Code Pill */}
-            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-amber-200 shadow-xs">
-              <div className="text-right">
+            {/* Monospace Reference Code Box */}
+            <div className="flex items-center gap-3 bg-white/95 text-slate-900 px-4 py-2.5 rounded-2xl shadow-md border border-amber-200 self-start sm:self-auto">
+              <div>
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Request Reference Code
+                  Counter Reference Code
                 </div>
-                <div className="font-mono text-base sm:text-lg font-black text-slate-900">
+                <div className="font-mono text-base sm:text-xl font-black text-slate-900 tracking-wider">
                   {existingRequest.requestCode}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => handleCopyCode(existingRequest.requestCode)}
-                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+                className="p-2 text-slate-600 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
                 title="Copy Request Code"
               >
                 {copiedCode ? (
@@ -482,171 +551,208 @@ export function CashRegistrationClient({
             </div>
           </div>
 
-          {/* Details Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Amount Due Card */}
-            <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-xs flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Total Cash to Pay
-                </span>
-                <div className="text-2xl sm:text-3xl font-black text-emerald-700 mt-1">
-                  ₹{existingRequest.totalAmount}
-                </div>
-                <span className="inline-block text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md mt-1">
-                  {existingRequest.passTier === "pro_pass" ? "Flagship Pass (₹300)" : "Standard Pass (₹200)"}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-3 flex items-center gap-1.5">
-                <Banknote className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Exact cash to hand over at counter</span>
-              </div>
-            </div>
-
-            {/* Selected Events (Slot 1 & Slot 2) */}
-            <div className="md:col-span-2 rounded-2xl border border-amber-200 bg-white p-4 shadow-xs space-y-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                Selected Competitions ({existingRequest.selectedEvents?.length || existingRequest.selectedEventIds.length}/2)
-              </span>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {existingRequest.selectedEvents && existingRequest.selectedEvents.length > 0 ? (
-                  existingRequest.selectedEvents.map((evt, idx) => (
-                    <div
-                      key={evt.id}
-                      className="rounded-xl border border-slate-200 p-3 bg-slate-50/70 space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
-                          Slot #{idx + 1}
-                        </span>
-                        {evt.isProEvent && (
-                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 flex items-center gap-1">
-                            <Star className="h-2.5 w-2.5 fill-amber-500" />
-                            Flagship
-                          </span>
-                        )}
-                      </div>
-                      <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">
-                        {evt.name}
-                      </h4>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                        <span>{evt.schoolOrDept || "General"}</span>
-                        {evt.eventDate && <span>• {formatDate(evt.eventDate)}</span>}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-slate-500">
-                    {existingRequest.selectedEventIds.length} competitions selected.
+          {/* Voucher Body Content */}
+          <div className="p-6 sm:p-8 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* Cash Due Card */}
+              <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/70 to-orange-50/50 p-5 flex flex-col justify-between shadow-xs">
+                <div>
+                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                    Total Amount to Pay
+                  </span>
+                  <div className="text-3xl sm:text-4xl font-black text-emerald-700 mt-1">
+                    ₹{existingRequest.totalAmount}
                   </div>
-                )}
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-white border border-amber-200 px-2.5 py-1 rounded-lg mt-2">
+                    {existingRequest.passTier === "pro_pass" ? (
+                      <>
+                        <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                        <span>Flagship Pass Tier (₹300)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3 w-3 text-emerald-600" />
+                        <span>Standard Pass Tier (₹200)</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-600 mt-4 pt-3 border-t border-amber-200/60 flex items-center gap-2 font-medium">
+                  <Banknote className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Exact cash to hand over at counter</span>
+                </div>
+              </div>
+
+              {/* Chosen Events Grid */}
+              <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-5 space-y-3">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                  Chosen Competitions ({existingRequest.selectedEvents?.length || existingRequest.selectedEventIds.length}/2)
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {existingRequest.selectedEvents && existingRequest.selectedEvents.length > 0 ? (
+                    existingRequest.selectedEvents.map((evt, idx) => (
+                      <div
+                        key={evt.id}
+                        className="rounded-2xl border border-slate-200/90 p-3.5 bg-white shadow-xs space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                            Slot #{idx + 1}
+                          </span>
+                          {evt.isProEvent && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 flex items-center gap-1 border border-amber-200">
+                              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                              Flagship
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-900 line-clamp-1 leading-snug">
+                          {evt.name}
+                        </h4>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                          <span>{evt.schoolOrDept || "General"}</span>
+                          {evt.eventDate && <span>• {formatDate(evt.eventDate)}</span>}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-500">
+                      {existingRequest.selectedEventIds.length} competitions selected.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Action & Verification Guidance Box */}
-          <div className="rounded-2xl bg-amber-100/60 border border-amber-300 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-amber-800 shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-950 leading-relaxed">
-                <strong>Next Step:</strong> Please visit the <strong>Euphoria Registration Desk / Help Counter on campus</strong> with cash amount of <strong>₹{existingRequest.totalAmount}</strong>. Quote your reference code <code className="font-mono font-bold bg-white/80 px-1 py-0.5 rounded">{existingRequest.requestCode}</code>. The coordinator/admin will verify payment and your Digital Pass will become active immediately!
+            {/* Next Step Instructions Card */}
+            <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm mt-0.5">
+                  <Info className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-slate-900">
+                    How to verify payment and activate your pass:
+                  </h4>
+                  <ol className="text-xs text-slate-700 space-y-1 list-decimal list-inside leading-relaxed font-medium">
+                    <li>Visit the <strong>Euphoria Registration Desk / Help Counter on campus</strong>.</li>
+                    <li>Quote your Reference Code: <code className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-amber-200 text-slate-900">{existingRequest.requestCode}</code></li>
+                    <li>Pay the exact cash amount of <strong>₹{existingRequest.totalAmount}</strong>.</li>
+                    <li>The coordinator will mark your payment verified and your <strong>Digital Pass with QR code</strong> will activate immediately!</li>
+                  </ol>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleCancelRequest}
-                disabled={isCancelling}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>{isCancelling ? "Cancelling..." : "Cancel & Re-select"}</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={handleCancelRequest}
+                  disabled={isCancelling}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-50 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>{isCancelling ? "Cancelling..." : "Cancel & Re-select"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 4. CASE C: EVENT SELECTION & CASH REGISTRATION FORM */}
+      {/* 4. CASE C: EVENT SELECTION & CASH REGISTRATION BUILDER */}
       {!hasActivePass && (!existingRequest || existingRequest.status !== "pending") && (
         <>
-          {/* SLOT TARGETS OVERVIEW CARD (Top Fixed Summary) */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-6 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          {/* SLOT BUILDER TOP CARD */}
+          <div
+            ref={slotBuilderRef}
+            className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm space-y-5"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900">
-                  Festival Pass Slots ({selectedCount}/2 Selected)
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Select your Slot 1 and Slot 2 competitions from the catalog below.
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                    Festival Pass Slot Builder
+                  </h2>
+                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {selectedCount}/2 Slots Filled
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Your pass includes up to 2 competitions. Select your Slot 1 and Slot 2 below.
                 </p>
               </div>
 
-              {/* Price Pill */}
-              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl self-start sm:self-auto">
-                <span className="text-xs font-bold text-emerald-800">
-                  {calculatedTier === "pro_pass" ? "Flagship Pass" : "Standard Pass"}:
-                </span>
-                <span className="text-sm font-black text-emerald-950">
-                  ₹{calculatedFee} (Cash)
-                </span>
+              {/* Dynamic Price Tag */}
+              <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-2xl self-start sm:self-auto shadow-2xs">
+                <div className="text-right">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">
+                    {calculatedTier === "pro_pass" ? "Flagship Pass Tier" : "Standard Pass Tier"}
+                  </div>
+                  <div className="text-lg font-black text-emerald-950 leading-none">
+                    ₹{calculatedFee} <span className="text-xs font-medium text-emerald-700">(Cash)</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Two Target Slots Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* SLOT 1 TARGET */}
+            {/* Two Visual Target Slots Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* SLOT 1 TARGET CARD */}
               <div
-                className={`rounded-2xl border-2 p-4 transition-all ${
+                className={`relative rounded-2xl border-2 p-4 sm:p-5 transition-all duration-200 ${
                   slot1Event
-                    ? "border-indigo-400 bg-indigo-50/40"
-                    : "border-dashed border-slate-300 bg-slate-50/50 hover:border-slate-400"
+                    ? "border-indigo-500 bg-gradient-to-br from-indigo-50/60 via-white to-indigo-50/40 shadow-sm"
+                    : "border-dashed border-indigo-200 bg-indigo-50/20 hover:border-indigo-300 hover:bg-indigo-50/30"
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white font-black text-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-600 text-white font-black text-xs shadow-xs">
                       1
                     </span>
-                    <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                      Slot 1 • 1st Preference
-                    </span>
+                    <div>
+                      <span className="text-xs font-black text-slate-900 uppercase tracking-wide block">
+                        Slot 1 • 1st Preference
+                      </span>
+                      <span className="text-[10px] text-indigo-700 font-semibold">
+                        Flagship or Regular Competition
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Flagship or Regular
-                  </span>
                 </div>
 
                 {slot1Event ? (
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                  <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-indigo-100 shadow-2xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <h3 className="text-sm font-black text-slate-900 truncate">
                             {slot1Event.name}
                           </h3>
                           {slot1Event.is_pro_event && (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 flex items-center gap-1">
-                              <Star className="h-2.5 w-2.5 fill-amber-500" />
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 flex items-center gap-1 border border-amber-200">
+                              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
                               Flagship (+₹100)
                             </span>
                           )}
                           {slot1Event.first_preference_only && (
-                            <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-purple-100 text-purple-900">
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
                               1st Pref Only
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">
-                          {slot1Event.school_or_dept} • {formatDate(slot1Event.event_date)} at {formatTime(slot1Event.start_time)}
-                        </p>
+                        <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 flex-wrap">
+                          <span className="text-indigo-900 font-semibold">{slot1Event.school_or_dept}</span>
+                          <span>•</span>
+                          <span>{formatDate(slot1Event.event_date)} at {formatTime(slot1Event.start_time)}</span>
+                        </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setSlot1Event(null)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
                         title="Remove from Slot 1"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -654,54 +760,62 @@ export function CashRegistrationClient({
                     </div>
                   </div>
                 ) : (
-                  <div className="py-2.5 text-center text-xs text-slate-400 font-medium">
-                    Click &quot;Assign Slot 1&quot; on any competition below to fill this slot.
+                  <div className="py-4 text-center rounded-xl border border-dashed border-indigo-200/80 bg-white/60">
+                    <Sparkles className="h-5 w-5 text-indigo-400 mx-auto mb-1 opacity-70" />
+                    <p className="text-xs text-slate-600 font-bold">Slot 1 is Empty</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Click &quot;Slot 1&quot; on any competition below to fill this slot.
+                    </p>
                   </div>
                 )}
               </div>
 
-              {/* SLOT 2 TARGET */}
+              {/* SLOT 2 TARGET CARD */}
               <div
-                className={`rounded-2xl border-2 p-4 transition-all ${
+                className={`relative rounded-2xl border-2 p-4 sm:p-5 transition-all duration-200 ${
                   slot2Event
-                    ? "border-indigo-400 bg-indigo-50/40"
-                    : "border-dashed border-slate-300 bg-slate-50/50 hover:border-slate-400"
+                    ? "border-teal-500 bg-gradient-to-br from-teal-50/60 via-white to-teal-50/40 shadow-sm"
+                    : "border-dashed border-teal-200 bg-teal-50/20 hover:border-teal-300 hover:bg-teal-50/30"
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white font-black text-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-teal-600 text-white font-black text-xs shadow-xs">
                       2
                     </span>
-                    <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                      Slot 2 • 2nd Preference
-                    </span>
+                    <div>
+                      <span className="text-xs font-black text-slate-900 uppercase tracking-wide block">
+                        Slot 2 • 2nd Preference
+                      </span>
+                      <span className="text-[10px] text-teal-700 font-semibold">
+                        Regular Competitions (Included at ₹0)
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Regular Competitions Only
-                  </span>
                 </div>
 
                 {slot2Event ? (
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                  <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-teal-100 shadow-2xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <h3 className="text-sm font-black text-slate-900 truncate">
                             {slot2Event.name}
                           </h3>
-                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900">
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200">
                             Regular
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">
-                          {slot2Event.school_or_dept} • {formatDate(slot2Event.event_date)} at {formatTime(slot2Event.start_time)}
-                        </p>
+                        <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2 flex-wrap">
+                          <span className="text-teal-900 font-semibold">{slot2Event.school_or_dept}</span>
+                          <span>•</span>
+                          <span>{formatDate(slot2Event.event_date)} at {formatTime(slot2Event.start_time)}</span>
+                        </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setSlot2Event(null)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
                         title="Remove from Slot 2"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -709,33 +823,40 @@ export function CashRegistrationClient({
                     </div>
                   </div>
                 ) : (
-                  <div className="py-2.5 text-center text-xs text-slate-400 font-medium">
-                    Click &quot;Assign Slot 2&quot; on any regular competition below.
+                  <div className="py-4 text-center rounded-xl border border-dashed border-teal-200/80 bg-white/60">
+                    <Layers className="h-5 w-5 text-teal-400 mx-auto mb-1 opacity-70" />
+                    <p className="text-xs text-slate-600 font-bold">Slot 2 is Empty</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Click &quot;Slot 2&quot; on any regular competition below.
+                    </p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Time Conflict Warning */}
+            {/* Time Conflict Alert */}
             {timeConflictMessage && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 flex items-center gap-2 font-medium">
+              <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-3.5 text-xs text-amber-950 flex items-center gap-2.5 font-medium shadow-2xs animate-in fade-in">
                 <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
                 <span>{timeConflictMessage}</span>
               </div>
             )}
 
-            {/* Submit Action Strip */}
+            {/* Submit Action Bar */}
             <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
-              <div className="text-xs text-slate-500">
+              <div className="text-xs">
                 {selectedCount === 0 ? (
-                  <span>Select at least 1 competition to proceed with cash registration.</span>
+                  <span className="text-slate-500">
+                    Select at least 1 competition from the catalog below to proceed.
+                  </span>
                 ) : selectedCount === 1 ? (
-                  <span className="text-indigo-700 font-medium">
-                    1 of 2 slots selected. You can add 1 more competition to your festival pass at no additional pass fee!
+                  <span className="text-indigo-700 font-semibold">
+                    1 of 2 slots selected. You can add 1 more competition to your festival pass for ₹0!
                   </span>
                 ) : (
-                  <span className="text-emerald-700 font-bold">
-                    ✓ Both slots selected! Ready to submit cash registration request.
+                  <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Both slots filled! Ready to submit cash registration request.</span>
                   </span>
                 )}
               </div>
@@ -744,79 +865,50 @@ export function CashRegistrationClient({
                 type="button"
                 onClick={() => setShowConfirmModal(true)}
                 disabled={selectedCount === 0 || isSubmitting}
-                className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md transition-all cursor-pointer ${
+                className={`inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold text-white shadow-md transition-all cursor-pointer ${
                   selectedCount === 0
                     ? "bg-slate-300 cursor-not-allowed text-slate-500 shadow-none"
-                    : "bg-emerald-700 hover:bg-emerald-800 active:scale-95 shadow-emerald-700/20"
+                    : "bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] shadow-emerald-600/25"
                 }`}
               >
                 <Banknote className="h-4 w-4" />
                 <span>Submit Cash Registration (₹{calculatedFee})</span>
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4 ml-0.5" />
               </button>
             </div>
           </div>
 
-          {/* SEARCH & FILTERS CONTROLS (Identical UX to /events page) */}
-          <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3 shadow-xs space-y-2.5">
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2 sm:gap-2.5">
-              {/* 1. Search Box */}
-              <div className="relative flex-1 min-w-[220px]">
+          {/* SEARCH & FILTERS CONTROLS */}
+          <div className="rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+            {/* Top row: Search Bar & Department Dropdown */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Search input */}
+              <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search competitions by title, department, venue..."
-                  className="w-full h-10 rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+                  placeholder="Search competitions by name, department, venue..."
+                  className="w-full h-11 rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:text-slate-700"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:text-slate-700"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
 
-              {/* 2. Tier Dropdown */}
-              <div className="relative w-full sm:w-[155px] shrink-0">
-                <select
-                  value={selectedTier}
-                  onChange={(e) => setSelectedTier(e.target.value as any)}
-                  className="w-full h-10 appearance-none rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-7 text-xs font-bold text-slate-700 focus:border-primary focus:bg-white focus:outline-hidden transition-all cursor-pointer"
-                >
-                  <option value="all">All Tiers ({initialEvents.length})</option>
-                  <option value="pro">Flagship</option>
-                  <option value="normal">Regular</option>
-                </select>
-                <Star className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              </div>
-
-              {/* 3. Date Dropdown */}
-              <div className="relative w-full sm:w-[155px] shrink-0">
-                <select
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full h-10 appearance-none rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-7 text-xs font-bold text-slate-700 focus:border-primary focus:bg-white focus:outline-hidden transition-all cursor-pointer"
-                >
-                  <option value="all">All Dates</option>
-                  <option value="2026-09-25">Day 1 • Sep 25</option>
-                  <option value="2026-09-26">Day 2 • Sep 26</option>
-                </select>
-                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              </div>
-
-              {/* 4. Department Dropdown */}
-              <div className="relative w-full sm:w-[190px] shrink-0">
+              {/* Department Dropdown */}
+              <div className="relative w-full sm:w-[220px] shrink-0">
                 <select
                   value={selectedSchool}
                   onChange={(e) => setSelectedSchool(e.target.value)}
-                  className="w-full h-10 appearance-none rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-7 text-xs font-bold text-slate-700 focus:border-primary focus:bg-white focus:outline-hidden transition-all cursor-pointer truncate"
+                  className="w-full h-11 appearance-none rounded-2xl border border-slate-200 bg-slate-50/70 pl-9 pr-8 text-xs font-bold text-slate-700 focus:border-indigo-500 focus:bg-white focus:outline-hidden transition-all cursor-pointer truncate"
                 >
                   <option value="all">All 14 Departments</option>
                   {schoolsData.map((sch) => (
@@ -825,16 +917,95 @@ export function CashRegistrationClient({
                     </option>
                   ))}
                 </select>
-                <GraduationCap className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <GraduationCap className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               </div>
             </div>
-          </div>
 
-          {/* EVENTS CATALOG GRID */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-500 font-medium px-1">
-              <span>Showing {filteredEvents.length} competitions</span>
+            {/* Bottom row: Filter Pills for Tiers and Dates */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                  Filter:
+                </span>
+
+                {/* Tier Pills */}
+                <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTier("all")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedTier === "all"
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Tiers ({initialEvents.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTier("pro")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                      selectedTier === "pro"
+                        ? "bg-white text-amber-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                    <span>Flagship</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTier("normal")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedTier === "normal"
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Regular
+                  </button>
+                </div>
+
+                {/* Date Pills */}
+                <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate("all")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedDate === "all"
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Dates
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate("2026-09-25")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedDate === "2026-09-25"
+                        ? "bg-white text-indigo-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Day 1 • Sep 25
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate("2026-09-26")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedDate === "2026-09-26"
+                        ? "bg-white text-indigo-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Day 2 • Sep 26
+                  </button>
+                </div>
+              </div>
+
+              {/* Reset link */}
               {(searchQuery || selectedDate !== "all" || selectedSchool !== "all" || selectedTier !== "all") && (
                 <button
                   type="button"
@@ -844,14 +1015,21 @@ export function CashRegistrationClient({
                     setSelectedSchool("all");
                     setSelectedTier("all");
                   }}
-                  className="text-indigo-600 font-bold hover:underline"
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline self-end sm:self-auto"
                 >
-                  Reset Filters
+                  Reset all filters
                 </button>
               )}
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* EVENTS CATALOG GRID */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-xs text-slate-500 font-semibold px-1">
+              <span>Showing {filteredEvents.length} competitions</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredEvents.map((event) => {
                 const isSlot1 = slot1Event?.id === event.id;
                 const isSlot2 = slot2Event?.id === event.id;
@@ -866,32 +1044,36 @@ export function CashRegistrationClient({
                 const isPro = event.is_pro_event;
                 const isFirstPrefOnly = event.first_preference_only;
 
+                const limit = event.participant_limit || 100;
+                const registered = event.total_registered || 0;
+                const occupancyPercent = Math.min(100, Math.round((registered / limit) * 100));
+
                 return (
                   <div
                     key={event.id}
-                    className={`rounded-2xl border bg-white p-4.5 flex flex-col justify-between transition-all shadow-xs ${
+                    className={`group relative rounded-3xl border bg-white p-5 flex flex-col justify-between transition-all duration-200 ${
                       isSelected
-                        ? "border-indigo-500 ring-2 ring-indigo-500/20 shadow-md"
-                        : "border-slate-200/90 hover:border-slate-300 hover:shadow-sm"
-                    } ${isLocked ? "opacity-60 bg-slate-50/50" : ""}`}
+                        ? "border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg -translate-y-0.5"
+                        : "border-slate-200/90 hover:border-indigo-300 hover:shadow-xl hover:-translate-y-1"
+                    } ${isLocked ? "opacity-60 bg-slate-50/60" : ""}`}
                   >
-                    <div className="space-y-3">
-                      {/* Top Badges */}
+                    <div className="space-y-3.5">
+                      {/* Top Badges & Status */}
                       <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-lg truncate max-w-[170px]">
+                        <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-xl truncate max-w-[180px]">
                           {event.school_or_dept}
                         </span>
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           {isPro && (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 flex items-center gap-1 border border-amber-200">
-                              <Star className="h-2.5 w-2.5 fill-amber-500" />
+                            <span className="text-[10px] font-black px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white flex items-center gap-1 shadow-2xs">
+                              <Star className="h-2.5 w-2.5 fill-white text-white" />
                               Flagship
                             </span>
                           )}
                           {isFirstPrefOnly && (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 border border-purple-200">
-                              1st Pref Only
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-purple-100 text-purple-900 border border-purple-200">
+                              1st Pref
                             </span>
                           )}
                         </div>
@@ -899,49 +1081,66 @@ export function CashRegistrationClient({
 
                       {/* Event Title & Description */}
                       <div>
-                        <h3 className="text-sm font-black text-slate-900 leading-snug line-clamp-2">
+                        <h3 className="text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug line-clamp-2">
                           {event.name}
                         </h3>
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed font-medium">
-                          {event.short_description || event.description || "Exciting festival competition."}
+                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed font-normal">
+                          {event.short_description || event.description || "Official Euphoria 2026 technical competition."}
                         </p>
                       </div>
 
-                      {/* Meta Info: Date, Time, Venue, Seats */}
-                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
+                      {/* Meta Info: Date, Time, Venue */}
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-3">
                         <div className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{formatDate(event.event_date)}</span>
+                          <Calendar className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                          <span className="truncate font-medium">{formatDate(event.event_date)}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{formatTime(event.start_time)}</span>
+                          <Clock className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                          <span className="truncate font-medium">{formatTime(event.start_time)}</span>
                         </div>
                         <div className="flex items-center gap-1.5 col-span-2">
-                          <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{event.venue || "Campus Venue"}</span>
+                          <MapPin className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                          <span className="truncate font-medium">{event.venue || "Campus Venue"}</span>
                         </div>
                       </div>
 
-                      {/* Quota / Seat status */}
-                      <div className="flex items-center justify-between text-[11px] font-medium pt-1">
-                        <span className="text-slate-500">
-                          {event.total_registered}/{event.participant_limit} seats filled
-                        </span>
-                        {isCapacityFull ? (
-                          <span className="text-rose-600 font-bold">Seats Full</span>
-                        ) : isQuotaFull ? (
-                          <span className="text-amber-700 font-bold">KLU Quota Full</span>
-                        ) : (
-                          <span className="text-emerald-700 font-bold">Available</span>
-                        )}
+                      {/* Capacity Meter / Seats Status */}
+                      <div className="pt-1 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] font-semibold">
+                          <span className="text-slate-500">
+                            {registered}/{limit} seats filled
+                          </span>
+                          {isCapacityFull ? (
+                            <span className="text-rose-600 font-bold">Seats Full</span>
+                          ) : isQuotaFull ? (
+                            <span className="text-amber-700 font-bold">KLU Quota Full</span>
+                          ) : occupancyPercent > 80 ? (
+                            <span className="text-amber-600 font-bold">Filling Fast</span>
+                          ) : (
+                            <span className="text-emerald-700 font-bold">Available</span>
+                          )}
+                        </div>
+                        {/* Mini progress bar */}
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              isCapacityFull
+                                ? "bg-rose-500"
+                                : occupancyPercent > 80
+                                ? "bg-amber-500"
+                                : "bg-emerald-500"
+                            }`}
+                            style={{ width: `${occupancyPercent}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
 
                     {/* Action Selection Buttons */}
-                    <div className="pt-4 border-t border-slate-100 mt-3 space-y-2">
+                    <div className="pt-4 border-t border-slate-100 mt-4 space-y-2">
                       {isLocked ? (
-                        <div className="w-full py-2 text-center text-xs font-bold text-slate-400 bg-slate-100 rounded-xl">
+                        <div className="w-full py-2.5 text-center text-xs font-bold text-slate-400 bg-slate-100 rounded-xl">
                           {isCapacityFull
                             ? "Capacity Full"
                             : isQuotaFull
@@ -953,15 +1152,17 @@ export function CashRegistrationClient({
                           <button
                             type="button"
                             onClick={() => handleToggleEvent(event)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm hover:bg-indigo-700 transition-colors cursor-pointer"
+                            className={`flex-1 py-2.5 px-3 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer ${
+                              isSlot1 ? "bg-indigo-600 hover:bg-indigo-700" : "bg-teal-600 hover:bg-teal-700"
+                            }`}
                           >
                             <Check className="h-3.5 w-3.5" />
-                            <span>{isSlot1 ? "Slot 1 Assigned" : "Slot 2 Assigned"}</span>
+                            <span>{isSlot1 ? "Assigned to Slot 1" : "Assigned to Slot 2"}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleToggleEvent(event)}
-                            className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors"
+                            className="p-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Remove assignment"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -976,7 +1177,7 @@ export function CashRegistrationClient({
                             className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               slot1Event
                                 ? "border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50"
-                                : "border-indigo-300 bg-indigo-50/80 text-indigo-900 hover:bg-indigo-100 font-black"
+                                : "border-indigo-300 bg-indigo-50 text-indigo-950 hover:bg-indigo-100 font-extrabold shadow-2xs"
                             }`}
                           >
                             <span>Slot 1</span>
@@ -998,8 +1199,8 @@ export function CashRegistrationClient({
                               isPro || isFirstPrefOnly
                                 ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
                                 : slot2Event
-                                ? "border-slate-200 bg-slate-50 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50"
-                                : "border-indigo-300 bg-indigo-50/80 text-indigo-900 hover:bg-indigo-100 font-black"
+                                ? "border-slate-200 bg-slate-50 text-slate-700 hover:border-teal-300 hover:bg-teal-50/50"
+                                : "border-teal-300 bg-teal-50 text-teal-950 hover:bg-teal-100 font-extrabold shadow-2xs"
                             }`}
                           >
                             <span>{isPro ? "No Slot 2" : isFirstPrefOnly ? "Slot 1 Only" : "Slot 2"}</span>
@@ -1012,16 +1213,65 @@ export function CashRegistrationClient({
               })}
             </div>
           </div>
+
+          {/* 5. STICKY FLOATING BOTTOM DOCK (Appears on Scroll) */}
+          {showFloatingDock && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-3xl w-[calc(100%-2rem)] bg-slate-950/95 text-white backdrop-blur-md border border-white/15 rounded-2xl p-3 sm:px-5 sm:py-3 shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom-5 duration-200">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                {/* Slot 1 Mini Chip */}
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold truncate max-w-[120px] sm:max-w-[170px] ${
+                    slot1Event ? "bg-indigo-600 text-white" : "bg-white/10 text-slate-400 border border-white/10"
+                  }`}
+                >
+                  <span className="font-mono text-[10px] opacity-75">S1:</span>
+                  <span className="truncate">{slot1Event ? slot1Event.name : "Empty"}</span>
+                </div>
+
+                {/* Slot 2 Mini Chip */}
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold truncate max-w-[120px] sm:max-w-[170px] ${
+                    slot2Event ? "bg-teal-600 text-white" : "bg-white/10 text-slate-400 border border-white/10"
+                  }`}
+                >
+                  <span className="font-mono text-[10px] opacity-75">S2:</span>
+                  <span className="truncate">{slot2Event ? slot2Event.name : "Empty"}</span>
+                </div>
+
+                {/* Total Cash Price */}
+                <div className="hidden sm:block text-xs font-black text-emerald-400">
+                  ₹{calculatedFee}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(true)}
+                  disabled={selectedCount === 0 || isSubmitting}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    selectedCount === 0
+                      ? "bg-white/10 text-slate-500 cursor-not-allowed"
+                      : "bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-md font-extrabold"
+                  }`}
+                >
+                  <Banknote className="h-3.5 w-3.5" />
+                  <span>Submit ({selectedCount}/2)</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* 5. CONFIRMATION MODAL */}
+      {/* 6. CONFIRMATION MODAL */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 sm:p-7 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 shadow-sm">
                   <Banknote className="h-5 w-5" />
                 </div>
                 <div>
@@ -1036,36 +1286,38 @@ export function CashRegistrationClient({
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Participant Profile Check */}
-            <div className="rounded-2xl bg-slate-50 p-3.5 border border-slate-200/80 space-y-1 text-xs">
+            <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200/80 space-y-1.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-700">{profile.full_name}</span>
+                <span className="font-extrabold text-slate-900 text-sm">{profile?.full_name}</span>
                 <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
                   {isInternal ? "Internal KARE" : "External Delegate"}
                 </span>
               </div>
-              <div className="text-slate-500">
-                {profile.email} • {profile.mobile_number}
+              <div className="text-slate-600">
+                {profile?.email} {profile?.mobile_number ? `• ${profile.mobile_number}` : ""}
               </div>
               <div className="text-slate-500 font-medium">
-                {isInternal ? `Reg: ${profile.register_number} • ${profile.department}` : profile.college_name}
+                {isInternal
+                  ? `Reg: ${profile?.register_number || "N/A"} • ${profile?.department || "Department"}`
+                  : profile?.college_name || "External College"}
               </div>
             </div>
 
             {/* Selected Events Summary */}
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide block">
                 Selected Festival Events ({selectedCount})
               </span>
 
               {slot1Event && (
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 text-xs flex items-center justify-between">
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-3.5 text-xs flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-extrabold text-indigo-900">Slot 1:</span>
@@ -1076,26 +1328,26 @@ export function CashRegistrationClient({
                     </div>
                   </div>
                   {slot1Event.is_pro_event && (
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
-                      Flagship
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
+                      Flagship (+₹100)
                     </span>
                   )}
                 </div>
               )}
 
               {slot2Event && (
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 text-xs flex items-center justify-between">
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-3.5 text-xs flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-indigo-900">Slot 2:</span>
+                      <span className="font-extrabold text-teal-900">Slot 2:</span>
                       <span className="font-bold text-slate-900">{slot2Event.name}</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
                       {slot2Event.school_or_dept} • {formatDate(slot2Event.event_date)}
                     </div>
                   </div>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900">
-                    Regular
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-teal-100 text-teal-900 border border-teal-200">
+                    Regular (₹0)
                   </span>
                 </div>
               )}
@@ -1103,7 +1355,7 @@ export function CashRegistrationClient({
 
             {/* Accommodation Toggle for External Delegates */}
             {!isInternal && (
-              <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+              <label className="flex items-center gap-3 p-3.5 rounded-2xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
                 <input
                   type="checkbox"
                   checked={needsAccommodation}
@@ -1111,18 +1363,20 @@ export function CashRegistrationClient({
                   className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                 />
                 <div className="text-xs">
-                  <span className="font-bold text-slate-800">I require hostel accommodation</span>
-                  <p className="text-slate-500 text-[11px]">Subject to availability on campus.</p>
+                  <span className="font-bold text-slate-900">I require hostel accommodation on campus</span>
+                  <p className="text-slate-500 text-[11px]">Subject to campus hostel availability.</p>
                 </div>
               </label>
             )}
 
             {/* Total Payable Box */}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 flex items-center justify-between">
+            <div className="rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50 to-teal-50 p-4 flex items-center justify-between shadow-2xs">
               <div>
-                <span className="text-xs font-bold text-emerald-900">Total Cash Payable at Counter</span>
+                <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider block">
+                  Total Cash Payable at Counter
+                </span>
                 <p className="text-[11px] text-emerald-800">
-                  {calculatedTier === "pro_pass" ? "Flagship Pass Tier" : "Standard Pass Tier"}
+                  {calculatedTier === "pro_pass" ? "Flagship Festival Pass" : "Standard Festival Pass"}
                 </p>
               </div>
               <div className="text-2xl font-black text-emerald-950">
@@ -1131,11 +1385,11 @@ export function CashRegistrationClient({
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1143,7 +1397,7 @@ export function CashRegistrationClient({
                 type="button"
                 onClick={handleSubmitRequest}
                 disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white bg-emerald-700 hover:bg-emerald-800 shadow-md shadow-emerald-700/20 transition-all cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
               >
                 <Banknote className="h-4 w-4" />
                 <span>{isSubmitting ? "Submitting Request..." : "Confirm & Submit Request"}</span>

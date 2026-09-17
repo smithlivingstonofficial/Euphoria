@@ -27,7 +27,7 @@ export default async function CashRegistrationPage() {
   const categories = result.categories || [];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-indigo-100 selection:text-primary">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-indigo-50/20 to-slate-50 text-slate-900 flex flex-col selection:bg-indigo-100 selection:text-primary">
       <Navbar
         user={
           profile
