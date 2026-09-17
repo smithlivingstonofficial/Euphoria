@@ -20,7 +20,6 @@ import {
   Compass,
   LayoutDashboard,
   Zap,
-  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -320,14 +319,6 @@ export function Navbar({
                           <span>My Dashboard</span>
                         </Link>
 
-                        <Link
-                          href="/cash-registration"
-                          onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 transition-colors"
-                        >
-                          <Banknote className="h-4 w-4 text-emerald-600 shrink-0" />
-                          <span>Cash Registration</span>
-                        </Link>
 
                         <div className="pt-1.5 mt-1 border-t border-slate-100">
                           <LogoutButton
@@ -523,14 +514,6 @@ export function Navbar({
                     <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
                   </Link>
 
-                  <Link href="/cash-registration" onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-bold text-emerald-800 cursor-pointer hover:bg-emerald-100/70 active:scale-[0.99] transition-all">
-                    <div className="flex items-center gap-2.5">
-                      <Banknote className="h-4 w-4 text-emerald-600" />
-                      <span>Cash Registration</span>
-                    </div>
-                    <ChevronRight className="h-3.5 w-3.5 text-emerald-400" />
-                  </Link>
 
                   {isAdmin && (
                     <Link href="/admin" onClick={() => setMobileMenuOpen(false)}
