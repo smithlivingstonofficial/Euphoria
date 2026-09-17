@@ -31,6 +31,7 @@ import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { getEventSchedule } from "@/lib/schedule";
 import { parseEventMetadata } from "@/components/events/event-catalog-explorer";
 import type { AdminUserListItem } from "@/actions/admin";
+import { isKluParticipant } from "@/lib/profile";
 
 interface RegistrationItem {
   id: string;
@@ -588,8 +589,8 @@ export function ReportsExporter({
           gender: u.gender || "Not Specified",
           email: u.email || "",
           mobile: u.mobile_number || "",
-          participantType: u.participant_type === "internal" ? "KARE Internal" : "External University",
-          college: u.college_name || (u.participant_type === "internal" ? "Kalasalingam Academy of Research and Education" : ""),
+          participantType: (u.participant_type === "internal" || isKluParticipant(u)) ? "KARE Internal" : "External University",
+          college: u.college_name || ((u.participant_type === "internal" || isKluParticipant(u)) ? "Kalasalingam Academy of Research and Education" : ""),
           city: u.city || "",
           course: u.course || "",
           department: u.department || "",
@@ -750,8 +751,8 @@ export function ReportsExporter({
         u?.full_name || "Participant",
         u?.gender || "Not Specified",
         u?.register_number || "",
-        u?.participant_type === "internal" ? "KARE Internal" : "External University",
-        u?.college_name || (u?.participant_type === "internal" ? "KARE" : "External College"),
+        (u?.participant_type === "internal" || isKluParticipant(u)) ? "KARE Internal" : "External University",
+        u?.college_name || ((u?.participant_type === "internal" || isKluParticipant(u)) ? "KARE" : "External College"),
         u?.department || "",
         u?.course ? `${u.course} ${u.year_of_study ? `(${u.year_of_study}Y)` : ""}` : "",
         u?.mobile_number || "",
@@ -840,10 +841,10 @@ export function ReportsExporter({
           gender: u.gender ? u.gender.toUpperCase() : "NOT SPECIFIED",
           email: u.email || "",
           mobile: u.mobile_number || "",
-          college: u.college_name || (u.participant_type === "internal" ? "KARE" : "External College"),
+          college: u.college_name || ((u.participant_type === "internal" || isKluParticipant(u)) ? "KARE" : "External College"),
           city: u.city || "",
           department: u.department || "",
-          participantType: u.participant_type === "internal" ? "Internal" : "External University",
+          participantType: (u.participant_type === "internal" || isKluParticipant(u)) ? "Internal" : "External University",
           event1: s1?.event?.name || "General Track",
           event2: s2?.event?.name || "None",
           totalEvents: userRegs.length,
@@ -1166,7 +1167,7 @@ export function ReportsExporter({
         college,
         regNo,
         dept,
-        pType === "internal" ? "KARE Internal" : "External University",
+        (pType === "internal" || isKluParticipant(item)) ? "KARE Internal" : "External University",
         tier === "pro_pass" ? "Flagship Pass" : "Regular Pass",
         amount,
         needsAcc ? "YES" : "NO",
@@ -1235,8 +1236,8 @@ export function ReportsExporter({
             email: r.user?.email || "",
             mobileNumber: r.user?.mobile_number || "",
             gender: r.user?.gender || "",
-            participantType: r.user?.participant_type || "external",
-            collegeName: r.user?.college_name || "",
+            participantType: ((r.user?.participant_type === "internal" || isKluParticipant(r.user)) ? "internal" : (r.user?.participant_type || "external")) as "internal" | "external",
+            collegeName: r.user?.college_name || ((r.user?.participant_type === "internal" || isKluParticipant(r.user)) ? "Kalasalingam Academy of Research and Education" : ""),
             department: r.user?.department || "",
             course: r.user?.course || "",
             yearOfStudy: r.user?.year_of_study || undefined,

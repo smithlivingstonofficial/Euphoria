@@ -77,3 +77,22 @@ export function isProfileComplete(
     return true;
   }
 }
+
+export const KLU_INSTITUTION_REGEX = /\b(klu|kare|k\.a\.r\.e|k\.l\.u|kalasalingam|kalaasalingam|kalaslingam|krishnankoil)\b/i;
+
+export function isKluParticipant(profile: {
+  participant_type?: string | null;
+  email?: string | null;
+  college_name?: string | null;
+  school?: string | null;
+} | null | undefined): boolean {
+  if (!profile) return false;
+  const pType = (profile.participant_type || "").toLowerCase().trim();
+  const email = (profile.email || "").toLowerCase().trim();
+  if (pType === "internal" || email.endsWith("@klu.ac.in")) return true;
+
+  const college = (profile.college_name || "").trim();
+  const school = (profile.school || "").trim();
+  return KLU_INSTITUTION_REGEX.test(college) || KLU_INSTITUTION_REGEX.test(school);
+}
+

@@ -20,6 +20,10 @@ const ROLE_HIERARCHY: Record<string, number> = {
   participant: 0,
 };
 
+import { isKluParticipant } from "@/lib/profile";
+
+
+
 export interface CallerAuthInfo {
   user: {
     id: string;
@@ -790,8 +794,20 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
         r.user?.needs_accommodation ||
         (r.user?.id && accommodationMap.get(r.user.id))
       );
+      const isInternal = r.user ? isKluParticipant(r.user) : false;
+      const user = r.user
+        ? {
+            ...r.user,
+            participant_type: isInternal ? "internal" : (r.user.participant_type || "external"),
+            college_name: isInternal
+              ? (r.user.college_name || "Kalasalingam Academy of Research and Education")
+              : r.user.college_name,
+          }
+        : r.user;
+
       return {
         ...r,
+        user,
         needs_accommodation: needsAcc,
       };
     });
@@ -832,7 +848,21 @@ export async function getRecentRegistrationsAdmin(limit = 8) {
       .limit(limit);
 
     if (error) throw error;
-    return { success: true, registrations: data || [] };
+    const enriched = (data || []).map((r: any) => {
+      if (!r.user) return r;
+      const isInternal = isKluParticipant(r.user);
+      return {
+        ...r,
+        user: {
+          ...r.user,
+          participant_type: isInternal ? "internal" : (r.user.participant_type || "external"),
+          college_name: isInternal
+            ? (r.user.college_name || "Kalasalingam Academy of Research and Education")
+            : r.user.college_name,
+        },
+      };
+    });
+    return { success: true, registrations: enriched };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch recent registrations";
     return { success: false, error: msg, registrations: [] };
@@ -1669,8 +1699,8 @@ export async function getAllOrdersAdmin() {
           email: userProf?.email || fallbackEmail,
           mobileNumber: userProf?.mobile_number || fallbackPhone,
           gender: userProf?.gender || meta.gender || undefined,
-          participantType: userProf?.participant_type || "external",
-          collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
+          participantType: isKluParticipant(userProf) ? "internal" : (userProf?.participant_type || "external"),
+          collegeName: userProf?.college_name || (isKluParticipant(userProf) ? "KARE" : ""),
           department: userProf?.department || "",
           registerNumber: userProf?.register_number || fallbackRegn,
           city: userProf?.city || meta.city || "",
@@ -1936,8 +1966,8 @@ export async function getPaginatedOrdersAdmin(params: {
           fullName: userProf?.full_name || fallbackName,
           email: userProf?.email || fallbackEmail,
           mobileNumber: userProf?.mobile_number || fallbackPhone,
-          participantType: userProf?.participant_type || "external",
-          collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
+          participantType: isKluParticipant(userProf) ? "internal" : (userProf?.participant_type || "external"),
+          collegeName: userProf?.college_name || (isKluParticipant(userProf) ? "KARE" : ""),
           department: userProf?.department || "",
           registerNumber: userProf?.register_number || fallbackRegn,
         },
@@ -2286,9 +2316,11 @@ export async function getAllUsersAndPassesAdmin() {
         email: prof.email || "",
         mobileNumber: prof.mobile_number || undefined,
         gender: prof.gender || undefined,
-        participantType: prof.participant_type || "external",
+        participantType: (isKluParticipant(prof) ? "internal" : (prof.participant_type || "external")) as "internal" | "external",
         registerNumber: prof.register_number || undefined,
-        collegeName: prof.college_name || undefined,
+        collegeName: isKluParticipant(prof)
+          ? (prof.college_name || "Kalasalingam Academy of Research and Education")
+          : (prof.college_name || undefined),
         department: prof.department || undefined,
         course: prof.course || undefined,
         yearOfStudy: prof.year_of_study || undefined,

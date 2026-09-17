@@ -2,7 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { isProfileComplete } from "@/lib/profile";
+import { isProfileComplete, isKluParticipant } from "@/lib/profile";
 
 export async function getCurrentUser() {
   try {
@@ -176,20 +176,28 @@ export async function saveParticipantProfile(profileData: {
       return { success: false, error: "Please fill in all required profile fields before submitting." };
     }
 
+    const isKlu = isKluParticipant({
+      participant_type: profileData.participantType,
+      email: targetEmail,
+      college_name: profileData.collegeName,
+      school: profileData.school,
+    });
+    const resolvedParticipantType = isKlu ? "internal" : "external";
+
     const payload: Record<string, unknown> = {
       id: targetUserId,
       email: targetEmail,
       full_name: profileData.fullName.trim(),
       gender: normalizedGender,
       mobile_number: profileData.mobileNumber.trim(),
-      participant_type: profileData.participantType,
+      participant_type: resolvedParticipantType,
       register_number:
-        profileData.participantType === "internal"
-          ? profileData.registerNumber?.trim().toUpperCase()
+        resolvedParticipantType === "internal"
+          ? profileData.registerNumber?.trim().toUpperCase() || null
           : null,
-      school: profileData.participantType === "internal" ? profileData.school : null,
+      school: resolvedParticipantType === "internal" ? profileData.school : null,
       college_name:
-        profileData.participantType === "external"
+        resolvedParticipantType === "external"
           ? profileData.collegeName?.trim()
           : "Kalasalingam Academy of Research and Education",
       course: profileData.course ? profileData.course.trim() : null,

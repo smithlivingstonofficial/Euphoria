@@ -1,7 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { isProfileComplete } from "@/lib/profile";
+import { isProfileComplete, isKluParticipant } from "@/lib/profile";
 
 export async function POST(request: NextRequest) {
   try {
@@ -108,20 +108,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.redirect(new URL("/complete-profile?error=incomplete_fields", request.url), 303);
     }
 
+    const isKlu = isKluParticipant({
+      participant_type: participantType,
+      email: targetEmail,
+      college_name: collegeName,
+      school: school,
+    });
+    const resolvedParticipantType = isKlu ? "internal" : "external";
+
     const payload: Record<string, unknown> = {
       id: targetUserId,
       email: targetEmail,
       full_name: fullName.trim(),
       gender: normalizedGender,
       mobile_number: mobileNumber.trim(),
-      participant_type: participantType,
+      participant_type: resolvedParticipantType,
       register_number:
-        participantType === "internal"
-          ? registerNumber.trim().toUpperCase()
+        resolvedParticipantType === "internal"
+          ? registerNumber.trim().toUpperCase() || null
           : null,
-      school: participantType === "internal" ? school : null,
+      school: resolvedParticipantType === "internal" ? school : null,
       college_name:
-        participantType === "external"
+        resolvedParticipantType === "external"
           ? collegeName.trim()
           : "Kalasalingam Academy of Research and Education",
       course: course ? course.trim() : null,
