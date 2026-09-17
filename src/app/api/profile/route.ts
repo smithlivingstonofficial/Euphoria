@@ -67,22 +67,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.redirect(new URL("/register?error=session_expired", request.url), 303);
     }
 
+    const normalizedGender = typeof gender === "string" ? gender.trim().toLowerCase() : "";
+    if (!normalizedGender || !["male", "female", "other"].includes(normalizedGender)) {
+      if (contentType.includes("application/json")) {
+        return NextResponse.json(
+          { success: false, error: "Please select your gender (Male, Female, or Other). Gender is mandatory." },
+          { status: 400 }
+        );
+      }
+      return NextResponse.redirect(new URL("/complete-profile?error=missing_gender", request.url), 303);
+    }
+
     // Verify all required fields are non-empty before setting profile completed
-    const completenessCheck = isProfileComplete({
-      email: targetEmail,
-      full_name: fullName,
-      mobile_number: mobileNumber,
-      gender: gender as "male" | "female" | "other",
-      participant_type: participantType as "internal" | "external",
-      register_number: registerNumber,
-      school: school,
-      college_name: collegeName,
-      city: city,
-      pincode: pincode,
-      course: course,
-      department: department,
-      year_of_study: yearOfStudy,
-    });
+    const completenessCheck = isProfileComplete(
+      {
+        email: targetEmail,
+        full_name: fullName,
+        mobile_number: mobileNumber,
+        gender: normalizedGender as "male" | "female" | "other",
+        participant_type: participantType as "internal" | "external",
+        register_number: registerNumber,
+        school: school,
+        college_name: collegeName,
+        city: city,
+        pincode: pincode,
+        course: course,
+        department: department,
+        year_of_study: yearOfStudy,
+      },
+      { requireGender: true }
+    );
 
     if (!completenessCheck) {
       if (contentType.includes("application/json")) {
@@ -98,6 +112,7 @@ export async function POST(request: NextRequest) {
       id: targetUserId,
       email: targetEmail,
       full_name: fullName.trim(),
+      gender: normalizedGender,
       mobile_number: mobileNumber.trim(),
       participant_type: participantType,
       register_number:
@@ -116,10 +131,10 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // Try saving with extra columns (gender, city, pincode)
+    // Include extra columns (gender, city, pincode)
     const payloadWithExtras = {
       ...payload,
-      gender: gender || null,
+      gender: normalizedGender,
       city:
         participantType === "internal"
           ? (city ? city.trim() : "Krishnankoil")

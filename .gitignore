@@ -46,3 +46,5 @@ scratch/
 *.db
 /supabase/migrations/
 /supabase/
+scripts/
+scratch-*.mjs

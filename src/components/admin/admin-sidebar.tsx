@@ -25,6 +25,7 @@ import {
   Receipt,
   Search,
   X,
+  Banknote,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 import { cn } from "@/lib/utils";
@@ -99,6 +100,13 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "FINANCE & TRANSACTIONS",
     items: [
+      {
+        href: "/admin/cash-requests",
+        label: "Cash On Hand Approvals",
+        icon: Banknote,
+        badge: "Cash",
+        badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      },
       {
         href: "/admin/payments",
         label: "Payment Transactions",

@@ -953,7 +953,12 @@ export function CompleteProfileForm({
 
   // Common Profile State
   const [fullName, setFullName] = useState(user.fullName || initialProfile?.full_name || "");
-  const [gender, setGender] = useState<string>(initialProfile?.gender || "male");
+  const [gender, setGender] = useState<string>(() => {
+    if (initialProfile?.gender && ["male", "female", "other"].includes(initialProfile.gender.toLowerCase())) {
+      return initialProfile.gender.toLowerCase();
+    }
+    return "";
+  });
   const [mobileNumber, setMobileNumber] = useState(initialProfile?.mobile_number || "");
 
   // Internal KARE Student Fields
@@ -1052,6 +1057,10 @@ export function CompleteProfileForm({
   const [pincode, setPincode] = useState(initialProfile?.pincode || "");
 
   // Validations
+  const isGenderValid = useMemo(
+    () => Boolean(gender && ["male", "female", "other"].includes(gender.toLowerCase())),
+    [gender]
+  );
   const isMobileValid = useMemo(() => /^[6-9]\d{9}$/.test(mobileNumber), [mobileNumber]);
   const isPincodeValid = useMemo(() => (user.participantType === "internal" ? true : /^\d{6}$/.test(pincode)), [user.participantType, pincode]);
   const isCityValid = useMemo(() => (user.participantType === "internal" ? true : city.trim().length >= 2), [user.participantType, city]);
@@ -1101,6 +1110,10 @@ export function CompleteProfileForm({
 
     if (!isNameValid) {
       setErrorMessage("Please enter your full name (minimum 2 characters).");
+      return;
+    }
+    if (!isGenderValid) {
+      setErrorMessage("Please select your gender (Male, Female, or Other). Gender is mandatory for registration and campus accommodation.");
       return;
     }
     if (!isMobileValid) {
@@ -1310,11 +1323,18 @@ export function CompleteProfileForm({
                       value={gender}
                       required
                       onChange={(e) => setGender(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-white px-3 py-2.5 text-xs sm:text-sm text-slate-900 font-medium focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/15 focus:outline-none appearance-none pr-7 shadow-2xs transition-all cursor-pointer"
+                      className={`w-full rounded-xl border bg-white px-3 py-2.5 text-xs sm:text-sm font-medium focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/15 focus:outline-none appearance-none pr-7 shadow-2xs transition-all cursor-pointer ${
+                        !gender
+                          ? "text-slate-400 border-slate-200 hover:border-slate-300"
+                          : "text-slate-900 border-slate-200 hover:border-slate-300"
+                      }`}
                     >
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
+                      <option value="" disabled className="text-slate-400">
+                        Select Gender *
+                      </option>
+                      <option value="male" className="text-slate-900">Male</option>
+                      <option value="female" className="text-slate-900">Female</option>
+                      <option value="other" className="text-slate-900">Other</option>
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                   </div>

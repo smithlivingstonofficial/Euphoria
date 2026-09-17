@@ -60,6 +60,7 @@ interface ProfileData {
   id: string;
   full_name: string;
   email: string;
+  gender?: string;
   participant_type: "internal" | "external";
   register_number?: string;
   college_name?: string;
@@ -368,7 +369,9 @@ export function DigitalPassClient({
                 <div>
                   <span className="text-slate-500 block font-medium">Campus Accommodation</span>
                   <span className={`font-bold block ${isAccommodationRequested ? "text-emerald-800" : "text-slate-700"}`}>
-                    {isAccommodationRequested ? "Requested (In-Person Settlement)" : "None"}
+                    {isAccommodationRequested
+                      ? `Requested (${profile.gender?.toLowerCase() === "female" ? "Girls Hostel" : "Boys Hostel"})`
+                      : "None"}
                   </span>
                 </div>
               </div>
@@ -574,9 +577,20 @@ export function DigitalPassClient({
 
             {isAccommodationRequested ? (
               <div className="rounded-2xl bg-white/80 border border-emerald-200 p-3.5 space-y-2 text-xs text-emerald-950">
-                <div className="flex items-center gap-2 font-bold text-emerald-900">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span>Accommodation request linked to pass {masterCode}</span>
+                <div className="flex items-center justify-between flex-wrap gap-2 font-bold text-emerald-900">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>Accommodation request linked to pass {masterCode}</span>
+                  </div>
+                  {profile.gender && (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                      profile.gender.toLowerCase() === "female"
+                        ? "bg-pink-100 text-pink-700 border border-pink-200"
+                        : "bg-blue-100 text-blue-700 border border-blue-200"
+                    }`}>
+                      {profile.gender.toLowerCase() === "female" ? "Girls Hostel Track" : "Boys Hostel Track"}
+                    </span>
+                  )}
                 </div>
                 <p className="text-emerald-900/80 leading-relaxed">
                   Your hostel spot request is registered in the system. Please report to the <strong>Euphoria Hospitality &amp; Hostel Helpdesk</strong> upon arriving at Kalasalingam University campus to complete your room allocation and in-person payment.

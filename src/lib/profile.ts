@@ -5,7 +5,8 @@ import { Profile } from "@/types/database";
  * If ANY mandatory field is missing, empty, or invalid, returns false.
  */
 export function isProfileComplete(
-  profile: Partial<Profile> | Record<string, unknown> | null | undefined
+  profile: Partial<Profile> | Record<string, unknown> | null | undefined,
+  options?: { requireGender?: boolean }
 ): boolean {
   if (!profile) return false;
 
@@ -17,9 +18,11 @@ export function isProfileComplete(
   const rawMobile = typeof profile.mobile_number === "string" ? profile.mobile_number.replace(/\D/g, "") : "";
   if (rawMobile.length !== 10) return false;
 
-  // 3. Gender (validated when present in payload or form)
-  if (profile.gender !== undefined && profile.gender !== null && profile.gender !== "") {
-    const gender = typeof profile.gender === "string" ? profile.gender.trim().toLowerCase() : "";
+  // 3. Gender (mandatory when requireGender is true, or when gender is specified)
+  const gender = typeof profile.gender === "string" ? profile.gender.trim().toLowerCase() : "";
+  if (options?.requireGender) {
+    if (!["male", "female", "other"].includes(gender)) return false;
+  } else if (profile.gender !== undefined && profile.gender !== null && profile.gender !== "") {
     if (!["male", "female", "other"].includes(gender)) return false;
   }
 

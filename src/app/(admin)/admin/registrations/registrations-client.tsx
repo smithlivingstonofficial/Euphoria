@@ -45,6 +45,7 @@ interface RegistrationRow {
     full_name: string;
     email: string;
     mobile_number?: string;
+    gender?: string;
     register_number?: string;
     college_name?: string;
     department?: string;
@@ -216,6 +217,7 @@ export function MasterRegistrationsClient({
       "Pass Tier",
       "Slot Number",
       "Student Name",
+      "Gender",
       "Email",
       "Mobile",
       "Register No",
@@ -247,6 +249,7 @@ export function MasterRegistrationsClient({
         `"${passTier}"`,
         r.slot_number || 1,
         `"${r.user?.full_name || ""}"`,
+        `"${r.user?.gender ? r.user.gender.toUpperCase() : "N/A"}"`,
         `"${r.user?.email || ""}"`,
         `"${r.user?.mobile_number || ""}"`,
         `"${r.user?.register_number || ""}"`,

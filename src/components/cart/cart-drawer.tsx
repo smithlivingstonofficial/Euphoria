@@ -24,6 +24,7 @@ import {
   CreditCard,
   Lock,
   Printer,
+  Banknote,
 } from "lucide-react";
 import { useCart } from "@/context/cart-context";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
@@ -637,6 +638,17 @@ export function CartDrawer({
                         </>
                       )}
                     </button>
+
+                    <div className="pt-1">
+                      <Link
+                        href="/cash-registration"
+                        onClick={closeCart}
+                        className="inline-flex items-center justify-center gap-1.5 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 w-full py-2 rounded-xl transition-all"
+                      >
+                        <Banknote className="h-3.5 w-3.5 text-emerald-700" />
+                        <span>Prefer to pay with Cash? Register with Cash on Hand</span>
+                      </Link>
+                    </div>
                   </div>
                 );
               })()

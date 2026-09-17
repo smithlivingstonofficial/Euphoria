@@ -146,22 +146,31 @@ export async function saveParticipantProfile(profileData: {
       return { success: false, error: "User identity not found. Please sign in again." };
     }
 
+    // Strictly validate mandatory gender field
+    const normalizedGender = typeof profileData.gender === "string" ? profileData.gender.trim().toLowerCase() : "";
+    if (!normalizedGender || !["male", "female", "other"].includes(normalizedGender)) {
+      return { success: false, error: "Please select your gender (Male, Female, or Other). Gender is mandatory." };
+    }
+
     // Verify all mandatory profile fields are non-empty before permitting completion
-    const isComplete = isProfileComplete({
-      email: targetEmail,
-      full_name: profileData.fullName,
-      mobile_number: profileData.mobileNumber,
-      gender: profileData.gender as any,
-      participant_type: profileData.participantType,
-      register_number: profileData.registerNumber,
-      school: profileData.school,
-      college_name: profileData.collegeName,
-      city: profileData.city,
-      pincode: profileData.pincode,
-      course: profileData.course,
-      department: profileData.department,
-      year_of_study: profileData.yearOfStudy,
-    });
+    const isComplete = isProfileComplete(
+      {
+        email: targetEmail,
+        full_name: profileData.fullName,
+        mobile_number: profileData.mobileNumber,
+        gender: normalizedGender as any,
+        participant_type: profileData.participantType,
+        register_number: profileData.registerNumber,
+        school: profileData.school,
+        college_name: profileData.collegeName,
+        city: profileData.city,
+        pincode: profileData.pincode,
+        course: profileData.course,
+        department: profileData.department,
+        year_of_study: profileData.yearOfStudy,
+      },
+      { requireGender: true }
+    );
 
     if (!isComplete) {
       return { success: false, error: "Please fill in all required profile fields before submitting." };
@@ -171,6 +180,7 @@ export async function saveParticipantProfile(profileData: {
       id: targetUserId,
       email: targetEmail,
       full_name: profileData.fullName.trim(),
+      gender: normalizedGender,
       mobile_number: profileData.mobileNumber.trim(),
       participant_type: profileData.participantType,
       register_number:
@@ -189,10 +199,10 @@ export async function saveParticipantProfile(profileData: {
       updated_at: new Date().toISOString(),
     };
 
-    // Try saving with new columns (gender, city, pincode)
+    // Include new columns (gender, city, pincode)
     const payloadWithExtras = {
       ...payload,
-      gender: profileData.gender || null,
+      gender: normalizedGender,
       city:
         profileData.participantType === "internal"
           ? (profileData.city?.trim() || "Krishnankoil")

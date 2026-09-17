@@ -8,6 +8,7 @@ import {
   Printer,
   Copy,
   LogOut,
+  Banknote,
 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
@@ -162,13 +163,25 @@ export default async function ParticipantDashboardPage() {
             {/* Action Buttons */}
             <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap w-full sm:w-auto pt-1 sm:pt-0">
               {remainingSlots > 0 && (
-                <Link
-                  href="/events"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-emerald-800 transition-all whitespace-nowrap cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>{hasActivePass ? "Claim 2nd Slot (+₹0)" : "Browse Events"}</span>
-                </Link>
+                <>
+                  <Link
+                    href="/events"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-emerald-800 transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>{hasActivePass ? "Claim 2nd Slot (+₹0)" : "Browse Events"}</span>
+                  </Link>
+
+                  {!hasActivePass && (
+                    <Link
+                      href="/cash-registration"
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition-all whitespace-nowrap cursor-pointer"
+                    >
+                      <Banknote className="h-4 w-4" />
+                      <span>Cash Registration</span>
+                    </Link>
+                  )}
+                </>
               )}
 
               <LogoutButton variant="outline" className="flex-1 sm:flex-none py-2 px-3 text-xs font-bold whitespace-nowrap rounded-xl" />

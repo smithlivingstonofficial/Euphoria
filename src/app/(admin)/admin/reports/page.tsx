@@ -3,6 +3,8 @@ import {
   getAllEventsAdmin,
   getAllOrdersAdmin,
   getAllCoordinatorsAdmin,
+  getAllUsersAndPassesAdmin,
+  getAllCashRequestsAdmin,
 } from "@/actions/admin";
 import { ReportsExporter } from "@/components/admin/reports-exporter";
 import { FileSpreadsheet, ShieldCheck, DownloadCloud } from "lucide-react";
@@ -10,12 +12,14 @@ import { FileSpreadsheet, ShieldCheck, DownloadCloud } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function AdminReportsPage() {
-  const [registrationsRes, eventsRes, ordersRes, coordinatorsRes] =
+  const [registrationsRes, eventsRes, ordersRes, coordinatorsRes, usersRes, cashRequestsRes] =
     await Promise.all([
       getAllRegistrationsAdmin(),
       getAllEventsAdmin(),
       getAllOrdersAdmin(),
       getAllCoordinatorsAdmin(),
+      getAllUsersAndPassesAdmin(),
+      getAllCashRequestsAdmin(),
     ]);
 
   const registrations = registrationsRes.registrations || [];
@@ -25,6 +29,8 @@ export default async function AdminReportsPage() {
     staffAssignments: coordinatorsRes.staffAssignments || [],
     studentAssignments: coordinatorsRes.studentAssignments || [],
   };
+  const users = usersRes.users || [];
+  const cashRequests = cashRequestsRes.cashRequests || [];
 
   return (
     <div className="space-y-6">
@@ -43,7 +49,7 @@ export default async function AdminReportsPage() {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Generate and download Excel-ready CSV spreadsheets for financial audits, faculty/student coordinators, participant rosters, event attendance, and accommodation desks.
+            Generate and download Excel-ready CSV spreadsheets for financial audits, faculty/student coordinators, participant rosters, event attendance, accommodation desks, and cash collections.
           </p>
         </div>
 
@@ -61,6 +67,8 @@ export default async function AdminReportsPage() {
         events={events}
         orders={orders}
         coordinators={coordinators}
+        users={users}
+        cashRequests={cashRequests}
       />
     </div>
   );

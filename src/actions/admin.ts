@@ -401,21 +401,48 @@ export async function getAllEventsAdmin() {
   try {
     const adminClient = await createAdminClient();
 
-    const { data: events, error } = await adminClient
-      .from("events")
-      .select(`
-        *,
-        category:event_categories (
-          id,
-          name,
-          slug
-        )
-      `)
-      .order("created_at", { ascending: false });
+    const [eventsResult, registrationsResult] = await Promise.all([
+      adminClient
+        .from("events")
+        .select(`
+          *,
+          category:event_categories (
+            id,
+            name,
+            slug
+          )
+        `)
+        .order("created_at", { ascending: false }),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select("id, event_id, status, payment_status, slot_number")
+          .range(from, to)
+      ),
+    ]);
 
-    if (error) throw error;
+    if (eventsResult.error) throw eventsResult.error;
 
-    return { success: true, events: events || [] };
+    // Group registrations by event_id
+    const regMap = new Map<string, Array<{ id: string; status: string; payment_status: string; slot_number?: number }>>();
+    (registrationsResult || []).forEach((reg: any) => {
+      if (!reg.event_id) return;
+      const list = regMap.get(reg.event_id) || [];
+      list.push({
+        id: reg.id,
+        status: reg.status,
+        payment_status: reg.payment_status,
+        slot_number: reg.slot_number,
+      });
+      regMap.set(reg.event_id, list);
+    });
+
+    const enrichedEvents = (eventsResult.data || []).map((evt: any) => ({
+      ...evt,
+      registrations: regMap.get(evt.id) || [],
+    }));
+
+    return { success: true, events: enrichedEvents };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to fetch events";
     return { success: false, error: msg, events: [] };
@@ -695,15 +722,24 @@ export async function getAllRegistrationsAdmin(eventId?: string) {
             department,
             course,
             year_of_study,
-            register_number
+            register_number,
+            city,
+            needs_accommodation,
+            pincode,
+            school,
+            is_profile_completed
           ),
           event:events (
             id,
             name,
+            slug,
+            school_or_dept,
+            venue,
+            event_date,
+            start_time,
+            end_time,
             is_pro_event,
             registration_fee,
-            event_date,
-            venue,
             category:event_categories (
               name
             )
@@ -1530,7 +1566,7 @@ export async function getAllOrdersAdmin() {
   try {
     const adminClient = await createAdminClient();
 
-    const [orders, profiles, passes] = await Promise.all([
+    const [orders, profiles, passes, registrations] = await Promise.all([
       fetchAllSupabasePages((from, to) =>
         adminClient
           .from("orders")
@@ -1541,7 +1577,7 @@ export async function getAllOrdersAdmin() {
       fetchAllSupabasePages((from, to) =>
         adminClient
           .from("profiles")
-          .select("id, full_name, email, mobile_number, participant_type, college_name, department, register_number, city")
+          .select("id, full_name, email, mobile_number, gender, participant_type, college_name, department, register_number, city, needs_accommodation")
           .range(from, to)
       ),
       fetchAllSupabasePages((from, to) =>
@@ -1550,10 +1586,35 @@ export async function getAllOrdersAdmin() {
           .select("id, user_id, order_id, pass_code, pass_tier, amount_paid, status")
           .range(from, to)
       ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            user_id,
+            slot_number,
+            status,
+            event:events (
+              id,
+              name,
+              school_or_dept,
+              venue
+            )
+          `)
+          .range(from, to)
+      ),
     ]);
 
     const profileMap = new Map<string, any>();
     (profiles || []).forEach((p) => profileMap.set(p.id, p));
+
+    const userRegsMap = new Map<string, any[]>();
+    (registrations || []).forEach((reg: any) => {
+      if (!reg.user_id) return;
+      const list = userRegsMap.get(reg.user_id) || [];
+      list.push(reg);
+      userRegsMap.set(reg.user_id, list);
+    });
 
     // Map passes primarily by order_id to prevent cancelled attempts from inheriting passes
     const passByOrderIdMap = new Map<string, any>();
@@ -1607,11 +1668,27 @@ export async function getAllOrdersAdmin() {
           fullName: userProf?.full_name || fallbackName,
           email: userProf?.email || fallbackEmail,
           mobileNumber: userProf?.mobile_number || fallbackPhone,
+          gender: userProf?.gender || meta.gender || undefined,
           participantType: userProf?.participant_type || "external",
           collegeName: userProf?.college_name || (userProf?.participant_type === "internal" ? "KARE" : ""),
           department: userProf?.department || "",
           registerNumber: userProf?.register_number || fallbackRegn,
-          city: userProf?.city || "",
+          city: userProf?.city || meta.city || "",
+          needsAccommodation: Boolean(
+            userProf?.needs_accommodation ||
+            meta.needs_accommodation === true ||
+            meta.needs_accommodation === "true" ||
+            meta.accommodation_requested
+          ),
+          registeredEvents: (userRegsMap.get(ord.user_id) || []).map((r) => {
+            const evt = Array.isArray(r.event) ? r.event[0] : r.event;
+            return {
+              slotNumber: r.slot_number || 1,
+              eventName: evt?.name || "Event",
+              schoolOrDept: evt?.school_or_dept || "KARE",
+              venue: evt?.venue || "",
+            };
+          }),
         },
         pass: directPass
           ? {
@@ -2061,6 +2138,9 @@ export interface AdminUserListItem {
   department?: string;
   course?: string;
   yearOfStudy?: number;
+  city?: string;
+  pincode?: string;
+  needsAccommodation?: boolean;
   isProfileCompleted: boolean;
   createdAt: string;
   roles: string[];
@@ -2086,6 +2166,7 @@ export interface AdminUserListItem {
       id: string;
       name: string;
       slug: string;
+      schoolOrDept?: string;
       isProEvent?: boolean;
       venue: string;
       eventDate: string;
@@ -2136,6 +2217,7 @@ export async function getAllUsersAndPassesAdmin() {
               id,
               name,
               slug,
+              school_or_dept,
               is_pro_event,
               venue,
               event_date,
@@ -2210,6 +2292,9 @@ export async function getAllUsersAndPassesAdmin() {
         department: prof.department || undefined,
         course: prof.course || undefined,
         yearOfStudy: prof.year_of_study || undefined,
+        city: prof.city || undefined,
+        pincode: prof.pincode || undefined,
+        needsAccommodation: Boolean(prof.needs_accommodation),
         isProfileCompleted: Boolean(prof.is_profile_completed),
         createdAt: prof.created_at,
         roles: userRoles,
@@ -2246,6 +2331,7 @@ export async function getAllUsersAndPassesAdmin() {
               id: evt?.id || "",
               name: evt?.name || "Competition",
               slug: evt?.slug || "",
+              schoolOrDept: evt?.school_or_dept || "KARE",
               isProEvent: Boolean(evt?.is_pro_event),
               venue: evt?.venue || "Main Auditorium",
               eventDate: evt?.event_date || "",
@@ -2272,11 +2358,30 @@ export async function getAllUsersAndPassesAdmin() {
   }
 }
 
+// 12b. Fetch All Cash Registration Requests for Admin
+export async function getAllCashRequestsAdmin() {
+  try {
+    const adminClient = await createAdminClient();
+    const data = await fetchAllSupabasePages((from, to) =>
+      adminClient
+        .from("cash_registration_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    );
+    return { success: true, cashRequests: data || [] };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch cash registration requests";
+    return { success: false, error: msg, cashRequests: [] };
+  }
+}
+
 // 13. Update User Profile by Admin
 export async function updateUserProfileAdmin(
   userId: string,
   data: {
     fullName?: string;
+    gender?: string;
     mobileNumber?: string;
     registerNumber?: string;
     collegeName?: string;
@@ -2292,19 +2397,22 @@ export async function updateUserProfileAdmin(
 
     const adminClient = await createAdminClient();
 
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.fullName !== undefined) updatePayload.full_name = data.fullName;
+    if (data.gender !== undefined) updatePayload.gender = data.gender ? data.gender.toLowerCase() : null;
+    if (data.mobileNumber !== undefined) updatePayload.mobile_number = data.mobileNumber;
+    if (data.registerNumber !== undefined) updatePayload.register_number = data.registerNumber;
+    if (data.collegeName !== undefined) updatePayload.college_name = data.collegeName;
+    if (data.department !== undefined) updatePayload.department = data.department;
+    if (data.course !== undefined) updatePayload.course = data.course;
+    if (data.yearOfStudy !== undefined) updatePayload.year_of_study = data.yearOfStudy;
+    if (data.participantType !== undefined) updatePayload.participant_type = data.participantType;
+
     const { error } = await adminClient
       .from("profiles")
-      .update({
-        full_name: data.fullName,
-        mobile_number: data.mobileNumber,
-        register_number: data.registerNumber,
-        college_name: data.collegeName,
-        department: data.department,
-        course: data.course,
-        year_of_study: data.yearOfStudy,
-        participant_type: data.participantType,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", userId);
 
     if (error) throw error;
