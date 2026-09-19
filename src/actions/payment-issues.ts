@@ -561,6 +561,13 @@ export async function getPaymentIssuesAdmin(params?: {
     name: string;
     isProEvent: boolean;
     schoolOrDept?: string;
+    participantLimit?: number;
+    internalLimit?: number | null;
+    currentRegs?: number;
+    internalRegs?: number;
+    isFull?: boolean;
+    firstPreferenceOnly?: boolean;
+    status?: string;
   }>;
   error?: string;
 }> {
@@ -741,12 +748,43 @@ export async function getPaymentIssuesAdmin(params?: {
       });
     }
 
-    // Fetch all available published events for admin event assignment pickers
-    const { data: allAvailableEvents } = await adminClient
-      .from("events")
-      .select("id, name, is_pro_event, school_or_dept")
-      .in("status", ["published", "registration_open"])
-      .order("name", { ascending: true });
+    // Fetch all events with live quota and stats for admin pickers
+    const [{ data: allAvailableEvents }, { data: statsList }] = await Promise.all([
+      adminClient
+        .from("events")
+        .select("id, name, is_pro_event, school_or_dept, participant_limit, internal_limit, first_preference_only, status, allow_internal, allow_external")
+        .order("name", { ascending: true }),
+      adminClient
+        .from("vw_public_events_stats")
+        .select("event_id, total_registered, internal_registered"),
+    ]);
+
+    const statsMap = (statsList || []).reduce((acc: any, curr: any) => {
+      acc[curr.event_id] = curr;
+      return acc;
+    }, {});
+
+    const enrichedAvailableEvents = (allAvailableEvents || []).map((e: any) => {
+      const stats = statsMap[e.id] || { total_registered: 0, internal_registered: 0 };
+      const regCount = Number(stats.total_registered || 0);
+      const intCount = Number(stats.internal_registered || 0);
+      const limit = Number(e.participant_limit || 100);
+      const intLimit = e.internal_limit !== null && e.internal_limit !== undefined ? Number(e.internal_limit) : null;
+
+      return {
+        id: e.id,
+        name: e.name,
+        isProEvent: Boolean(e.is_pro_event),
+        schoolOrDept: e.school_or_dept || "General",
+        participantLimit: limit,
+        internalLimit: intLimit,
+        currentRegs: regCount,
+        internalRegs: intCount,
+        isFull: regCount >= limit,
+        firstPreferenceOnly: Boolean(e.first_preference_only),
+        status: e.status,
+      };
+    });
 
     return {
       success: true,
@@ -759,12 +797,7 @@ export async function getPaymentIssuesAdmin(params?: {
         rejected,
         autoVerified,
       },
-      availableEvents: (allAvailableEvents || []).map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        isProEvent: Boolean(e.is_pro_event),
-        schoolOrDept: e.school_or_dept || "General",
-      })),
+      availableEvents: enrichedAvailableEvents,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load payment requests.";
@@ -1252,6 +1285,7 @@ export async function approveAndIssuePassAdmin(
 ): Promise<{
   success: boolean;
   passCode?: string;
+  extendedEvents?: string[];
   error?: string;
 }> {
   try {
@@ -1367,7 +1401,80 @@ export async function approveAndIssuePassAdmin(
       };
     }
 
-    // 4. Atomically Checkout Pass via fn_checkout_pass_atomic RPC
+    // 4. Check user profile for internal status
+    const { data: studentProfile } = await adminClient
+      .from("profiles")
+      .select("id, participant_type, email, full_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const isInternalUser =
+      studentProfile?.participant_type === "internal" ||
+      (studentProfile?.email || "").toLowerCase().endsWith("@klu.ac.in");
+
+    // 5. Pre-check target events: If any event is full, extend capacity (+1 extra slot)
+    const extendedEvents: string[] = [];
+    const { data: targetEventRows } = await adminClient
+      .from("events")
+      .select("id, name, participant_limit, internal_limit, status, is_pro_event")
+      .in("id", targetEvents);
+
+    for (const eventId of targetEvents) {
+      const ev = (targetEventRows || []).find((e: any) => e.id === eventId);
+      if (!ev) continue;
+
+      // Real-time count of confirmed registrations
+      const { count: regCount } = await adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("status", "confirmed");
+
+      const totalRegs = regCount || 0;
+      const partLimit = Number(ev.participant_limit || 100);
+
+      let didExtend = false;
+      let newPartLimit = partLimit;
+      if (totalRegs >= partLimit) {
+        newPartLimit = totalRegs + 1;
+        didExtend = true;
+      }
+
+      let newIntLimit = ev.internal_limit;
+      if (isInternalUser && ev.internal_limit !== null && ev.internal_limit !== undefined) {
+        const { data: intRegRows } = await adminClient
+          .from("event_registrations")
+          .select("user_id, profiles!inner(participant_type, email)")
+          .eq("event_id", eventId)
+          .eq("status", "confirmed");
+
+        const intRegs = (intRegRows || []).filter(
+          (r: any) =>
+            r.profiles?.participant_type === "internal" ||
+            (r.profiles?.email || "").toLowerCase().endsWith("@klu.ac.in")
+        ).length;
+
+        if (intRegs >= Number(ev.internal_limit)) {
+          newIntLimit = intRegs + 1;
+          didExtend = true;
+        }
+      }
+
+      if (didExtend) {
+        const updatePayload: Record<string, any> = {};
+        if (newPartLimit !== partLimit) updatePayload.participant_limit = newPartLimit;
+        if (newIntLimit !== ev.internal_limit) updatePayload.internal_limit = newIntLimit;
+
+        await adminClient
+          .from("events")
+          .update(updatePayload)
+          .eq("id", eventId);
+
+        extendedEvents.push(ev.name);
+      }
+    }
+
+    // 6. Atomically Checkout Pass via fn_checkout_pass_atomic RPC with bypass_limits = true
     const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
       "fn_checkout_pass_atomic",
       {
@@ -1378,26 +1485,133 @@ export async function approveAndIssuePassAdmin(
           easebuzz_txnid: txnid,
           amount_paid: amount,
           source: "admin_dispute_approval",
+          bypass_limits: true,
           approved_by_admin: authInfo.user.email,
           admin_notes: adminNotes || null,
           ticket_number: ticket.ticket_number || ticket.ticketNumber,
+          auto_extended_events: extendedEvents,
           timestamp: new Date().toISOString(),
         },
       }
     );
 
+    let passCode = checkoutData?.pass_code;
+    let passId = checkoutData?.pass_id;
+
+    // 7. Resilient Fallback: If DB RPC threw constraint errors (e.g. unmigrated DB function),
+    // atomically generate order, pass, and registrations using adminClient service role.
     if (checkoutError || !checkoutData?.success) {
-      console.error("fn_checkout_pass_atomic failed:", checkoutError || checkoutData);
-      return {
-        success: false,
-        error: checkoutError?.message || checkoutData?.error || "Pass generation RPC failed.",
-      };
+      console.warn(
+        "Notice: fn_checkout_pass_atomic failed, applying service-role direct issuance:",
+        checkoutError || checkoutData
+      );
+
+      // Check if user already got a pass created concurrently
+      const { data: existingUserPass } = await adminClient
+        .from("delegate_passes")
+        .select("id, pass_code")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (existingUserPass) {
+        passCode = existingUserPass.pass_code;
+        passId = existingUserPass.id;
+      } else {
+        const hasPro = (targetEventRows || []).some((e: any) => e.is_pro_event);
+        const passTier = hasPro ? "pro_pass" : "standard_pass";
+        const passFee = hasPro ? 300 : 200;
+        const orderNumber = `ORD-26-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+        const generatedPassCode = `EUPH-26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const nonce =
+          Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+
+        // A. Insert Order
+        const { data: newOrder, error: orderErr } = await adminClient
+          .from("orders")
+          .insert({
+            user_id: userId,
+            order_number: orderNumber,
+            amount: passFee,
+            currency: "INR",
+            status: "paid",
+            provider: "easebuzz",
+            metadata: {
+              easebuzz_txnid: txnid,
+              amount_paid: amount,
+              source: "admin_dispute_approval_direct_bypass",
+              approved_by_admin: authInfo.user.email,
+              admin_notes: adminNotes || null,
+              ticket_number: ticket.ticket_number || ticket.ticketNumber,
+              pass_tier: passTier,
+              event_ids: targetEvents,
+              auto_extended_events: extendedEvents,
+              bypassed_limits: true,
+              timestamp: new Date().toISOString(),
+            },
+          })
+          .select("id")
+          .single();
+
+        if (orderErr || !newOrder) {
+          throw new Error(orderErr?.message || "Failed to create order record.");
+        }
+
+        // B. Insert Delegate Pass
+        const { data: newPass, error: passErr } = await adminClient
+          .from("delegate_passes")
+          .insert({
+            user_id: userId,
+            order_id: newOrder.id,
+            pass_code: generatedPassCode,
+            pass_tier: passTier,
+            amount_paid: passFee,
+            total_slots: 2,
+            slots_used: targetEvents.length,
+            status: "active",
+            qr_secret_nonce: nonce,
+          })
+          .select("id, pass_code")
+          .single();
+
+        if (passErr || !newPass) {
+          throw new Error(passErr?.message || "Failed to create delegate pass record.");
+        }
+
+        passId = newPass.id;
+        passCode = newPass.pass_code;
+
+        // C. Insert Event Registrations for each competition
+        for (let i = 0; i < targetEvents.length; i++) {
+          const eid = targetEvents[i];
+          const slotNum = i + 1;
+          await adminClient.from("event_registrations").insert({
+            pass_id: passId,
+            event_id: eid,
+            user_id: userId,
+            slot_number: slotNum,
+            registration_code: `${passCode}-S${slotNum}`,
+            status: "confirmed",
+            payment_status: "paid",
+            qr_secret_nonce: Math.random().toString(36).substring(2),
+          });
+        }
+      }
     }
 
-    const passCode = checkoutData.pass_code;
-    const passId = checkoutData.pass_id;
+    // 8. Update Payment Issue Status to Resolved
+    const extendedNote =
+      extendedEvents.length > 0
+        ? `[Auto-extended capacity for: ${extendedEvents.join(", ")}]`
+        : "";
+    const fullNotes = [
+      adminNotes?.trim(),
+      extendedNote,
+      `Approved & pass issued by ${authInfo.user.email}.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-    // 5. Update Payment Issue Status to Resolved
     try {
       await adminClient
         .from("payment_issues")
@@ -1405,7 +1619,7 @@ export async function approveAndIssuePassAdmin(
           status: "resolved",
           issued_pass_id: passId,
           issued_pass_code: passCode,
-          admin_notes: adminNotes || `Approved and pass issued by ${authInfo.user.email}.`,
+          admin_notes: fullNotes,
           resolved_by: authInfo.user.id,
           resolved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1426,7 +1640,8 @@ export async function approveAndIssuePassAdmin(
           passCode,
           passId,
           adminEmail: authInfo.user.email,
-          adminNotes,
+          adminNotes: fullNotes,
+          extendedEvents,
           amount,
         },
         status: "resolved",
@@ -1441,11 +1656,14 @@ export async function approveAndIssuePassAdmin(
     revalidatePath("/", "layout");
     revalidatePath("/admin/payment-requests", "page");
     revalidatePath("/admin/payments", "page");
+    revalidatePath("/admin/events/slots", "page");
+    revalidatePath("/events", "page");
     revalidatePath("/dashboard/passes", "page");
 
     return {
       success: true,
       passCode,
+      extendedEvents,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to approve payment and issue pass.";

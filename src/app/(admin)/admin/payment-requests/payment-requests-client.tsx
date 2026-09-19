@@ -45,6 +45,13 @@ interface AvailableEvent {
   name: string;
   isProEvent: boolean;
   schoolOrDept?: string;
+  participantLimit?: number;
+  internalLimit?: number | null;
+  currentRegs?: number;
+  internalRegs?: number;
+  isFull?: boolean;
+  firstPreferenceOnly?: boolean;
+  status?: string;
 }
 
 export function PaymentRequestsClient({
@@ -94,6 +101,7 @@ export function PaymentRequestsClient({
   const [approveAdminNotes, setApproveAdminNotes] = useState("");
   const [approveSlot1, setApproveSlot1] = useState<string>("");
   const [approveSlot2, setApproveSlot2] = useState<string>("");
+  const [isEditingApproveEvents, setIsEditingApproveEvents] = useState(false);
   const [approveEventError, setApproveEventError] = useState<string | null>(null);
 
   // 3. Reject Modal
@@ -232,6 +240,7 @@ export function PaymentRequestsClient({
     setApproveConfirmTarget(issue);
     setApproveAdminNotes("");
     setApproveEventError(null);
+    setIsEditingApproveEvents(false);
 
     // Pre-populate slots from existing events if available
     const ev1 = issue.selectedEvents?.[0]?.id || issue.selectedEventIds?.[0] || "";
@@ -245,9 +254,11 @@ export function PaymentRequestsClient({
 
     const target = approveConfirmTarget;
 
-    // If student had no events chosen, check if admin selected events in the modal
+    // If student had no events chosen, or admin clicked "Change competitions", resolve assigned events
     let assignedEventIds: string[] | undefined = undefined;
-    if ((!target.selectedEvents || target.selectedEvents.length === 0) && (approveSlot1 || approveSlot2)) {
+    const hasExistingEvents = Boolean(target.selectedEvents && target.selectedEvents.length > 0);
+
+    if (isEditingApproveEvents || !hasExistingEvents) {
       const chosen = [approveSlot1, approveSlot2].filter(Boolean);
       if (chosen.length > 0) {
         // Validate duplicates
@@ -269,9 +280,14 @@ export function PaymentRequestsClient({
       );
 
       if (result.success && result.passCode) {
+        const extendedMsg =
+          result.extendedEvents && result.extendedEvents.length > 0
+            ? ` (Auto-extended capacity for: ${result.extendedEvents.join(", ")})`
+            : "";
+
         setActionNotice({
           type: "success",
-          message: `Success! Pass ${result.passCode} issued to ${target.fullName}. Dispute resolved.`,
+          message: `Success! Pass ${result.passCode} issued to ${target.fullName}. Dispute resolved.${extendedMsg}`,
         });
         setApproveAdminNotes("");
 
@@ -283,7 +299,9 @@ export function PaymentRequestsClient({
                   ...i,
                   status: "resolved",
                   issuedPassCode: result.passCode,
-                  adminNotes: approveAdminNotes.trim() || "Approved and pass issued by admin.",
+                  adminNotes:
+                    approveAdminNotes.trim() ||
+                    `Approved and pass issued by admin.${extendedMsg}`,
                   selectedEventIds: assignedEventIds || i.selectedEventIds,
                 }
               : i
@@ -1338,12 +1356,16 @@ export function PaymentRequestsClient({
                       <option value="">-- Choose Competition Slot 1 --</option>
                       {availableEvents
                         .filter((ev) => inspectTarget.passTier === "pro_pass" || !ev.isProEvent)
-                        .map((ev) => (
-                          <option key={ev.id} value={ev.id}>
-                            {ev.isProEvent ? "★ [FLAGSHIP] " : "[REGULAR] "}
-                            {ev.name} ({ev.schoolOrDept || "General"})
-                          </option>
-                        ))}
+                        .map((ev) => {
+                          const fullTag = ev.isFull ? ` [FULL: ${ev.currentRegs}/${ev.participantLimit} - auto-extends +1]` : ` [${ev.currentRegs || 0}/${ev.participantLimit || 100}]`;
+                          const prefTag = ev.firstPreferenceOnly ? " (1st Pref)" : "";
+                          return (
+                            <option key={ev.id} value={ev.id}>
+                              {ev.isProEvent ? "★ [FLAGSHIP] " : "[REGULAR] "}
+                              {ev.name} {prefTag} {fullTag} ({ev.schoolOrDept || "General"})
+                            </option>
+                          );
+                        })}
                     </select>
                   </div>
 
@@ -1351,7 +1373,7 @@ export function PaymentRequestsClient({
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 block">
                       Competition Slot 2{" "}
-                      <span className="text-slate-400 font-normal">(Regular Competition)</span>
+                      <span className="text-slate-400 font-normal">(Regular Competition — 1st Pref rule bypassed)</span>
                     </label>
                     <select
                       value={inspectSlot2}
@@ -1361,13 +1383,24 @@ export function PaymentRequestsClient({
                       <option value="">-- Choose Competition Slot 2 --</option>
                       {availableEvents
                         .filter((ev) => !ev.isProEvent)
-                        .map((ev) => (
-                          <option key={ev.id} value={ev.id}>
-                            [REGULAR] {ev.name} ({ev.schoolOrDept || "General"})
-                          </option>
-                        ))}
+                        .map((ev) => {
+                          const fullTag = ev.isFull ? ` [FULL: ${ev.currentRegs}/${ev.participantLimit} - auto-extends +1]` : ` [${ev.currentRegs || 0}/${ev.participantLimit || 100}]`;
+                          const prefTag = ev.firstPreferenceOnly ? " (1st Pref Bypassed)" : "";
+                          return (
+                            <option key={ev.id} value={ev.id}>
+                              [REGULAR] {ev.name} {prefTag} {fullTag} ({ev.schoolOrDept || "General"})
+                            </option>
+                          );
+                        })}
                     </select>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-indigo-50/80 border border-indigo-200/70 text-[11px] text-indigo-950">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                  <span>
+                    <strong>Slot Bypass Active:</strong> If a selected competition is at full capacity, approving will automatically extend its slot count (+1 extra slot) to honor this verified payment.
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
@@ -1536,32 +1569,93 @@ export function PaymentRequestsClient({
                 </div>
               )}
 
-              {/* Competitions Section */}
-              {approveConfirmTarget.selectedEvents && approveConfirmTarget.selectedEvents.length > 0 ? (
-                <div className="pt-2 border-t border-slate-200">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold mb-1">
-                    Pass will be issued with these chosen competitions:
+              {/* Verified Student Bypass Notice */}
+              <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-300/80 flex items-start gap-2 text-xs text-emerald-950">
+                <Sparkles className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="leading-snug">
+                  <span className="font-bold text-emerald-900 block text-[11px]">
+                    Verified Student Slot &amp; Rule Bypass Active
                   </span>
-                  <div className="space-y-1">
-                    {approveConfirmTarget.selectedEvents.map((ev, i) => (
-                      <div key={ev.id || i} className="font-semibold text-slate-800 flex items-center gap-1">
-                        <span>• {ev.name}</span>
-                        {ev.isProEvent && (
-                          <span className="text-[9px] bg-amber-400 text-amber-950 px-1 rounded font-black">
-                            FLAGSHIP
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                  <span className="text-[10px] text-emerald-800">
+                    Because this student already paid, event capacity limits and 1st-preference rules are bypassed. If any competition is full, capacity automatically extends +1 slot.
+                  </span>
+                </div>
+              </div>
+
+              {/* Competitions Section */}
+              {approveConfirmTarget.selectedEvents && approveConfirmTarget.selectedEvents.length > 0 && !isEditingApproveEvents ? (
+                <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">
+                      Pass will be issued with these competitions:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingApproveEvents(true)}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                    >
+                      Change competitions
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {approveConfirmTarget.selectedEvents.map((ev, i) => {
+                      const matched = availableEvents.find((a) => a.id === ev.id);
+                      const isFull = matched?.isFull;
+                      const isFirstPref = matched?.firstPreferenceOnly;
+                      return (
+                        <div
+                          key={ev.id || i}
+                          className="font-semibold text-slate-800 flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-white border border-slate-200"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span>• {ev.name}</span>
+                            {ev.isProEvent && (
+                              <span className="text-[9px] bg-amber-400 text-amber-950 px-1.5 py-0.2 rounded font-black">
+                                FLAGSHIP
+                              </span>
+                            )}
+                            {isFirstPref && (
+                              <span className="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-bold">
+                                1st Pref (Bypassed)
+                              </span>
+                            )}
+                          </div>
+                          {isFull ? (
+                            <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full font-bold shrink-0">
+                              Full ({matched?.currentRegs}/{matched?.participantLimit}) → Auto-extends +1
+                            </span>
+                          ) : matched ? (
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {matched.currentRegs || 0}/{matched.participantLimit || 100} slots
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
                 <div className="pt-2 border-t border-slate-200 space-y-2">
-                  <div className="p-2.5 rounded-xl bg-amber-100/70 border border-amber-300 text-amber-950 text-[11px]">
-                    <strong>⚠️ Student has not chosen 2 competitions.</strong>
-                    <p className="mt-0.5 text-amber-900">
-                      Assign competitions now before issuing the pass (or leave blank to assign festival defaults):
-                    </p>
+                  <div className="p-2.5 rounded-xl bg-amber-100/70 border border-amber-300 text-amber-950 text-[11px] flex items-center justify-between">
+                    <div>
+                      <strong>
+                        {approveConfirmTarget.selectedEvents && approveConfirmTarget.selectedEvents.length > 0
+                          ? "Reassign Competitions for this Student:"
+                          : "⚠️ Student has not chosen 2 competitions."}
+                      </strong>
+                      <p className="mt-0.5 text-amber-900">
+                        Select Slot 1 and Slot 2 (full events will automatically extend +1 slot on approval):
+                      </p>
+                    </div>
+                    {approveConfirmTarget.selectedEvents && approveConfirmTarget.selectedEvents.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingApproveEvents(false)}
+                        className="text-[10px] text-slate-600 hover:text-slate-900 underline shrink-0 ml-2"
+                      >
+                        Keep Original
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1575,17 +1669,25 @@ export function PaymentRequestsClient({
                         <option value="">-- Choose Slot 1 --</option>
                         {availableEvents
                           .filter((ev) => approveConfirmTarget.passTier === "pro_pass" || !ev.isProEvent)
-                          .map((ev) => (
-                            <option key={ev.id} value={ev.id}>
-                              {ev.isProEvent ? "★ [FLAGSHIP] " : "[REG] "}
-                              {ev.name}
-                            </option>
-                          ))}
+                          .map((ev) => {
+                            const fullTag = ev.isFull
+                              ? ` [FULL: ${ev.currentRegs}/${ev.participantLimit} - will extend +1]`
+                              : ` [${ev.currentRegs || 0}/${ev.participantLimit || 100}]`;
+                            const prefTag = ev.firstPreferenceOnly ? " (1st Pref)" : "";
+                            return (
+                              <option key={ev.id} value={ev.id}>
+                                {ev.isProEvent ? "★ [FLAGSHIP] " : "[REG] "}
+                                {ev.name} {prefTag} {fullTag}
+                              </option>
+                            );
+                          })}
                       </select>
                     </div>
 
                     <div>
-                      <span className="text-[10px] font-bold text-slate-500 block mb-0.5">Slot 2:</span>
+                      <span className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                        Slot 2: <span className="text-slate-400 font-normal">(1st-Pref rule bypassed)</span>
+                      </span>
                       <select
                         value={approveSlot2}
                         onChange={(e) => setApproveSlot2(e.target.value)}
@@ -1594,11 +1696,17 @@ export function PaymentRequestsClient({
                         <option value="">-- Choose Slot 2 --</option>
                         {availableEvents
                           .filter((ev) => !ev.isProEvent)
-                          .map((ev) => (
-                            <option key={ev.id} value={ev.id}>
-                              [REG] {ev.name}
-                            </option>
-                          ))}
+                          .map((ev) => {
+                            const fullTag = ev.isFull
+                              ? ` [FULL: ${ev.currentRegs}/${ev.participantLimit} - will extend +1]`
+                              : ` [${ev.currentRegs || 0}/${ev.participantLimit || 100}]`;
+                            const prefTag = ev.firstPreferenceOnly ? " (1st Pref Bypassed)" : "";
+                            return (
+                              <option key={ev.id} value={ev.id}>
+                                [REG] {ev.name} {prefTag} {fullTag}
+                              </option>
+                            );
+                          })}
                       </select>
                     </div>
                   </div>
@@ -1621,7 +1729,7 @@ export function PaymentRequestsClient({
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              This action will execute <code className="bg-slate-100 px-1 rounded">fn_checkout_pass_atomic</code>, register chosen competitions, and atomically create the festival pass.
+              This action will execute <code className="bg-slate-100 px-1 rounded">fn_checkout_pass_atomic</code> with limit bypass active, auto-extend capacity (+1 slot) if full, and atomically issue the festival pass.
             </p>
 
             {/* Buttons */}
