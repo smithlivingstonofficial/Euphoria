@@ -56,6 +56,7 @@ export async function GET() {
         message: "Backend connected and database tables verified successfully.",
         database: {
           connected: true,
+          supabaseHost: supabaseUrl ? new URL(supabaseUrl).hostname : "unspecified",
           categoriesTableReady: true,
         },
         paymentProvider: process.env.PAYMENT_PROVIDER || "mock",
