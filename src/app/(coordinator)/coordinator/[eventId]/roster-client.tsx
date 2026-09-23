@@ -22,6 +22,8 @@ import {
   User,
   Building,
   FileSpreadsheet,
+  Download,
+  AlertTriangle,
   QrCode,
   ShieldCheck,
   Check,
@@ -140,6 +142,7 @@ export function EventRosterClient({
   const [totalFilteredCount, setTotalFilteredCount] = useState<number>(initialTotalCount ?? initialAttendees.length);
   const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
   const [isExportingCSV, setIsExportingCSV] = useState<boolean>(false);
+  const [isConfirmExportCSVOpen, setIsConfirmExportCSVOpen] = useState<boolean>(false);
 
   // In-Memory Page Cache to eliminate redundant network requests on back/forward
   const pageCache = useRef<Record<string, { attendees: CoordinatorAttendeeItem[]; totalCount: number }>>({
@@ -327,6 +330,9 @@ export function EventRosterClient({
     };
   }, [studentSearchQuery, isAddStudentModalOpen, eventId]);
 
+  // Race condition guard: ensures out-of-order search responses are safely discarded
+  const requestVersionRef = useRef(0);
+
   // Fetch a page with specific query & filter options
   const fetchPage = async (
     targetPage: number,
@@ -334,6 +340,7 @@ export function EventRosterClient({
     status: "all" | "attended" | "pending",
     tier: "all" | "pro_pass" | "standard_pass"
   ) => {
+    const currentVersion = ++requestVersionRef.current;
     const cacheKey = `${targetPage}_${search.trim()}_${status}_${tier}`;
     if (pageCache.current[cacheKey]) {
       const cached = pageCache.current[cacheKey];
@@ -351,6 +358,12 @@ export function EventRosterClient({
       filterTab: status,
       tierFilter: tier,
     });
+
+    // If another request was dispatched while this query was in-flight, discard the stale response
+    if (currentVersion !== requestVersionRef.current) {
+      return;
+    }
+
     setIsLoadingPage(false);
 
     if (res.success) {
@@ -624,6 +637,7 @@ export function EventRosterClient({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setIsConfirmExportCSVOpen(false);
     } catch (err: any) {
       console.error("Export CSV Error:", err);
       alert("An unexpected error occurred during CSV export.");
@@ -711,31 +725,32 @@ export function EventRosterClient({
             </div>
           </div>
 
-          {/* Right: Tab Switcher & Scanner CTA */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Right: Tab Switcher & Scanner CTA (Unified Single-Row Executive Strip) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 w-full lg:w-auto">
             {/* FACULTY STAFF / ADMIN TOGGLE SWITCHER */}
             {isStaffOrAdmin && (
-              <div className="inline-flex items-center rounded-xl bg-slate-100 p-1 border border-slate-200/90 gap-1 shadow-inner">
+              <div className="flex-1 lg:flex-initial grid grid-cols-2 sm:inline-flex items-center rounded-xl bg-slate-200/90 p-1 border border-slate-300 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => handleGuardedNavigation(() => setActiveTab("roster"))}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                     activeTab === "roster"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      ? "bg-white text-slate-950 shadow-xs border border-slate-300/90"
+                      : "text-slate-800 hover:text-slate-950 hover:bg-slate-300/50"
                   }`}
                 >
                   <Users
-                    className={`h-3.5 w-3.5 shrink-0 ${
-                      activeTab === "roster" ? "text-cyan-400" : "text-slate-500"
+                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+                      activeTab === "roster" ? "text-indigo-600" : "text-slate-600"
                     }`}
                   />
-                  <span>Attendee Roster</span>
+                  <span className="hidden sm:inline">Attendee Roster</span>
+                  <span className="sm:hidden">Roster</span>
                   <span
-                    className={`ml-0.5 px-1.5 py-0.5 rounded-md text-[11px] font-mono font-extrabold ${
+                    className={`ml-0.5 px-1.5 py-0.2 rounded-md text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
                       activeTab === "roster"
-                        ? "bg-slate-800 text-cyan-300 border border-slate-700/80"
-                        : "bg-slate-200/90 text-slate-600"
+                        ? "bg-slate-900 text-white shadow-2xs"
+                        : "bg-slate-300 text-slate-900 border border-slate-400/50"
                     }`}
                   >
                     {totalCount}
@@ -745,20 +760,21 @@ export function EventRosterClient({
                 <button
                   type="button"
                   onClick={() => setActiveTab("controls")}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
                     activeTab === "controls"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      ? "bg-white text-slate-950 shadow-xs border border-slate-300/90"
+                      : "text-slate-800 hover:text-slate-950 hover:bg-slate-300/50"
                   }`}
                 >
                   <ShieldCheck
-                    className={`h-3.5 w-3.5 shrink-0 ${
-                      activeTab === "controls" ? "text-purple-400" : "text-slate-500"
+                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+                      activeTab === "controls" ? "text-indigo-600" : "text-slate-600"
                     }`}
                   />
-                  <span>Staff &amp; Venue Controls</span>
+                  <span className="hidden sm:inline">Staff &amp; Controls</span>
+                  <span className="sm:hidden">Controls</span>
                   {isOpsDirty && (
-                    <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse shrink-0" title="Unsaved modifications" />
+                    <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="Unsaved modifications" />
                   )}
                 </button>
               </div>
@@ -774,113 +790,115 @@ export function EventRosterClient({
                     handleGuardedNavigation(() => router.push(`/coordinator/scanner?eventId=${eventId}`));
                   }
                 }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs sm:text-sm px-3.5 py-2 shadow-2xs transition-colors cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-bold text-xs px-3 sm:px-4 py-2 shadow-xs transition-all cursor-pointer shrink-0 border border-slate-800"
               >
-                <Camera className="h-4 w-4" />
-                <span>Open Scanner</span>
+                <Camera className="h-3.5 w-3.5 shrink-0 text-white" />
+                <span className="hidden sm:inline">Open Scanner</span>
+                <span className="sm:hidden">Scanner</span>
               </Link>
             ) : (
-              <div className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800 shadow-2xs">
-                <Globe className="h-3.5 w-3.5 text-sky-600" />
-                <span>Read-Only Oversight</span>
+              <div className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-900 shadow-2xs shrink-0">
+                <Globe className="h-3.5 w-3.5 text-sky-700 shrink-0" />
+                <span className="hidden sm:inline">Read-Only Oversight</span>
+                <span className="sm:hidden">Read-Only</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Row 2: 4 Vibrant Themed Telemetry Capsules (Compact & Beautiful) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        {/* Row 2: 4 Vibrant Themed Telemetry Capsules (Compact 2x2 on Mobile & 4-col on Desktop) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {/* 1. Schedule & Venue (Indigo / Purple Theme) */}
-          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-indigo-200/90 bg-gradient-to-br from-indigo-500/[0.09] via-purple-500/[0.04] to-white p-3 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition-all">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-sm shadow-indigo-500/25 shrink-0">
-                <MapPin className="h-4.5 w-4.5" />
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-indigo-200/90 bg-gradient-to-br from-indigo-500/[0.09] via-purple-500/[0.04] to-white p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition-all flex flex-col justify-between">
+            <div className="flex items-start gap-2 sm:gap-2.5">
+              <div className="flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-sm shadow-indigo-500/25 shrink-0">
+                <MapPin className="h-3.5 w-3.5 sm:h-4.5 sm:w-4.5" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-800/90 block">
+                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-indigo-800/90 block truncate">
                   Schedule &amp; Venue
                 </span>
                 <p className="text-xs sm:text-sm font-black text-slate-900 truncate block mt-0.5" title={venueInput || eventVenue || "Venue TBA"}>
                   {venueInput || eventVenue || "Venue TBA"}
                 </p>
-                <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md bg-indigo-100/90 border border-indigo-200 text-[10px] sm:text-[11px] font-bold text-indigo-950 truncate max-w-full">
-                  <Clock className="h-3 w-3 text-indigo-600 shrink-0" />
-                  <span>
-                    {eventDate ? formatDate(eventDate) : "Date TBA"}
-                    {startTime ? ` • ${formatTime(startTime)}` : ""}
-                  </span>
-                </div>
               </div>
+            </div>
+            <div className="mt-1.5 inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md bg-indigo-100/90 border border-indigo-200 text-[9px] sm:text-[11px] font-bold text-indigo-950 truncate max-w-full">
+              <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-indigo-600 shrink-0" />
+              <span className="truncate">
+                {eventDate ? formatDate(eventDate) : "Date TBA"}
+                {startTime ? ` • ${formatTime(startTime)}` : ""}
+              </span>
             </div>
           </div>
 
           {/* 2. Registered Attendees (Cyan / Blue Theme) */}
-          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-cyan-200/90 bg-gradient-to-br from-cyan-500/[0.09] via-sky-500/[0.04] to-white p-3 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-cyan-300 transition-all">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-sm shadow-cyan-500/25 shrink-0">
-                <Users className="h-4.5 w-4.5" />
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-cyan-200/90 bg-gradient-to-br from-cyan-500/[0.09] via-sky-500/[0.04] to-white p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-cyan-300 transition-all flex flex-col justify-between">
+            <div className="flex items-start gap-2 sm:gap-2.5">
+              <div className="flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-sm shadow-cyan-500/25 shrink-0">
+                <Users className="h-3.5 w-3.5 sm:h-4.5 sm:w-4.5" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800/90 block">
+                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-cyan-800/90 block truncate">
                   Delegates Booked
                 </span>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+                  <span className="text-base sm:text-xl font-black text-slate-900 tracking-tight">
                     {totalCount}
                   </span>
-                  <span className="text-[11px] font-bold text-cyan-800 bg-cyan-100/90 border border-cyan-200/90 px-1.5 py-0.5 rounded-md">
-                    / {participantLimit ? `${participantLimit} Capacity` : "∞ Uncapped"}
+                  <span className="text-[9px] sm:text-[11px] font-bold text-cyan-800 bg-cyan-100/90 border border-cyan-200/90 px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded">
+                    {participantLimit ? `/${participantLimit}` : "Uncapped"}
                   </span>
                 </div>
-                <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md bg-white/95 border border-cyan-200/80 text-[10px] sm:text-[11px] font-bold text-cyan-950 shadow-2xs">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span>{pendingCount} Pending Check-In</span>
-                </div>
               </div>
+            </div>
+            <div className="mt-1.5 inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md bg-white/95 border border-cyan-200/80 text-[9px] sm:text-[11px] font-bold text-cyan-950 shadow-2xs w-fit max-w-full">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span className="truncate">{pendingCount} Pending</span>
             </div>
           </div>
 
           {/* 3. 1st Choice Priority (Amber / Orange / Gold Theme) */}
-          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-500/[0.09] via-orange-500/[0.04] to-white p-3 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-amber-300 transition-all">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm shadow-amber-500/25 shrink-0">
-                <Star className="h-4.5 w-4.5 fill-white/40" />
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-500/[0.09] via-orange-500/[0.04] to-white p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between">
+            <div className="flex items-start gap-2 sm:gap-2.5">
+              <div className="flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm shadow-amber-500/25 shrink-0">
+                <Star className="h-3.5 w-3.5 sm:h-4.5 sm:w-4.5 fill-white/40" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800/90 block">
+                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-amber-800/90 block truncate">
                   1st Choice Priority
                 </span>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="text-lg sm:text-xl font-black text-amber-950 tracking-tight">
+                <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+                  <span className="text-base sm:text-xl font-black text-amber-950 tracking-tight">
                     {priorityOneCount}
                   </span>
-                  <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 border border-amber-200/90 px-1.5 py-0.5 rounded-md">
-                    ⭐ Slot #1
+                  <span className="text-[9px] sm:text-[11px] font-bold text-amber-900 bg-amber-100/90 border border-amber-200/90 px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded">
+                    ⭐ Slot 1
                   </span>
                 </div>
-                <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md bg-white/95 border border-amber-200/80 text-[10px] sm:text-[11px] font-bold text-amber-950 shadow-2xs">
-                  <span>Top Preference Enrollments</span>
-                </div>
               </div>
+            </div>
+            <div className="mt-1.5 inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md bg-white/95 border border-amber-200/80 text-[9px] sm:text-[11px] font-bold text-amber-950 shadow-2xs w-fit max-w-full">
+              <span className="truncate">Top Preferences</span>
             </div>
           </div>
 
           {/* 4. Live Attendance Progress (Emerald / Mint / Teal Theme) */}
-          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-500/[0.09] via-teal-500/[0.04] to-white p-3 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-emerald-300 transition-all">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/25 shrink-0">
-                <CheckCircle2 className="h-4.5 w-4.5" />
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-500/[0.09] via-teal-500/[0.04] to-white p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xs hover:border-emerald-300 transition-all flex flex-col justify-between">
+            <div className="flex items-start gap-2 sm:gap-2.5">
+              <div className="flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/25 shrink-0">
+                <CheckCircle2 className="h-3.5 w-3.5 sm:h-4.5 sm:w-4.5" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800/90 block">
+                <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-emerald-800/90 block truncate">
                   Live Attendance
                 </span>
                 <div className="flex items-baseline justify-between gap-1 mt-0.5">
                   <span className="text-xs sm:text-sm font-black text-emerald-950 truncate">
-                    {attendedCount} Checked In
+                    {attendedCount} Present
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-bold font-mono border ${
+                    className={`px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-mono border ${
                       attendedCount > 0
                         ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-2xs"
                         : "bg-emerald-100 text-emerald-800 border-emerald-200"
@@ -889,14 +907,14 @@ export function EventRosterClient({
                     {attendancePct}%
                   </span>
                 </div>
-                {/* Glowing Gradient Progress Bar */}
-                <div className="mt-1.5 h-2 w-full rounded-full bg-slate-200/90 overflow-hidden border border-emerald-100/90 p-0.5">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 shadow-sm shadow-emerald-500/40 transition-all duration-500"
-                    style={{ width: `${Math.min(100, attendancePct)}%` }}
-                  />
-                </div>
               </div>
+            </div>
+            {/* Glowing Gradient Progress Bar */}
+            <div className="mt-1.5 h-1.5 sm:h-2 w-full rounded-full bg-slate-200/90 overflow-hidden border border-emerald-100/90 p-0.5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 shadow-sm shadow-emerald-500/40 transition-all duration-500"
+                style={{ width: `${Math.min(100, attendancePct)}%` }}
+              />
             </div>
           </div>
         </div>
@@ -930,7 +948,7 @@ export function EventRosterClient({
           <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-2.5 sm:p-3 shadow-xs">
             <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 sm:gap-2.5">
               {/* Search Bar */}
-              <div className="relative flex-1 min-w-[200px]">
+              <div className="relative flex-1 min-w-0">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
@@ -951,71 +969,75 @@ export function EventRosterClient({
               </div>
 
               {/* Filters & Actions Group */}
-              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
-                {/* Attendance Status Dropdown */}
-                <select
-                  value={filterTab}
-                  onChange={(e) => setFilterTab(e.target.value as any)}
-                  className={`h-10 rounded-xl border px-3 text-xs font-bold transition-all cursor-pointer ${
-                    filterTab === "attended"
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                      : filterTab === "pending"
-                      ? "border-amber-300 bg-amber-50 text-amber-900"
-                      : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
-                  } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
-                >
-                  <option value="all">All Attendees ({totalFilteredCount})</option>
-                  <option value="attended">✅ Present ({attendedCount})</option>
-                  <option value="pending">⏳ Pending ({pendingCount})</option>
-                </select>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                {/* 2 Filter Dropdowns: 2-column grid on mobile, flex on sm+ */}
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                  {/* Attendance Status Dropdown */}
+                  <select
+                    value={filterTab}
+                    onChange={(e) => setFilterTab(e.target.value as any)}
+                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${
+                      filterTab === "attended"
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                        : filterTab === "pending"
+                        ? "border-amber-300 bg-amber-50 text-amber-900"
+                        : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
+                    } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                  >
+                    <option value="all">All ({totalFilteredCount})</option>
+                    <option value="attended">✅ Present ({attendedCount})</option>
+                    <option value="pending">⏳ Pending ({pendingCount})</option>
+                  </select>
 
-                {/* Pass Tier Filter Dropdown */}
-                <select
-                  value={tierFilter}
-                  onChange={(e) => setTierFilter(e.target.value as any)}
-                  className={`h-10 rounded-xl border px-3 text-xs font-bold transition-all cursor-pointer ${
-                    tierFilter !== "all"
-                      ? "border-primary/40 bg-primary/5 text-primary"
-                      : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
-                  } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
-                >
-                  <option value="all">All Pass Tiers</option>
-                  <option value="pro_pass">⭐ Pro Pass Only</option>
-                  <option value="standard_pass">📌 Standard Pass Only</option>
-                </select>
+                  {/* Pass Tier Filter Dropdown */}
+                  <select
+                    value={tierFilter}
+                    onChange={(e) => setTierFilter(e.target.value as any)}
+                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${
+                      tierFilter !== "all"
+                        ? "border-primary/40 bg-primary/5 text-primary"
+                        : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
+                    } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                  >
+                    <option value="all">All Pass Tiers</option>
+                    <option value="pro_pass">⭐ Pro Pass</option>
+                    <option value="standard_pass">📌 Standard</option>
+                  </select>
+                </div>
 
-                {/* Custom Report & CSV Export Buttons */}
+                {/* Custom Report & CSV Export Buttons: 2-column grid on mobile, flex on sm+ */}
                 {(isStaffOrAdmin || isOverallCoordinator) && (
-                  <>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                     <button
                       type="button"
                       onClick={() => setIsCustomReportModalOpen(true)}
                       title="Generate Custom CSV Report with Filters & Column Selector"
-                      className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
+                      className="h-9 sm:h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer"
                     >
-                      <FileSpreadsheet className="h-4 w-4 text-emerald-300" />
-                      <span>Custom Report</span>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-300 shrink-0" />
+                      <span className="truncate">Custom Report</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={handleExportCSV}
+                      onClick={() => setIsConfirmExportCSVOpen(true)}
                       disabled={isExportingCSV}
-                      className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed px-3.5 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer shrink-0"
+                      title="Export Event Attendee Roster CSV"
+                      className="h-9 sm:h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed px-3 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition-all cursor-pointer"
                     >
                       {isExportingCSV ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
-                          <span>Exporting...</span>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400 shrink-0" />
+                          <span className="truncate">Exporting...</span>
                         </>
                       ) : (
                         <>
-                          <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
-                          <span>Export CSV</span>
+                          <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                          <span className="truncate">Export CSV</span>
                         </>
                       )}
                     </button>
-                  </>
+                  </div>
                 )}
 
                 {/* Results Count Badge */}
@@ -1032,43 +1054,55 @@ export function EventRosterClient({
             {filteredAttendees.length > 0 ? (
               filteredAttendees.map((item) => {
                 const isPro = item.pass?.pass_tier === "pro_pass";
+                const initials = item.user.full_name
+                  ? item.user.full_name
+                      .trim()
+                      .split(" ")
+                      .filter(Boolean)
+                      .map((n: string) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()
+                  : "DE";
 
                 return (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3"
+                    className={`rounded-2xl border bg-white p-3.5 shadow-xs space-y-3 transition-all ${
+                      item.isAttended
+                        ? "border-emerald-300/80 bg-gradient-to-br from-emerald-500/[0.03] to-white"
+                        : "border-slate-200/90"
+                    }`}
                   >
-                    {/* Top Row: Ticket Code & Status Pill */}
+                    {/* Top Row: Ticket Code & Badges + Status Pill */}
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                      <div className="space-y-0.5">
-                        <span className="font-bold text-slate-900 font-mono text-xs block">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="font-mono font-bold text-slate-900 text-xs tracking-wide">
                           {item.registration_code}
                         </span>
-                        <div className="flex items-center gap-1">
-                          {isPro ? (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.2 text-[9px]">
-                              <Star className="h-2.5 w-2.5 fill-amber-500" />
-                              <span>PRO</span>
-                            </span>
-                          ) : (
-                            <span className="rounded bg-slate-100 text-slate-700 px-1.5 py-0.2 text-[9px] font-bold">
-                              STD
-                            </span>
-                          )}
-                          <span className="rounded bg-indigo-50 text-primary px-1.5 py-0.2 text-[9px] font-bold">
-                            Slot #{item.slot_number || 1}
+                        {isPro ? (
+                          <span className="inline-flex items-center gap-0.5 rounded-md bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 font-black px-1.5 py-0.5 text-[9px] shadow-2xs">
+                            <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                            <span>PRO</span>
                           </span>
-                        </div>
+                        ) : (
+                          <span className="rounded-md bg-slate-100 text-slate-700 px-1.5 py-0.5 text-[9px] font-bold">
+                            STD
+                          </span>
+                        )}
+                        <span className="rounded-md bg-indigo-50 text-primary border border-indigo-200/60 px-1.5 py-0.5 text-[9px] font-bold">
+                          Slot #{item.slot_number || 1}
+                        </span>
                       </div>
 
-                      <div>
+                      <div className="shrink-0">
                         {item.isAttended ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-extrabold">
-                            <Check className="h-3 w-3 text-emerald-700" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold shadow-2xs">
+                            <Check className="h-3 w-3 text-emerald-700 stroke-[3]" />
                             <span>Present</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 px-2.5 py-0.5 text-[10px] font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-medium">
                             <Clock className="h-3 w-3 text-slate-400" />
                             <span>Pending</span>
                           </span>
@@ -1076,59 +1110,84 @@ export function EventRosterClient({
                       </div>
                     </div>
 
-                    {/* Middle Row: Participant & College info */}
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-bold text-slate-900 text-sm">
-                          {item.user.full_name}
+                    {/* Middle Section: Avatar + Participant info */}
+                    <div className="flex items-start gap-3">
+                      {/* Initials Avatar */}
+                      <div
+                        className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs ${
+                          item.isAttended
+                            ? "bg-gradient-to-br from-emerald-600 to-teal-700 text-white"
+                            : "bg-gradient-to-br from-slate-800 to-indigo-900 text-white"
+                        }`}
+                      >
+                        {initials}
+                      </div>
+
+                      {/* Delegate Metadata */}
+                      <div className="min-w-0 flex-1 space-y-1 text-xs">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <h4 className="font-extrabold text-slate-900 text-sm truncate leading-snug">
+                            {item.user.full_name}
+                          </h4>
+                          <span
+                            className={`inline-block rounded-md px-1.5 py-0.5 text-[9px] font-extrabold border uppercase tracking-wider shrink-0 ${
+                              item.isInternal || item.user.participant_type === "internal"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-300/80"
+                                : "bg-purple-50 text-purple-800 border-purple-300/80"
+                            }`}
+                          >
+                            {item.isInternal || item.user.participant_type === "internal"
+                              ? "KLU Student"
+                              : "External"}
+                          </span>
                         </div>
-                        <span
-                          className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-black border uppercase tracking-wider shrink-0 ${
-                            item.isInternal || item.user.participant_type === "internal"
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                              : "bg-purple-50 text-purple-800 border-purple-300"
-                          }`}
-                        >
-                          {item.isInternal || item.user.participant_type === "internal"
-                            ? "KLU Student"
-                            : "External Delegate"}
-                        </span>
-                      </div>
-                      <div className="text-slate-500 font-mono text-[11px]">
-                        {item.user.email || "Email protected"}
-                      </div>
-                      <div className="text-slate-600 text-[11px] font-medium pt-0.5 flex items-center gap-1">
-                        <span className="truncate">{item.user.college_name || item.user.department || "KARE"}</span>
-                        {item.user.register_number && (
-                          <span className="font-mono text-slate-400">({item.user.register_number})</span>
-                        )}
+
+                        {/* Email */}
+                        <div className="flex items-center gap-1.5 text-slate-500 text-[11px] truncate">
+                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                          <span className="font-mono truncate">{item.user.email || "Email protected"}</span>
+                        </div>
+
+                        {/* College & Department */}
+                        <div className="flex items-center gap-1.5 text-slate-600 text-[11px] font-medium pt-0.5 truncate">
+                          <Building className="h-3 w-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{item.user.college_name || item.user.department || "KARE"}</span>
+                          {item.user.register_number && (
+                            <span className="font-mono text-slate-400 shrink-0">({item.user.register_number})</span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     {/* Supervisor Action Button on Mobile */}
-                    {isStaffOrAdmin && (
-                      <div className="pt-2 border-t border-slate-100 flex justify-end">
+                    {isStaffOrAdmin ? (
+                      <div className="pt-2 border-t border-slate-100">
                         {item.isAttended ? (
                           <button
                             type="button"
                             onClick={() => setConfirmRevokeItem(item)}
-                            className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer w-full"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 px-3 py-2 text-xs font-bold text-slate-600 transition-colors cursor-pointer w-full shadow-2xs"
                           >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            <span>Undo Attendance</span>
+                            <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Undo Attendance Check-In</span>
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setConfirmCheckInItem(item)}
-                            className="inline-flex items-center justify-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors cursor-pointer w-full"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 px-3 py-2.5 text-xs font-extrabold text-white shadow-xs shadow-emerald-600/20 transition-all cursor-pointer w-full"
                           >
-                            <Check className="h-3.5 w-3.5" />
-                            <span>Manual Override</span>
+                            <Check className="h-4 w-4 stroke-[3]" />
+                            <span>Manual Check-In Override</span>
                           </button>
                         )}
                       </div>
-                    )}
+                    ) : isOverallCoordinator ? (
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                        <span className="italic">Read-only oversight</span>
+                        <span className="font-mono font-bold text-slate-600">{item.isAttended ? "Verified" : "Pending"}</span>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
@@ -1328,11 +1387,11 @@ export function EventRosterClient({
                   type="button"
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage <= 1 || isLoadingPage}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
+                  className="inline-flex items-center justify-center gap-1 h-8 px-2.5 sm:px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
                   aria-label="Previous Page"
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  <span className="hidden xs:inline">Prev</span>
+                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">Prev</span>
                 </button>
 
                 {/* Page Number Pills */}
@@ -1368,11 +1427,11 @@ export function EventRosterClient({
                   type="button"
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage >= totalPages || isLoadingPage}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
+                  className="inline-flex items-center justify-center gap-1 h-8 px-2.5 sm:px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
                   aria-label="Next Page"
                 >
-                  <span className="hidden xs:inline">Next</span>
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
               </div>
             )}
@@ -1414,14 +1473,14 @@ export function EventRosterClient({
                 {/* Unified Card Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 shrink-0">
-                      <MapPin className="h-4 w-4" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-sm shadow-indigo-500/25 shrink-0">
+                      <MapPin className="h-4.5 w-4.5" />
                     </div>
                     <div>
                       <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                        Venue, Brochure &amp; WhatsApp Links
+                        Venue, Brochure &amp; WhatsApp
                       </h4>
-                      <p className="text-[11px] text-slate-500">Physical room assignment &amp; official links</p>
+                      <p className="text-[11px] text-slate-500">Physical hall &amp; official delegate links</p>
                     </div>
                   </div>
                   <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 text-indigo-700 px-2 py-0.5 text-[10px] font-bold border border-indigo-200">
@@ -1463,7 +1522,7 @@ export function EventRosterClient({
                     </label>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                        Editable by Staff &amp; Admin
+                        Editable
                       </span>
                       {brochureUrl ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[10px] font-bold border border-emerald-200">
@@ -1476,23 +1535,23 @@ export function EventRosterClient({
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
                       type="url"
                       value={brochureUrl}
                       onChange={(e) => setBrochureUrl(e.target.value)}
                       placeholder="https://drive.google.com/... or brochure.pdf"
-                      className="flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:outline-hidden focus:ring-2 focus:ring-purple-100 transition-all font-medium"
+                      className="w-full sm:flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:outline-hidden focus:ring-2 focus:ring-purple-100 transition-all font-medium"
                     />
                     {brochureUrl.trim() && (
                       <a
                         href={brochureUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="h-10 inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-primary text-white text-xs font-bold px-3 transition-colors shrink-0 shadow-2xs cursor-pointer"
+                        className="h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-primary text-white text-xs font-bold px-3.5 transition-colors shrink-0 shadow-2xs cursor-pointer w-full sm:w-auto"
                         title="Verify link in new tab"
                       >
-                        <span>Test</span>
+                        <span>Test Link</span>
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     )}
@@ -1525,19 +1584,19 @@ export function EventRosterClient({
                   </div>
 
                   {isAdmin ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <input
                         type="url"
                         value={whatsappLink}
                         onChange={(e) => setWhatsappLink(e.target.value)}
                         placeholder="https://chat.whatsapp.com/..."
-                        className="flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden focus:ring-2 focus:ring-emerald-100 transition-all font-medium"
+                        className="w-full sm:flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden focus:ring-2 focus:ring-emerald-100 transition-all font-medium"
                       />
                       <button
                         type="button"
                         onClick={() => handleOpenConfirmLinks()}
                         disabled={!isWhatsappDirty || isSavingLinks}
-                        className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold px-3.5 transition-all shrink-0 ${
+                        className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold px-4 transition-all w-full sm:w-auto shrink-0 ${
                           isWhatsappDirty && !isSavingLinks
                             ? "bg-slate-900 hover:bg-slate-800 text-white cursor-pointer shadow-2xs"
                             : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
@@ -1548,7 +1607,7 @@ export function EventRosterClient({
                       </button>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-between gap-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="min-w-0">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                           Current Group Link
@@ -1562,10 +1621,10 @@ export function EventRosterClient({
                           href={savedWhatsappLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors shrink-0 shadow-2xs"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 transition-colors shrink-0 shadow-2xs w-full sm:w-auto"
                         >
-                          <span>Open</span>
-                          <ExternalLink className="h-3 w-3" />
+                          <span>Open Group</span>
+                          <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       )}
                     </div>
@@ -1582,14 +1641,14 @@ export function EventRosterClient({
                ---------------------------------------------------- */}
             <div className="lg:col-span-6 space-y-4">
               {/* Card 4: Competition Rules & Guidelines */}
-              <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-4.5 shadow-xs space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
-                      <ListChecks className="h-4 w-4" />
+              <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/25 shrink-0">
+                      <ListChecks className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
                           Rules &amp; Guidelines
                         </h4>
@@ -1597,17 +1656,17 @@ export function EventRosterClient({
                           {rulesCount} Sections
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500">Paragraphs, rounds &amp; competition guidelines</p>
+                      <p className="text-[11px] text-slate-500">Paragraphs, rounds &amp; competition rules</p>
                     </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={handleInsertStandardTemplate}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors cursor-pointer shrink-0 shadow-2xs"
                   >
                     <BookOpen className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Insert Template</span>
+                    <span className="hidden sm:inline">Template</span>
                   </button>
                 </div>
 
@@ -1617,26 +1676,31 @@ export function EventRosterClient({
                     value={rulesInput}
                     onChange={(e) => setRulesInput(e.target.value)}
                     placeholder={`Round 1: Preliminary Screening\nProvide a comprehensive description of the round format, timing, and preliminary requirements.\n\nRound 2: Main Event & Evaluation\nDetailed specifications regarding workstations, technology stacks, scoring criteria, and presentation guidelines.\n\nGeneral Regulations:\n1. Valid physical College ID card is mandatory for campus entry.\n2. Decision of the jury and evaluation committee is final.`}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-900 font-mono leading-relaxed focus:bg-white focus:border-emerald-600 focus:outline-hidden focus:ring-2 focus:ring-emerald-100 transition-colors resize-y min-h-[180px] sm:min-h-[200px]"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-900 font-mono leading-relaxed focus:bg-white focus:border-emerald-600 focus:outline-hidden focus:ring-2 focus:ring-emerald-100 transition-colors resize-y min-h-[160px] sm:min-h-[190px]"
                   />
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Rendered with paragraphs &amp; bullet points on public event modal.</span>
-                    <span className="font-mono text-slate-600 font-medium">{rulesInput.length} characters (unlimited paragraphs)</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400">
+                    <span>Formatted with paragraphs &amp; points on public modal.</span>
+                    <span className="font-mono text-slate-600 font-medium">{rulesInput.length} characters</span>
                   </div>
                 </div>
               </div>
 
               {/* Card 5: Student Coordinators Management */}
-              <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-4.5 shadow-xs space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0">
-                      <GraduationCap className="h-4 w-4" />
+              <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-sm shadow-cyan-500/25 shrink-0">
+                      <GraduationCap className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                        Student Coordinators ({studentCoordinators.length})
-                      </h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          Student Coordinators
+                        </h4>
+                        <span className="rounded-full bg-cyan-100 text-cyan-800 text-[10px] font-mono font-bold px-2 py-0.5">
+                          {studentCoordinators.length}
+                        </span>
+                      </div>
                       <p className="text-[11px] text-slate-500">Student volunteers managing check-ins</p>
                     </div>
                   </div>
@@ -1647,7 +1711,7 @@ export function EventRosterClient({
                       setStudentSearchQuery("");
                       setIsAddStudentModalOpen(true);
                     }}
-                    className="inline-flex items-center justify-center gap-1 rounded-xl bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer shrink-0"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     <span>Add Student</span>
@@ -1669,46 +1733,76 @@ export function EventRosterClient({
                 )}
 
                 {studentCoordinators.length > 0 ? (
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-0.5">
                     {studentCoordinators.map((sc) => (
                       <div
                         key={sc.id}
-                        className="rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 flex items-center justify-between gap-2.5 hover:bg-slate-50 transition-colors"
+                        className="rounded-2xl border border-slate-200/90 bg-white hover:border-cyan-300 hover:shadow-xs p-3 sm:p-3.5 transition-all space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between gap-3"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 font-extrabold text-cyan-900 text-xs shrink-0">
-                            {sc.fullName.charAt(0).toUpperCase()}
+                        <div className="flex items-start sm:items-center gap-3 min-w-0">
+                          {/* Gradient Avatar */}
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-black text-xs shadow-2xs shrink-0">
+                            {sc.fullName ? sc.fullName.charAt(0).toUpperCase() : "S"}
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-slate-900 truncate">{sc.fullName}</span>
+
+                          {/* Metadata */}
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
+                                {sc.fullName}
+                              </span>
                               {sc.registerNumber && (
-                                <span className="rounded bg-slate-200/80 px-1.5 py-0.2 text-[10px] font-mono text-slate-700 shrink-0">
+                                <span className="rounded-md bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-700 shrink-0">
                                   {sc.registerNumber}
                                 </span>
                               )}
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-1.5 py-0.5 text-[9px] font-bold shrink-0">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span>Scanner Rights</span>
+                              </span>
                             </div>
-                            <p className="text-[11px] text-slate-500 truncate">{sc.email}</p>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+                              <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                              <span className="font-mono truncate">{sc.email}</span>
+                            </div>
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRevokeStudent(sc)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-colors cursor-pointer shrink-0"
-                          title="Revoke Student Coordinator Access"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          <span>Remove</span>
-                        </button>
+                        {/* Remove Action Button */}
+                        <div className="flex items-center justify-end pt-2 sm:pt-0 border-t border-slate-100 sm:border-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRevokeStudent(sc)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700 transition-colors cursor-pointer w-full sm:w-auto shadow-2xs"
+                            title="Revoke Student Coordinator Access"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                            <span>Remove Access</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-center space-y-1">
-                    <Users className="h-6 w-6 text-slate-300 mx-auto" />
-                    <p className="text-xs font-semibold text-slate-600">No Student Coordinators Assigned</p>
-                    <p className="text-[11px] text-slate-400">Add student volunteers to grant scanning access</p>
+                  <div className="p-6 rounded-2xl bg-slate-50/80 border border-dashed border-slate-200 text-center space-y-2">
+                    <div className="h-10 w-10 rounded-2xl bg-cyan-50 border border-cyan-100 text-cyan-600 flex items-center justify-center mx-auto">
+                      <GraduationCap className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">No Student Coordinators Assigned</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Assign student volunteers to grant scanning and verification access.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudentSearchQuery("");
+                        setIsAddStudentModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 shadow-2xs transition-all cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Assign First Student</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1716,19 +1810,23 @@ export function EventRosterClient({
           </div>
 
           {/* Integrated Save Action Strip */}
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className={`rounded-2xl border p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+            isOpsDirty
+              ? "border-amber-300 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 shadow-amber-500/5 ring-2 ring-amber-400/20"
+              : "border-slate-200/90 bg-white"
+          }`}>
             <div className="text-xs flex items-center gap-2">
               {isOpsDirty ? (
                 <>
                   <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                  <span className="font-bold text-amber-800">
-                    Unsaved changes detected. Click &quot;Save Event Configuration&quot; to apply.
+                  <span className="font-bold text-amber-900">
+                    Unsaved modifications detected. Click &quot;Save Configuration&quot; to apply.
                   </span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span className="text-slate-500">
+                  <span className="text-slate-600 font-medium">
                     All venue, brochure, and rules settings are up to date.
                   </span>
                 </>
@@ -1744,7 +1842,7 @@ export function EventRosterClient({
                     setBrochureUrl(savedBrochureUrl);
                     setRulesInput(savedRules);
                   }}
-                  className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold px-3 py-2.5 transition-colors cursor-pointer shrink-0"
+                  className="flex-1 sm:flex-initial rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-3.5 py-2.5 transition-colors cursor-pointer text-center shadow-2xs"
                   title="Revert all unsaved changes"
                 >
                   Reset
@@ -1755,7 +1853,7 @@ export function EventRosterClient({
                 type="button"
                 onClick={() => handleSaveEventSettings()}
                 disabled={!isOpsDirty || isSavingOps}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl text-xs font-extrabold px-6 py-2.5 shadow-sm transition-all w-full sm:w-auto shrink-0 ${
+                className={`inline-flex items-center justify-center gap-2 rounded-xl text-xs font-extrabold px-5 py-2.5 shadow-sm transition-all flex-1 sm:flex-initial shrink-0 ${
                   isOpsDirty && !isSavingOps
                     ? "bg-slate-900 hover:bg-slate-800 text-white cursor-pointer ring-2 ring-indigo-500/30"
                     : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
@@ -1764,7 +1862,7 @@ export function EventRosterClient({
                 {isSavingOps ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin text-amber-300" />
-                    <span>Saving Configuration...</span>
+                    <span>Saving...</span>
                   </>
                 ) : (
                   <>
@@ -1774,7 +1872,7 @@ export function EventRosterClient({
                       }`}
                     />
                     <span>
-                      {isOpsDirty ? "Save Event Configuration" : "Saved"}
+                      {isOpsDirty ? "Save Configuration" : "Saved"}
                     </span>
                   </>
                 )}
@@ -2013,7 +2111,7 @@ export function EventRosterClient({
                   filteredCandidates.slice(0, 15).map((candidate) => (
                     <div
                       key={candidate.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-3 flex items-center justify-between gap-3 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all"
+                      className="rounded-2xl border border-slate-200 bg-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all"
                     >
                       <div className="space-y-0.5 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -2021,7 +2119,7 @@ export function EventRosterClient({
                             {candidate.full_name}
                           </span>
                           {candidate.register_number && (
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600">
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-600">
                               {candidate.register_number}
                             </span>
                           )}
@@ -2038,7 +2136,7 @@ export function EventRosterClient({
                         type="button"
                         onClick={() => handleAssignStudent(candidate)}
                         disabled={isSubmittingAssign}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-600 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-600 transition-colors disabled:opacity-50 cursor-pointer w-full sm:w-auto shrink-0"
                       >
                         <Plus className="h-3.5 w-3.5" />
                         <span>Assign Role</span>
@@ -2286,6 +2384,92 @@ export function EventRosterClient({
                   <>
                     <Save className="h-3.5 w-3.5 text-emerald-400" />
                     <span>Save &amp; Leave</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attendee Roster CSV Export Confirmation Modal (Prevents Accidental Egress Spikes) */}
+      {isConfirmExportCSVOpen && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-200">
+            {/* Header Icon & Close */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shrink-0 shadow-2xs">
+                <Download className="h-6 w-6" />
+              </div>
+              <button
+                type="button"
+                onClick={() => !isExportingCSV && setIsConfirmExportCSVOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Title & Description */}
+            <div className="space-y-1">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 font-display">
+                Download Attendee Roster CSV?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                You are about to export delegate records and check-in statuses for{" "}
+                <strong className="text-slate-800 font-bold">{eventName}</strong>.
+              </p>
+            </div>
+
+            {/* Egress Protection Warning Notice */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 sm:p-3.5 space-y-1 text-xs">
+              <div className="flex items-center gap-1.5 text-amber-900 font-bold">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Database Egress Optimization</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                This query extracts all attendee records and credentials for this competition. Confirmation is required to prevent accidental downloads and reduce database egress usage.
+              </p>
+            </div>
+
+            {/* Scope Summary */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Scope</span>
+                <span className="font-black text-slate-900 text-xs mt-0.5 block">{totalCount} Attendees</span>
+              </div>
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Format</span>
+                <span className="font-black text-slate-900 text-xs mt-0.5 block">Excel / CSV File</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmExportCSVOpen(false)}
+                disabled={isExportingCSV}
+                className="flex-1 h-10 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={isExportingCSV}
+                className="flex-1 h-10 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white shadow-md shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isExportingCSV ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    <span>Querying &amp; Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    <span>Confirm Download</span>
                   </>
                 )}
               </button>

@@ -1,6 +1,57 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function decodeBase64Safe(str: string): string {
+  try {
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(str, "base64").toString("utf-8");
+    }
+    return atob(str);
+  } catch {
+    return "";
+  }
+}
+
+function isAuthTokenFresh(request: NextRequest): boolean {
+  try {
+    const cookies = request.cookies.getAll();
+    const authCookie = cookies.find((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"));
+    if (!authCookie || !authCookie.value) return false;
+
+    let rawValue = authCookie.value;
+    if (rawValue.startsWith("base64-")) {
+      rawValue = decodeBase64Safe(rawValue.slice(7));
+    }
+
+    let jwt = "";
+    if (rawValue.startsWith("eyJ")) {
+      jwt = rawValue;
+    } else {
+      const parsed = JSON.parse(rawValue);
+      if (Array.isArray(parsed) && typeof parsed[0] === "string" && parsed[0].startsWith("eyJ")) {
+        jwt = parsed[0];
+      } else if (parsed && typeof parsed.access_token === "string") {
+        jwt = parsed.access_token;
+      }
+    }
+
+    if (!jwt) return false;
+    const parts = jwt.split(".");
+    if (parts.length < 2) return false;
+    const payloadJson = decodeBase64Safe(parts[1]);
+    if (!payloadJson) return false;
+
+    const payload = JSON.parse(payloadJson);
+    if (!payload.exp) return false;
+
+    const now = Math.floor(Date.now() / 1000);
+    // If token has more than 5 minutes (300s) remaining before expiry, it is fresh
+    return payload.exp > now + 300;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
@@ -55,13 +106,13 @@ export async function updateSession(request: NextRequest) {
     });
   }
 
-  // 3. Skip auth network overhead on Next.js background data prefetches for public routes
+  // 3. Skip remote auth network round-trip on public routes if token is fresh or during background prefetching
   const isPrefetch =
     request.headers.get("next-router-prefetch") === "1" ||
     request.headers.get("purpose") === "prefetch" ||
     request.nextUrl.searchParams.has("_rsc");
 
-  if (isPrefetch && !isProtectedPath && !isAuthPage) {
+  if (!isProtectedPath && !isAuthPage && (isPrefetch || isAuthTokenFresh(request))) {
     return NextResponse.next({
       request: {
         headers: request.headers,

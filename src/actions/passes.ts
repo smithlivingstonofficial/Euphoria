@@ -234,7 +234,6 @@ export async function checkoutPassAction(
       };
     }
 
-    revalidatePath("/", "layout");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard", "page");
     revalidatePath("/dashboard/passes", "page");
@@ -401,7 +400,6 @@ export async function claimSecondSlotAction(eventId: string) {
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard", "page");
     revalidatePath("/dashboard/passes", "page");

@@ -536,10 +536,7 @@ export async function createEventAdmin(formData: {
     if (error) throw error;
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/events", "page");
-    revalidatePath("/events", "layout");
-    revalidatePath("/admin", "layout");
     revalidatePath("/admin/events", "page");
     revalidatePath("/coordinator", "page");
 
@@ -654,10 +651,7 @@ export async function updateEventAdmin(
     if (error) throw error;
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/events", "page");
-    revalidatePath("/events", "layout");
-    revalidatePath("/admin", "layout");
     revalidatePath("/admin/events", "page");
     revalidatePath("/coordinator", "page");
     revalidatePath(`/coordinator/${eventId}`, "page");
@@ -680,8 +674,8 @@ export async function deleteEventAdmin(eventId: string) {
 
     if (error) throw error;
 
-    revalidatePath("/", "layout");
-    revalidatePath("/admin", "layout");
+    revalidateTag("public-events");
+    revalidatePath("/events", "page");
     revalidatePath("/admin/events", "page");
 
     return { success: true };
@@ -979,7 +973,7 @@ export async function getAllCoordinatorsAdmin() {
         user:profiles!user_role_assignments_user_id_fkey (id, full_name, email, mobile_number, department)
       `),
       adminClient.from("profiles").select("id, full_name, email, mobile_number, department, participant_type").eq("participant_type", "internal"),
-      adminClient.from("events").select("id, name, description, coordinator_emails, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
+      adminClient.from("events").select("id, name, coordinator_names, coordinator_mobiles, coordinator_emails, school_or_dept, venue, event_date, start_time, end_time, status").order("name", { ascending: true }),
     ]);
 
     const profileMapByEmail = new Map();
@@ -1013,7 +1007,7 @@ export async function getAllCoordinatorsAdmin() {
       }
     });
 
-    // Priority B: Event description metadata assignments (from sheet import or coordinator_emails)
+    // Priority B: Event metadata assignments (using dedicated coordinator columns, 0 description egress)
     (events || []).forEach((evt: any) => {
       let emails: string[] = [];
       let names: string[] = [];
@@ -1022,18 +1016,11 @@ export async function getAllCoordinatorsAdmin() {
       if (evt.coordinator_emails) {
         emails = evt.coordinator_emails.split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
       }
-
-      if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-        const emailMatch = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-        const nameMatch = evt.description.match(/\[COORDINATOR_NAMES:\s*([^\]]+)\]/);
-        const mobileMatch = evt.description.match(/\[COORDINATOR_MOBILES:\s*([^\]]+)\]/);
-
-        if (emailMatch) {
-          const descEmails = emailMatch[1].split(/,|&|\//).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-          emails = Array.from(new Set([...emails, ...descEmails]));
-          names = nameMatch ? nameMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
-          mobiles = mobileMatch ? mobileMatch[1].split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean) : [];
-        }
+      if (evt.coordinator_names) {
+        names = evt.coordinator_names.split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean);
+      }
+      if (evt.coordinator_mobiles) {
+        mobiles = evt.coordinator_mobiles.split(/,|&|\//).map((s: string) => s.trim()).filter(Boolean);
       }
 
       if (emails.length > 0) {
@@ -1396,7 +1383,7 @@ export async function createAnnouncementAdmin(data: {
 
     if (error) throw error;
 
-    revalidatePath("/", "layout");
+    revalidatePath("/announcements", "page");
     revalidatePath("/admin/announcements", "page");
     return { success: true };
   } catch (err: unknown) {
@@ -1415,7 +1402,7 @@ export async function deleteAnnouncementAdmin(id: string) {
 
     if (error) throw error;
 
-    revalidatePath("/", "layout");
+    revalidatePath("/announcements", "page");
     revalidatePath("/admin/announcements", "page");
     return { success: true };
   } catch (err: unknown) {
@@ -1576,8 +1563,6 @@ export async function bulkUploadEventsAdmin(eventsData: Array<{
       }
     }
 
-    revalidatePath("/", "layout");
-    revalidatePath("/admin", "layout");
     revalidatePath("/admin/events", "page");
 
     return {
@@ -2143,7 +2128,7 @@ export async function updatePricingSettingsAdmin(payload: Partial<RegistrationPr
 
     await fs.writeFile(filePath, JSON.stringify(updated, null, 2), "utf-8");
 
-    revalidatePath("/", "layout");
+    revalidateTag("public-pricing-settings");
     revalidatePath("/admin/pricing", "page");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard", "page");
@@ -3740,8 +3725,6 @@ export async function resolvePaymentAndIssuePassAction(params: {
 
     await invalidateFinancialTelemetryCache();
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
-    revalidatePath("/admin", "layout");
     revalidatePath("/admin/payments", "page");
     revalidatePath("/admin/users", "page");
     revalidatePath("/dashboard", "page");
@@ -3882,8 +3865,6 @@ export async function batchReconcileAttemptedOrdersAction() {
 
     await invalidateFinancialTelemetryCache();
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
-    revalidatePath("/admin", "layout");
     revalidatePath("/admin/payments", "page");
     revalidatePath("/admin/users", "page");
 

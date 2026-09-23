@@ -504,8 +504,8 @@ export async function submitPaymentIssue(formData: {
       console.warn("Audit log notice:", auditErr);
     }
 
-    revalidatePath("/", "layout");
     revalidatePath("/admin/payment-requests", "page");
+    revalidatePath("/payment-help", "page");
 
     return {
       success: true,
@@ -1329,7 +1329,6 @@ export async function approveAndIssuePassAdmin(
         // Safe
       }
 
-      revalidatePath("/", "layout");
       revalidatePath("/admin/payment-requests", "page");
       revalidatePath("/dashboard/passes", "page");
 
@@ -1632,7 +1631,6 @@ export async function approveAndIssuePassAdmin(
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/admin/payment-requests", "page");
     revalidatePath("/admin/payments", "page");
     revalidatePath("/admin/events/slots", "page");

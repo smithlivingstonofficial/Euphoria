@@ -33,6 +33,7 @@ export function MobileFloatingDock({ userRole, hasPass }: MobileFloatingDockProp
 
         <Link
           href={passActive ? "/dashboard/passes" : "/register"}
+          prefetch={false}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white font-black text-xs shadow-md active:scale-95 transition-all"
         >
           {passActive ? (

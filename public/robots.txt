@@ -1,0 +1,49 @@
+# Euphoria 2026 - Kalasalingam Academy of Research and Education
+# Robots Policy & Web Crawling Directives
+
+User-agent: *
+Allow: /
+Allow: /events
+Allow: /campus-map
+Allow: /announcements
+Disallow: /admin/
+Disallow: /super-admin/
+Disallow: /coordinator/
+Disallow: /dashboard/
+Disallow: /complete-profile
+Disallow: /api/
+Disallow: /*_rsc*
+
+# Block aggressive AI scrapers and bandwidth-draining crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: DataForSeoBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /

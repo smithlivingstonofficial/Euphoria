@@ -128,7 +128,6 @@ export async function POST(req: NextRequest) {
         }
 
         revalidateTag("public-events");
-        revalidatePath("/", "layout");
         revalidatePath("/dashboard", "page");
       }
     } else if (pendingOrder?.id) {

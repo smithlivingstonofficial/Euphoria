@@ -537,6 +537,7 @@ export function EventCatalogExplorer({
           </div>
           <Link
             href="/dashboard/passes"
+            prefetch={false}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-emerald-800 active:scale-95 transition-all shrink-0"
           >
             <QrCode className="h-4 w-4" />
@@ -1145,6 +1146,7 @@ export function EventCatalogExplorer({
                         ) : isKluQuotaBlocked && isGuest ? (
                           <Link
                             href="/login?redirect=/events"
+                            prefetch={false}
                             title="Reserved for external delegates. Please sign in with an external email to select."
                             className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
                           >
@@ -1669,6 +1671,7 @@ export function EventCatalogExplorer({
                 ) : (activeModalEvent.is_klu_blocked || activeModalEvent.allow_internal === false) && isGuest ? (
                   <Link
                     href="/login?redirect=/events"
+                    prefetch={false}
                     className="inline-flex items-center gap-2 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 px-4 py-2.5 text-xs font-bold hover:bg-amber-100 transition-colors shadow-2xs cursor-pointer"
                   >
                     <Lock className="h-4 w-4 text-amber-600" />
@@ -1781,6 +1784,7 @@ export function EventCatalogExplorer({
                 <div className="flex flex-col sm:flex-row gap-2 pt-2">
                   <Link
                     href="/dashboard/passes"
+                    prefetch={false}
                     onClick={() => {
                       setClaimingSlot2Event(null);
                       setSlot2Success(null);

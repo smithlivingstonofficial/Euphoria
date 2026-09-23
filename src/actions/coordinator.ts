@@ -135,36 +135,20 @@ async function fetchCoordinatorRoleRaw(
 
     // Check event coordinator_emails column or description tag for coordinator emails
     if (userEmail) {
-      const { data: evt } = await adminClient
+      const { data: matchedEvt } = await adminClient
         .from("events")
-        .select("id, description, coordinator_emails")
+        .select("id")
         .eq("id", effectiveEventId)
+        .or(`coordinator_emails.ilike.%${userEmail}%,description.ilike.%[COORDINATOR_EMAILS:%${userEmail}%`)
         .maybeSingle();
 
-      if (evt) {
-        let isMatch = false;
-        if (evt.coordinator_emails) {
-          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-          if (directEmails.includes(userEmail)) {
-            isMatch = true;
-          }
-        }
-        if (!isMatch && evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-          if (match) {
-            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-            if (emails.includes(userEmail)) isMatch = true;
-          }
-        }
-
-        if (isMatch) {
-          // Auto-heal DB assignment so future queries hit staff_event_assignments directly
-          await adminClient.from("staff_event_assignments").upsert(
-            { user_id: userId, event_id: effectiveEventId },
-            { onConflict: "user_id,event_id" }
-          );
-          return "staff";
-        }
+      if (matchedEvt) {
+        // Auto-heal DB assignment so future queries hit staff_event_assignments directly
+        await adminClient.from("staff_event_assignments").upsert(
+          { user_id: userId, event_id: effectiveEventId },
+          { onConflict: "user_id,event_id" }
+        );
+        return "staff";
       }
     }
 
@@ -202,12 +186,11 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
   regCountMap: Record<string, number>;
   kluCountMap: Record<string, number>;
   externalCountMap: Record<string, number>;
-  firstSlotCountMap: Record<string, number>;
   attendCountMap: Record<string, number>;
 }> {
   const adminClient = await createAdminClient();
 
-  const [eventsRes, statsRes, slot1Res, attRes] = await Promise.all([
+  const [eventsRes, statsRes, attRes] = await Promise.all([
     adminClient.from("events").select(`
       id,
       name,
@@ -231,11 +214,6 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
       .from("vw_public_events_stats")
       .select("event_id, total_registered, internal_registered"),
     adminClient
-      .from("event_registrations")
-      .select("event_id")
-      .eq("status", "confirmed")
-      .eq("slot_number", 1),
-    adminClient
       .from("attendance")
       .select("event_id"),
   ]);
@@ -243,7 +221,6 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
   const regCountMap: Record<string, number> = {};
   const kluCountMap: Record<string, number> = {};
   const externalCountMap: Record<string, number> = {};
-  const firstSlotCountMap: Record<string, number> = {};
   const attendCountMap: Record<string, number> = {};
 
   (statsRes.data || []).forEach((s: any) => {
@@ -252,10 +229,6 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
     regCountMap[s.event_id] = total;
     kluCountMap[s.event_id] = internal;
     externalCountMap[s.event_id] = Math.max(0, total - internal);
-  });
-
-  (slot1Res.data || []).forEach((r: any) => {
-    firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
   });
 
   (attRes.data || []).forEach((a: any) => {
@@ -267,7 +240,6 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
     regCountMap,
     kluCountMap,
     externalCountMap,
-    firstSlotCountMap,
     attendCountMap,
   };
 }
@@ -329,13 +301,15 @@ export async function getCoordinatorWorkspaceData() {
         const rawCat = Array.isArray(evt.category) ? evt.category[0] : evt.category;
         const category = rawCat ? { name: String(rawCat.name || "") } : null;
 
+        // Omit description to prevent massive RSC transfer bloat
+        const { description: _unusedDesc, ...cleanEvt } = evt;
+
         return {
-          ...evt,
+          ...cleanEvt,
           category,
           brochureUrl: brochureUrl || null,
           totalRegistrations: cached.regCountMap[evt.id] || 0,
           totalAttended: cached.attendCountMap[evt.id] || 0,
-          firstSlotCount: cached.firstSlotCountMap[evt.id] || 0,
           roleType: isOverallCoordinator ? "overall_coordinator" : "admin",
           internal_limit: intLimit,
           allow_internal: allowInt,
@@ -377,47 +351,29 @@ export async function getCoordinatorWorkspaceData() {
     let allAssignedIds = Array.from(new Set([...Array.from(staffEventIds), ...Array.from(studentEventIds)]));
 
     // If no explicit assignments found in tables, check if assigned via event metadata/email
+    // Uses targeted PostgREST filter with .limit(1) and .select("id") to prevent downloading all 61 event descriptions (2 bytes vs 215 KB)
     if (allAssignedIds.length === 0 && userEmail) {
-      const { data: eventsList } = await adminClient
+      const { data: matchedEvents } = await adminClient
         .from("events")
-        .select("id, description, coordinator_emails");
+        .select("id")
+        .or(`coordinator_emails.ilike.%${userEmail}%,description.ilike.%[COORDINATOR_EMAILS:%${userEmail}%`)
+        .limit(1);
 
-      if (eventsList) {
-        for (const evt of eventsList) {
-          let matched = false;
-          if (evt.coordinator_emails) {
-            const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-            if (directEmails.includes(userEmail)) {
-              matched = true;
-            }
-          }
-          if (!matched && evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-            const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-            if (match) {
-              const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-              if (emails.includes(userEmail)) {
-                matched = true;
-              }
-            }
-          }
-
-          if (matched) {
-            await adminClient.from("staff_event_assignments").upsert(
-              { user_id: user.id, event_id: evt.id },
-              { onConflict: "user_id,event_id" }
-            );
-            if (!roles.includes("staff_coordinator")) {
-              await adminClient.from("user_role_assignments").upsert(
-                { user_id: user.id, role_id: "staff_coordinator" },
-                { onConflict: "user_id,role_id" }
-              );
-              roles.push("staff_coordinator");
-            }
-            staffEventIds.add(evt.id);
-            allAssignedIds.push(evt.id);
-            break;
-          }
+      if (matchedEvents && matchedEvents.length > 0) {
+        const matchedEvtId = matchedEvents[0].id;
+        await adminClient.from("staff_event_assignments").upsert(
+          { user_id: user.id, event_id: matchedEvtId },
+          { onConflict: "user_id,event_id" }
+        );
+        if (!roles.includes("staff_coordinator")) {
+          await adminClient.from("user_role_assignments").upsert(
+            { user_id: user.id, role_id: "staff_coordinator" },
+            { onConflict: "user_id,role_id" }
+          );
+          roles.push("staff_coordinator");
         }
+        staffEventIds.add(matchedEvtId);
+        allAssignedIds.push(matchedEvtId);
       }
     }
 
@@ -627,13 +583,15 @@ export async function getCoordinatorWorkspaceData() {
       const rawCat = Array.isArray(evt.category) ? evt.category[0] : evt.category;
       const category = rawCat ? { name: String(rawCat.name || "") } : null;
 
+      // Omit description to prevent massive RSC transfer bloat
+      const { description: _unusedDesc, ...cleanEvt } = evt;
+
       return {
-        ...evt,
+        ...cleanEvt,
         category,
         brochureUrl: brochureUrl || null,
         totalRegistrations: regCountMap[evt.id] || 0,
         totalAttended: attendCountMap[evt.id] || 0,
-        firstSlotCount: isStudent ? undefined : (firstSlotCountMap[evt.id] || 0),
         roleType,
         internal_limit: intLimit,
         allow_internal: allowInt,
@@ -975,6 +933,14 @@ export async function getPaginatedEventAttendees(
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
+    const isAttendedFilter = options.filterTab === "attended";
+    const isPendingFilter = options.filterTab === "pending";
+
+    // Dynamic join: Use !inner for attended so Postgres filters attendance natively in index time
+    const attendanceSelect = isAttendedFilter
+      ? "attendance!inner(id, scanned_at, scan_method, scanned_by)"
+      : "attendance(id, scanned_at, scan_method, scanned_by)";
+
     let query = adminClient
       .from("event_registrations")
       .select(`
@@ -1003,12 +969,7 @@ export async function getPaginatedEventAttendees(
           year_of_study,
           participant_type
         ),
-        attendance (
-          id,
-          scanned_at,
-          scan_method,
-          scanned_by
-        )
+        ${attendanceSelect}
       `, { count: "exact" })
       .eq("event_id", eventId)
       .eq("status", "confirmed")
@@ -1028,8 +989,9 @@ export async function getPaginatedEventAttendees(
       }
     }
 
-    // 2. Filter by Attendance Status if specified
-    if (options.filterTab === "attended" || options.filterTab === "pending") {
+    // 2. Filter by Attendance Status if pending
+    // (When attended: handled automatically via attendance!inner join with 0 extra queries)
+    if (isPendingFilter) {
       const { data: attendanceList } = await adminClient
         .from("attendance")
         .select("registration_id")
@@ -1037,17 +999,8 @@ export async function getPaginatedEventAttendees(
       const attendedRegIds = Array.from(
         new Set((attendanceList || []).map((a) => a.registration_id).filter(Boolean))
       );
-
-      if (options.filterTab === "attended") {
-        if (attendedRegIds.length > 0) {
-          query = query.in("id", attendedRegIds);
-        } else {
-          return { success: true, attendees: [], totalCount: 0, totalPages: 0, page, pageSize };
-        }
-      } else if (options.filterTab === "pending") {
-        if (attendedRegIds.length > 0) {
-          query = query.not("id", "in", `(${attendedRegIds.join(",")})`);
-        }
+      if (attendedRegIds.length > 0) {
+        query = query.not("id", "in", `(${attendedRegIds.join(",")})`);
       }
     }
 
@@ -1519,8 +1472,8 @@ async function processAttendanceRecord(
     throw insertError;
   }
 
-  // Selective background cache revalidation - prevents cache stampedes during rapid scanning
-  revalidateTag("coordinator-workspace");
+  // Selective background cache revalidation - refresh the specific event's page
+  // Note: We avoid revalidateTag("coordinator-workspace") here to prevent cache stampedes during rapid gate check-ins
   if (eventId) {
     revalidatePath(`/coordinator/${eventId}`, "page");
   }

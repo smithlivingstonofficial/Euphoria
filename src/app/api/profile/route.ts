@@ -179,7 +179,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/complete-profile", "page");
 

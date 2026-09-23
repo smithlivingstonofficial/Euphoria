@@ -331,7 +331,6 @@ export async function registerForEvent(eventId: string) {
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
 
@@ -595,7 +594,6 @@ export async function batchRegisterEvents(eventIds: string[]) {
       }
 
       revalidateTag("public-events");
-      revalidatePath("/", "layout");
       revalidatePath("/dashboard", "page");
       revalidatePath("/events", "page");
       revalidatePath("/dashboard/passes", "page");
@@ -634,7 +632,6 @@ export async function batchRegisterEvents(eventIds: string[]) {
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard/passes", "page");

@@ -2,9 +2,10 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { cache } from "react";
 import { isProfileComplete, isKluParticipant } from "@/lib/profile";
 
-export async function getCurrentUser() {
+const getCachedUser = cache(async () => {
   try {
     const supabase = await createClient();
     const {
@@ -21,42 +22,34 @@ export async function getCurrentUser() {
       { data: roleAssignments },
       { data: staffAssignments },
       { data: studentAssignments },
-      { data: eventsData },
     ] = await Promise.all([
       adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
       adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
       adminClient.from("staff_event_assignments").select("id, event_id").eq("user_id", user.id).limit(1),
       adminClient.from("student_coordinator_assignments").select("id, event_id").eq("user_id", user.id).limit(1),
-      adminClient.from("events").select("id, description, coordinator_emails"),
     ]);
 
     const roles = (roleAssignments || []).map((r) => r.role_id);
     const userEmail = (user.email || "").toLowerCase().trim();
 
+    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0);
+    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
+    const isStaffAlready = roles.includes("staff_coordinator") || roles.includes("faculty") || hasStaffAssignment;
+
     // Check if user is listed in any event's coordinator_emails or [COORDINATOR_EMAILS:] tag
+    // Uses targeted PostgREST filter with .limit(1) and .select("id") to prevent downloading all 61 event descriptions (2 bytes vs 215 KB)
     let isEventEmailStaff = false;
     let matchedEventId: string | null = null;
-    if (userEmail && eventsData) {
-      for (const evt of eventsData) {
-        if (evt.coordinator_emails) {
-          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-          if (directEmails.includes(userEmail)) {
-            isEventEmailStaff = true;
-            matchedEventId = evt.id;
-            break;
-          }
-        }
-        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-          if (match) {
-            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-            if (emails.includes(userEmail)) {
-              isEventEmailStaff = true;
-              matchedEventId = evt.id;
-              break;
-            }
-          }
-        }
+    if (!isStaffAlready && userEmail) {
+      const { data: matchedEvents } = await adminClient
+        .from("events")
+        .select("id")
+        .or(`coordinator_emails.ilike.%${userEmail}%,description.ilike.%[COORDINATOR_EMAILS:%${userEmail}%`)
+        .limit(1);
+
+      if (matchedEvents && matchedEvents.length > 0) {
+        isEventEmailStaff = true;
+        matchedEventId = matchedEvents[0].id;
       }
     }
 
@@ -68,10 +61,9 @@ export async function getCurrentUser() {
       ).then();
     }
 
-    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0) || isEventEmailStaff;
-    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
+    const finalHasStaffAssignment = hasStaffAssignment || isEventEmailStaff;
 
-    if (hasStaffAssignment && !roles.includes("staff_coordinator")) {
+    if (finalHasStaffAssignment && !roles.includes("staff_coordinator")) {
       roles.push("staff_coordinator");
     }
     if (hasStudentAssignment && !roles.includes("student_coordinator")) {
@@ -87,7 +79,7 @@ export async function getCurrentUser() {
             userEmail === process.env.ADMIN_EMAIL)
       );
 
-    const isStaff = roles.includes("staff_coordinator") || hasStaffAssignment;
+    const isStaff = roles.includes("staff_coordinator") || finalHasStaffAssignment;
     const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment;
 
     // Verify profile completeness - if any fields are empty/null, rectify is_profile_completed to false
@@ -115,6 +107,10 @@ export async function getCurrentUser() {
   } catch {
     return null;
   }
+});
+
+export async function getCurrentUser() {
+  return getCachedUser();
 }
 
 export async function saveParticipantProfile(profileData: {
@@ -262,7 +258,6 @@ export async function saveParticipantProfile(profileData: {
       return { success: false, error: saveError.message };
     }
 
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/complete-profile", "page");
 
@@ -276,7 +271,8 @@ export async function saveParticipantProfile(profileData: {
 export async function signOutUser() {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  revalidatePath("/", "layout");
+  revalidatePath("/", "page");
+  revalidatePath("/login", "page");
 }
 
 export async function ensureStaffAccountAndRole(user: any) {
@@ -293,42 +289,33 @@ export async function ensureStaffAccountAndRole(user: any) {
       { data: roleAssignments },
       { data: staffAssignments },
       { data: studentAssignments },
-      { data: eventsData },
       { data: existingProfile },
     ] = await Promise.all([
       adminClient.from("user_role_assignments").select("role_id").eq("user_id", user.id),
       adminClient.from("staff_event_assignments").select("id, event_id").eq("user_id", user.id),
       adminClient.from("student_coordinator_assignments").select("id, event_id").eq("user_id", user.id),
-      adminClient.from("events").select("id, description, coordinator_emails"),
       adminClient.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     ]);
 
     const roles = (roleAssignments || []).map((r) => r.role_id);
+    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0);
+    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
+    const isStaffAlready = roles.includes("staff_coordinator") || roles.includes("faculty") || hasStaffAssignment;
 
-    // 2. Check if listed in any event's coordinator_emails or [COORDINATOR_EMAILS:] tag
+    // 2. Only if not already identified as staff, check if listed in any event's coordinator_emails or [COORDINATOR_EMAILS:] tag
+    // Uses targeted PostgREST filter with .limit(1) and .select("id") to prevent downloading all 61 event descriptions (2 bytes vs 215 KB)
     let isEventEmailStaff = false;
     let matchedEventId: string | null = null;
-    if (userEmail && eventsData) {
-      for (const evt of eventsData) {
-        if (evt.coordinator_emails) {
-          const directEmails = evt.coordinator_emails.split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-          if (directEmails.includes(userEmail)) {
-            isEventEmailStaff = true;
-            matchedEventId = evt.id;
-            break;
-          }
-        }
-        if (evt.description && evt.description.includes("[COORDINATOR_EMAILS:")) {
-          const match = evt.description.match(/\[COORDINATOR_EMAILS:\s*([^\]]+)\]/);
-          if (match) {
-            const emails = match[1].split(/,|&|\//).map((e: string) => e.trim().toLowerCase());
-            if (emails.includes(userEmail)) {
-              isEventEmailStaff = true;
-              matchedEventId = evt.id;
-              break;
-            }
-          }
-        }
+    if (!isStaffAlready && userEmail) {
+      const { data: matchedEvents } = await adminClient
+        .from("events")
+        .select("id")
+        .or(`coordinator_emails.ilike.%${userEmail}%,description.ilike.%[COORDINATOR_EMAILS:%${userEmail}%`)
+        .limit(1);
+
+      if (matchedEvents && matchedEvents.length > 0) {
+        isEventEmailStaff = true;
+        matchedEventId = matchedEvents[0].id;
       }
     }
 
@@ -349,9 +336,8 @@ export async function ensureStaffAccountAndRole(user: any) {
             userEmail === process.env.ADMIN_EMAIL)
       );
 
-    const hasStaffAssignment = (staffAssignments && staffAssignments.length > 0) || isEventEmailStaff;
-    const hasStudentAssignment = studentAssignments && studentAssignments.length > 0;
-    const isStaff = roles.includes("staff_coordinator") || roles.includes("faculty") || hasStaffAssignment;
+    const finalHasStaffAssignment = hasStaffAssignment || isEventEmailStaff;
+    const isStaff = roles.includes("staff_coordinator") || roles.includes("faculty") || finalHasStaffAssignment;
     const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment || isAdmin;
 
     if (isCoordinator) {

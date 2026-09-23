@@ -513,7 +513,6 @@ export async function verifyEasebuzzPaymentAction(
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard/passes", "page");
@@ -755,7 +754,6 @@ export async function bypassTestRegisterAction(
     }
 
     revalidateTag("public-events");
-    revalidatePath("/", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
     revalidatePath("/dashboard/passes", "page");
@@ -903,7 +901,6 @@ export async function reconcileUserPendingPaymentAction(): Promise<{
           }
 
           revalidateTag("public-events");
-          revalidatePath("/", "layout");
           revalidatePath("/dashboard", "page");
           revalidatePath("/events", "page");
           revalidatePath("/dashboard/passes", "page");
