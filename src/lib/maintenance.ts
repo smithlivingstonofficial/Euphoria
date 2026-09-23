@@ -7,7 +7,7 @@
 // All page routes display the dedicated /maintenance screen.
 // ==============================================================================
 
-export const MAINTENANCE_LOCKED = true;
+export const MAINTENANCE_LOCKED = false;
 
 export function isMaintenanceMode(): boolean {
   // If explicitly disabled via environment variable
