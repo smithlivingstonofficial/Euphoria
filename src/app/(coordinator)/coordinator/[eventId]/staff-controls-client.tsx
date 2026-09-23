@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   updateEventLinksStaff,
   assignStudentCoordinatorStaff,
   revokeStudentCoordinatorStaff,
+  searchStudentCandidatesAction,
 } from "@/actions/coordinator";
 import {
   Link as LinkIcon,
@@ -21,6 +22,7 @@ import {
   Sparkles,
   GraduationCap,
   Lock,
+  Loader2,
 } from "lucide-react";
 
 interface StudentCoordinator {
@@ -76,9 +78,36 @@ export function StaffControlsClient({
   // Add Student Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [candidatesList, setCandidatesList] = useState<ProfileItem[]>(allProfiles || []);
+  const [isSearchingCandidates, setIsSearchingCandidates] = useState(false);
   const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  // Dynamic server-side debounced student search (queries across all 8,000+ students)
+  useEffect(() => {
+    if (!isAddModalOpen) return;
+
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingCandidates(true);
+      try {
+        const res = await searchStudentCandidatesAction(searchQuery, eventId);
+        if (isMounted && res.success && res.candidates) {
+          setCandidatesList(res.candidates);
+        }
+      } catch (err) {
+        console.error("Failed to search students:", err);
+      } finally {
+        if (isMounted) setIsSearchingCandidates(false);
+      }
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, isAddModalOpen, eventId]);
 
   const handleOpenConfirmLinks = (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,19 +175,9 @@ export function StaffControlsClient({
     }
   };
 
-  const filteredCandidates = allProfiles.filter((p) => {
+  const filteredCandidates = candidatesList.filter((p) => {
     const isAlreadyAssigned = studentCoordinators.some((s) => s.userId === p.id);
-    if (isAlreadyAssigned) return false;
-
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-
-    return (
-      p.full_name.toLowerCase().includes(q) ||
-      p.email.toLowerCase().includes(q) ||
-      (p.register_number || "").toLowerCase().includes(q) ||
-      (p.mobile_number || "").toLowerCase().includes(q)
-    );
+    return !isAlreadyAssigned;
   });
 
   return (
@@ -459,13 +478,21 @@ export function StaffControlsClient({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by student name, email, or register number..."
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-9 pr-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-9 pr-9 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none"
                   autoFocus
                 />
+                {isSearchingCandidates && (
+                  <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-slate-400" />
+                )}
               </div>
 
               <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                {filteredCandidates.length > 0 ? (
+                {isSearchingCandidates && filteredCandidates.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                    <span>Searching student database...</span>
+                  </div>
+                ) : filteredCandidates.length > 0 ? (
                   filteredCandidates.slice(0, 15).map((candidate) => (
                     <div
                       key={candidate.id}

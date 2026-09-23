@@ -10,6 +10,7 @@ import {
   updateEventLinksStaff,
   assignStudentCoordinatorStaff,
   revokeStudentCoordinatorStaff,
+  searchStudentCandidatesAction,
   getPaginatedEventAttendees,
   exportEventAttendeesCSVAction,
   CoordinatorAttendeeItem,
@@ -293,9 +294,38 @@ export function EventRosterClient({
   );
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [studentSearchQuery, setStudentSearchQuery] = useState("");
+  const [candidatesList, setCandidatesList] = useState<ProfileItem[]>(
+    staffDetails?.allProfiles || []
+  );
+  const [isSearchingCandidates, setIsSearchingCandidates] = useState(false);
   const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  // Dynamic server-side debounced student search (queries across all 8,000+ students)
+  useEffect(() => {
+    if (!isAddStudentModalOpen) return;
+
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingCandidates(true);
+      try {
+        const res = await searchStudentCandidatesAction(studentSearchQuery, eventId);
+        if (isMounted && res.success && res.candidates) {
+          setCandidatesList(res.candidates);
+        }
+      } catch (err) {
+        console.error("Failed to search students:", err);
+      } finally {
+        if (isMounted) setIsSearchingCandidates(false);
+      }
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [studentSearchQuery, isAddStudentModalOpen, eventId]);
 
   // Fetch a page with specific query & filter options
   const fetchPage = async (
@@ -532,19 +562,9 @@ export function EventRosterClient({
     }
   };
 
-  const filteredCandidates = (staffDetails?.allProfiles || []).filter((p) => {
+  const filteredCandidates = candidatesList.filter((p) => {
     const isAlreadyAssigned = studentCoordinators.some((s) => s.userId === p.id);
-    if (isAlreadyAssigned) return false;
-
-    const q = studentSearchQuery.trim().toLowerCase();
-    if (!q) return true;
-
-    return (
-      p.full_name.toLowerCase().includes(q) ||
-      p.email.toLowerCase().includes(q) ||
-      (p.register_number || "").toLowerCase().includes(q) ||
-      (p.mobile_number || "").toLowerCase().includes(q)
-    );
+    return !isAlreadyAssigned;
   });
 
   // 5. ON-DEMAND UNPAGINATED CSV EXPORT (Zero-egress during normal browsing)
@@ -1945,21 +1965,29 @@ export function EventRosterClient({
                   value={studentSearchQuery}
                   onChange={(e) => setStudentSearchQuery(e.target.value)}
                   placeholder="Search student name, email, or register number..."
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-9 pr-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-9 pr-9 py-2.5 text-xs text-slate-900 focus:bg-white focus:border-primary focus:outline-none"
                   autoFocus
                 />
+                {isSearchingCandidates && (
+                  <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-slate-400" />
+                )}
               </div>
 
               <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                {filteredCandidates.length > 0 ? (
+                {isSearchingCandidates && filteredCandidates.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                    <span>Searching student database...</span>
+                  </div>
+                ) : filteredCandidates.length > 0 ? (
                   filteredCandidates.slice(0, 15).map((candidate) => (
                     <div
                       key={candidate.id}
                       className="rounded-2xl border border-slate-200 bg-white p-3 flex items-center justify-between gap-3 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all"
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-900">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-900 truncate">
                             {candidate.full_name}
                           </span>
                           {candidate.register_number && (
@@ -1967,8 +1995,13 @@ export function EventRosterClient({
                               {candidate.register_number}
                             </span>
                           )}
+                          {candidate.department && (
+                            <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 truncate max-w-[150px]">
+                              {candidate.department}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-[11px] text-slate-500">{candidate.email}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{candidate.email}</p>
                       </div>
 
                       <button
@@ -1983,8 +2016,15 @@ export function EventRosterClient({
                     </div>
                   ))
                 ) : (
-                  <div className="p-6 text-center text-xs text-slate-400 italic">
-                    {studentSearchQuery ? "No matching students found." : "Type a student name or email to search."}
+                  <div className="p-6 text-center text-xs text-slate-400">
+                    {studentSearchQuery ? (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-600">No matching students found.</p>
+                        <p className="text-[11px] text-slate-400">Please verify the name, email, or register number.</p>
+                      </div>
+                    ) : (
+                      <p className="italic">Type a student name, register number, or email to search.</p>
+                    )}
                   </div>
                 )}
               </div>

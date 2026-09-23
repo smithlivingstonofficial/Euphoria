@@ -1529,6 +1529,60 @@ export async function revokeStudentCoordinatorStaff(
   }
 }
 
+// 8b. Dynamically Search Student Candidates for Coordinator Role (Scalable to 100k+ users)
+export async function searchStudentCandidatesAction(query: string, eventId?: string) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: "Unauthorized. Please log in.", candidates: [] };
+
+    if (eventId) {
+      const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+      if (roleType !== "staff" && roleType !== "admin") {
+        return { success: false, error: "Forbidden", candidates: [] };
+      }
+    }
+
+    const adminClient = await createAdminClient();
+    const cleanQuery = query.replace(/[,()]/g, " ").trim();
+
+    let queryBuilder = adminClient
+      .from("profiles")
+      .select("id, full_name, email, mobile_number, register_number, department");
+
+    if (cleanQuery) {
+      queryBuilder = queryBuilder.or(
+        `full_name.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%,register_number.ilike.%${cleanQuery}%,mobile_number.ilike.%${cleanQuery}%`
+      );
+    } else {
+      queryBuilder = queryBuilder
+        .eq("participant_type", "internal")
+        .order("created_at", { ascending: false });
+    }
+
+    const { data: candidates, error } = await queryBuilder.limit(25);
+    if (error) throw error;
+
+    return {
+      success: true,
+      candidates: (candidates || []).map((p: any) => ({
+        id: p.id,
+        full_name: p.full_name || "Unknown Student",
+        email: p.email || "",
+        mobile_number: p.mobile_number || "",
+        register_number: p.register_number || "",
+        department: p.department || "",
+      })),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to search students";
+    return { success: false, error: msg, candidates: [] };
+  }
+}
+
 // 9. Fetch Event Staff Control Details (Links & Assigned Student Coordinators)
 export async function getEventStaffDetails(eventId: string) {
   try {
@@ -1558,7 +1612,12 @@ export async function getEventStaffDetails(eventId: string) {
         created_at,
         user:profiles!student_coordinator_assignments_user_id_fkey (id, full_name, email, mobile_number, register_number, department)
       `).eq("event_id", eventId),
-      adminClient.from("profiles").select("id, full_name, email, mobile_number, register_number, department").order("full_name"),
+      adminClient
+        .from("profiles")
+        .select("id, full_name, email, mobile_number, register_number, department")
+        .eq("participant_type", "internal")
+        .order("created_at", { ascending: false })
+        .limit(25),
     ]);
 
     const desc = eventData?.description || "";
