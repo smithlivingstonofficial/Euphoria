@@ -3,13 +3,13 @@ import Link from "next/link";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { ScannerClient } from "./scanner-client";
-import { getCoordinatorWorkspaceData } from "@/actions/coordinator";
+import { getCoordinatorScannerEvents } from "@/actions/coordinator";
 import { ArrowLeft, ShieldCheck, QrCode } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function CoordinatorScannerPage() {
-  const data = await getCoordinatorWorkspaceData();
+  const data = await getCoordinatorScannerEvents();
   const events = data.events || [];
 
   return (

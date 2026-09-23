@@ -431,7 +431,22 @@ export function EventRosterClient({
         )
       );
       setAttendedCount((prev) => prev + 1);
-      pageCache.current = {};
+      // Selectively update in-memory page cache rather than wiping it
+      Object.keys(pageCache.current).forEach((key) => {
+        pageCache.current[key] = {
+          ...pageCache.current[key],
+          attendees: pageCache.current[key].attendees.map((a) =>
+            a.id === confirmCheckInItem.id
+              ? {
+                  ...a,
+                  isAttended: true,
+                  scanned_at: new Date().toISOString(),
+                  scan_method: "staff_override",
+                }
+              : a
+          ),
+        };
+      });
       setConfirmCheckInItem(null);
       setTypedOverrideCode("");
       setOverrideError(null);
@@ -464,7 +479,22 @@ export function EventRosterClient({
         )
       );
       setAttendedCount((prev) => Math.max(0, prev - 1));
-      pageCache.current = {};
+      // Selectively update in-memory page cache rather than wiping it
+      Object.keys(pageCache.current).forEach((key) => {
+        pageCache.current[key] = {
+          ...pageCache.current[key],
+          attendees: pageCache.current[key].attendees.map((a) =>
+            a.id === confirmRevokeItem.id
+              ? {
+                  ...a,
+                  isAttended: false,
+                  scanned_at: null,
+                  scan_method: null,
+                }
+              : a
+          ),
+        };
+      });
       setConfirmRevokeItem(null);
     }
     setIsActionProcessing(false);
