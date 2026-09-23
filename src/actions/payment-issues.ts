@@ -411,30 +411,9 @@ export async function submitPaymentIssue(formData: {
         };
       }
 
-      // Check slot capacity for all selected events
-      for (const eid of selectedEventIds) {
-        const { data: evtData } = await adminClient
-          .from("events")
-          .select("id, name, participant_limit")
-          .eq("id", eid)
-          .single();
-
-        if (evtData) {
-          const limit = Number(evtData.participant_limit || 100);
-          const { count: currentRegs } = await adminClient
-            .from("event_registrations")
-            .select("id", { count: "exact", head: true })
-            .eq("event_id", eid)
-            .eq("status", "confirmed");
-
-          if ((currentRegs || 0) >= limit) {
-            return {
-              success: false,
-              error: `The competition "${evtData.name}" has reached maximum participant capacity. Please select an available competition.`,
-            };
-          }
-        }
-      }
+      // NOTE: For participants resolving payment issues, since they already paid, we give them preference
+      // and allow selecting any event even if it has reached full capacity.
+      // Capacity is auto-extended (+1) when the pass is approved/issued by the admin desk.
     }
 
     // 5. Fetch Profile info for snapshot

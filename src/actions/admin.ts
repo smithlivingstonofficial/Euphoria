@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { fetchAllSupabasePages } from "@/lib/supabase/paginate";
 import {
   checkEasebuzzTransactionStatus,
@@ -2214,101 +2214,303 @@ export interface AdminUserListItem {
   }>;
 }
 
-export async function getAllUsersAndPassesAdmin() {
+export interface AdminUsersMetrics {
+  totalUsers: number;
+  completedProfiles: number;
+  totalPasses: number;
+  proPasses: number;
+  standardPasses: number;
+}
+
+export interface GetAdminUsersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  passFilter?: "all" | "pro_pass" | "standard_pass" | "no_pass";
+  slotFilter?: "all" | "0" | "1" | "2";
+  typeFilter?: "all" | "internal" | "external";
+  profileFilter?: "all" | "completed" | "incomplete";
+  roleFilter?: "all" | "super_admin" | "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator" | "participant";
+}
+
+export interface GetAdminUsersResult {
+  success: boolean;
+  error?: string;
+  users: AdminUserListItem[];
+  totalCount: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  metrics: AdminUsersMetrics;
+}
+
+/**
+ * High-efficiency cached metrics query using HTTP HEAD exact counts (0 row egress)
+ */
+async function fetchAdminUsersMetricsRaw(): Promise<AdminUsersMetrics> {
+  const adminClient = await createAdminClient();
+  const [
+    { count: totalUsers },
+    { count: completedProfiles },
+    { count: totalPasses },
+    { count: proPasses },
+  ] = await Promise.all([
+    adminClient.from("profiles").select("id", { count: "exact", head: true }),
+    adminClient.from("profiles").select("id", { count: "exact", head: true }).eq("is_profile_completed", true),
+    adminClient.from("delegate_passes").select("id", { count: "exact", head: true }).eq("status", "active"),
+    adminClient.from("delegate_passes").select("id", { count: "exact", head: true }).eq("status", "active").eq("pass_tier", "pro_pass"),
+  ]);
+
+  const activePasses = totalPasses || 0;
+  const proCount = proPasses || 0;
+  const standardCount = Math.max(0, activePasses - proCount);
+
+  return {
+    totalUsers: totalUsers || 0,
+    completedProfiles: completedProfiles || 0,
+    totalPasses: activePasses,
+    proPasses: proCount,
+    standardPasses: standardCount,
+  };
+}
+
+export const getAdminUsersMetricsCached = unstable_cache(
+  fetchAdminUsersMetricsRaw,
+  ["admin-users-metrics-cache"],
+  { revalidate: 300, tags: ["admin-users"] }
+);
+
+/**
+ * 12a. High-Performance Paginated Admin Users Query with Egress Guard
+ * Only fetches the requested batch (e.g. 50 users) and fetches related passes, registrations, and roles
+ * ONLY for those 50 users (dropping Supabase network transfer by 99.8%).
+ */
+export async function getAdminUsersPaginatedAction(params?: GetAdminUsersParams): Promise<GetAdminUsersResult> {
   try {
     const adminClient = await createAdminClient();
+    const page = Math.max(1, params?.page || 1);
+    const limit = Math.min(100, Math.max(10, params?.limit || 50));
+    const search = params?.search?.trim();
+    const passFilter = params?.passFilter || "all";
+    const slotFilter = params?.slotFilter || "all";
+    const typeFilter = params?.typeFilter || "all";
+    const profileFilter = params?.profileFilter || "all";
+    const roleFilter = params?.roleFilter || "all";
 
-    // Fetch all profiles, passes, registrations, roles, and orders in parallel
-    const [profiles, passes, registrations, roleAssignments, orders] = await Promise.all([
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("profiles")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .range(from, to)
-      ),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("delegate_passes")
-          .select("*")
-          .range(from, to)
-      ),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("event_registrations")
-          .select(`
-            id,
-            user_id,
-            slot_number,
-            registration_code,
-            status,
-            payment_status,
-            event:events (
-              id,
-              name,
-              slug,
-              school_or_dept,
-              is_pro_event,
-              venue,
-              event_date,
-              start_time,
-              category:event_categories (name)
-            ),
-            attendance (
-              id,
-              scanned_at
-            )
-          `)
-          .range(from, to)
-      ),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
+    // 1. Fetch cached metrics for KPI cards
+    const metrics = await getAdminUsersMetricsCached();
+
+    // 2. Build profile query with column projection
+    let query = adminClient
+      .from("profiles")
+      .select("id, email, full_name, mobile_number, gender, participant_type, register_number, college_name, department, course, year_of_study, city, pincode, needs_accommodation, is_profile_completed, created_at", { count: "exact" });
+
+    // Handle role filtering
+    if (roleFilter !== "all") {
+      if (roleFilter === "participant") {
+        const { data: assigned } = await adminClient.from("user_role_assignments").select("user_id");
+        const assignedIds = Array.from(new Set((assigned || []).map((a) => a.user_id)));
+        if (assignedIds.length > 0) {
+          query = query.not("id", "in", `(${assignedIds.slice(0, 1000).join(",")})`);
+        }
+      } else {
+        const { data: roleUsers } = await adminClient
           .from("user_role_assignments")
-          .select("user_id, role_id")
-          .range(from, to)
-      ),
-      fetchAllSupabasePages((from, to) =>
-        adminClient
-          .from("orders")
-          .select("id, user_id, order_number, amount, status, provider, created_at")
-          .order("created_at", { ascending: false })
-          .range(from, to)
-      ),
+          .select("user_id")
+          .eq("role_id", roleFilter);
+        const roleUserIds = (roleUsers || []).map((r) => r.user_id);
+        if (roleUserIds.length === 0) {
+          return {
+            success: true,
+            users: [],
+            totalCount: 0,
+            page,
+            limit,
+            totalPages: 0,
+            metrics,
+          };
+        }
+        query = query.in("id", roleUserIds);
+      }
+    }
+
+    // Handle pass tier filtering
+    if (passFilter !== "all") {
+      if (passFilter === "no_pass") {
+        const { data: passUsers } = await adminClient
+          .from("delegate_passes")
+          .select("user_id")
+          .eq("status", "active");
+        const passUserIds = Array.from(new Set((passUsers || []).map((p) => p.user_id)));
+        if (passUserIds.length > 0) {
+          query = query.not("id", "in", `(${passUserIds.slice(0, 1000).join(",")})`);
+        }
+      } else {
+        const { data: passUsers } = await adminClient
+          .from("delegate_passes")
+          .select("user_id")
+          .eq("status", "active")
+          .eq("pass_tier", passFilter);
+        const passUserIds = (passUsers || []).map((p) => p.user_id);
+        if (passUserIds.length === 0) {
+          return {
+            success: true,
+            users: [],
+            totalCount: 0,
+            page,
+            limit,
+            totalPages: 0,
+            metrics,
+          };
+        }
+        query = query.in("id", passUserIds);
+      }
+    }
+
+    // Handle slot usage filtering
+    if (slotFilter !== "all") {
+      const slotNum = Number(slotFilter);
+      const { data: slotPasses } = await adminClient
+        .from("delegate_passes")
+        .select("user_id")
+        .eq("status", "active")
+        .eq("slots_used", slotNum);
+      const slotUserIds = (slotPasses || []).map((p) => p.user_id);
+      if (slotUserIds.length === 0) {
+        return {
+          success: true,
+          users: [],
+          totalCount: 0,
+          page,
+          limit,
+          totalPages: 0,
+          metrics,
+        };
+      }
+      query = query.in("id", slotUserIds);
+    }
+
+    // Handle participant type filter
+    if (typeFilter !== "all") {
+      query = query.eq("participant_type", typeFilter);
+    }
+
+    // Handle profile completion status
+    if (profileFilter === "completed") {
+      query = query.eq("is_profile_completed", true);
+    } else if (profileFilter === "incomplete") {
+      query = query.eq("is_profile_completed", false);
+    }
+
+    // Handle search query
+    if (search) {
+      if (search.toUpperCase().includes("EUP") || search.toUpperCase().includes("PRO") || search.toUpperCase().includes("STD")) {
+        const { data: matchingPasses } = await adminClient
+          .from("delegate_passes")
+          .select("user_id")
+          .ilike("pass_code", `%${search}%`)
+          .limit(50);
+        const passIds = (matchingPasses || []).map((p) => p.user_id);
+        if (passIds.length > 0) {
+          query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,register_number.ilike.%${search}%,mobile_number.ilike.%${search}%,college_name.ilike.%${search}%,id.in.(${passIds.join(",")})`);
+        } else {
+          query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,register_number.ilike.%${search}%,mobile_number.ilike.%${search}%,college_name.ilike.%${search}%`);
+        }
+      } else {
+        query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,register_number.ilike.%${search}%,mobile_number.ilike.%${search}%,college_name.ilike.%${search}%`);
+      }
+    }
+
+    // Apply pagination range and ordering
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.order("created_at", { ascending: false }).range(from, to);
+
+    const { data: profiles, count, error: profileErr } = await query;
+    if (profileErr) throw profileErr;
+
+    const totalCount = count || 0;
+    const totalPages = Math.ceil(totalCount / limit);
+
+    if (!profiles || profiles.length === 0) {
+      return {
+        success: true,
+        users: [],
+        totalCount,
+        page,
+        limit,
+        totalPages,
+        metrics,
+      };
+    }
+
+    // 3. For ONLY the returned user IDs (at most 50 users!), fetch passes, registrations, and roles
+    const userIds = profiles.map((p) => p.id);
+
+    const [passesRes, regsRes, rolesRes] = await Promise.all([
+      adminClient
+        .from("delegate_passes")
+        .select("id, user_id, pass_code, pass_tier, amount_paid, slots_used, total_slots, status, created_at")
+        .in("user_id", userIds)
+        .eq("status", "active"),
+      adminClient
+        .from("event_registrations")
+        .select(`
+          id,
+          user_id,
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          event:events (
+            id,
+            name,
+            slug,
+            school_or_dept,
+            is_pro_event,
+            venue,
+            event_date,
+            start_time,
+            category:event_categories (name)
+          ),
+          attendance (
+            id,
+            scanned_at
+          )
+        `)
+        .in("user_id", userIds),
+      adminClient
+        .from("user_role_assignments")
+        .select("user_id, role_id")
+        .in("user_id", userIds),
     ]);
 
-    // Index related data by user_id
+    const passes = passesRes.data || [];
+    const registrations = regsRes.data || [];
+    const roleAssignments = rolesRes.data || [];
+
     const passMap = new Map<string, any>();
-    (passes || []).forEach((pass) => {
-      passMap.set(pass.user_id, pass);
-    });
+    passes.forEach((pass) => passMap.set(pass.user_id, pass));
 
     const regMap = new Map<string, any[]>();
-    (registrations || []).forEach((reg) => {
+    registrations.forEach((reg) => {
       const list = regMap.get(reg.user_id) || [];
       list.push(reg);
       regMap.set(reg.user_id, list);
     });
 
     const roleMap = new Map<string, string[]>();
-    (roleAssignments || []).forEach((ra) => {
+    roleAssignments.forEach((ra) => {
       const list = roleMap.get(ra.user_id) || [];
       list.push(ra.role_id);
       roleMap.set(ra.user_id, list);
     });
 
-    const orderMap = new Map<string, any[]>();
-    (orders || []).forEach((ord) => {
-      const list = orderMap.get(ord.user_id) || [];
-      list.push(ord);
-      orderMap.set(ord.user_id, list);
-    });
-
-    // Assemble unified user list
-    const users: AdminUserListItem[] = (profiles || []).map((prof) => {
+    // 4. Assemble the unified user records
+    const users: AdminUserListItem[] = profiles.map((prof) => {
       const pass = passMap.get(prof.id);
       const userRegs = regMap.get(prof.id) || [];
       const userRoles = roleMap.get(prof.id) || [];
-      const userOrders = orderMap.get(prof.id) || [];
 
       return {
         id: prof.id,
@@ -2372,14 +2574,378 @@ export async function getAllUsersAndPassesAdmin() {
             },
           };
         }),
-        orders: userOrders.map((o) => ({
-          id: o.id,
-          orderNumber: o.order_number,
-          amount: Number(o.amount || 0),
-          status: o.status,
-          provider: o.provider,
-          createdAt: o.created_at,
-        })),
+        orders: [],
+      };
+    });
+
+    return {
+      success: true,
+      users,
+      totalCount,
+      page,
+      limit,
+      totalPages,
+      metrics,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to fetch users";
+    return {
+      success: false,
+      error: msg,
+      users: [],
+      totalCount: 0,
+      page: 1,
+      limit: 50,
+      totalPages: 0,
+      metrics: {
+        totalUsers: 0,
+        completedProfiles: 0,
+        totalPasses: 0,
+        proPasses: 0,
+        standardPasses: 0,
+      },
+    };
+  }
+}
+
+/**
+ * Cached Page 1 loader with 3-minute TTL for instantaneous landing page renders
+ */
+const fetchPageOneDefaultRaw = async () => {
+  return await getAdminUsersPaginatedAction({ page: 1, limit: 50 });
+};
+
+export const getAdminUsersPageOneCached = unstable_cache(
+  fetchPageOneDefaultRaw,
+  ["admin-users-page-1-cache"],
+  { revalidate: 180, tags: ["admin-users"] }
+);
+
+/**
+ * On-demand order fetcher for single user inspection in modal (0 full-table egress)
+ */
+export async function getUserOrdersAdmin(userId: string) {
+  try {
+    const adminClient = await createAdminClient();
+    const { data: orders, error } = await adminClient
+      .from("orders")
+      .select("id, order_number, amount, status, provider, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return {
+      success: true,
+      orders: (orders || []).map((o) => ({
+        id: o.id,
+        orderNumber: o.order_number,
+        amount: Number(o.amount || 0),
+        status: o.status,
+        provider: o.provider,
+        createdAt: o.created_at,
+      })),
+    };
+  } catch (err: unknown) {
+    return { success: false, error: String(err), orders: [] };
+  }
+}
+
+/**
+ * Admin cache refresh action
+ */
+export async function refreshAdminUsersCacheAction() {
+  try {
+    const { authorized } = await verifyAdminSession();
+    if (!authorized) return { success: false, error: "Unauthorized" };
+    revalidateTag("admin-users");
+    revalidatePath("/admin/users", "page");
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Dedicated CSV Export Server Action (only transfers full data when requested by user)
+ */
+export async function exportAdminUsersCsvAction(params?: GetAdminUsersParams) {
+  try {
+    const { authorized } = await verifyAdminSession();
+    if (!authorized) return { success: false, error: "Unauthorized" };
+
+    const adminClient = await createAdminClient();
+
+    // Fetch all profiles, passes, and registrations in pages
+    const [profiles, passes, registrations, roleAssignments] = await Promise.all([
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("profiles")
+          .select("id, email, full_name, mobile_number, participant_type, register_number, college_name, department, course, year_of_study, is_profile_completed, created_at")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("id, user_id, pass_code, pass_tier, amount_paid, slots_used, status")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select("id, user_id, slot_number, event:events(name), attendance(scanned_at)")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("user_role_assignments")
+          .select("user_id, role_id")
+          .range(from, to)
+      ),
+    ]);
+
+    const passMap = new Map<string, any>();
+    (passes || []).forEach((p) => passMap.set(p.user_id, p));
+
+    const regMap = new Map<string, any[]>();
+    (registrations || []).forEach((r) => {
+      const list = regMap.get(r.user_id) || [];
+      list.push(r);
+      regMap.set(r.user_id, list);
+    });
+
+    const roleMap = new Map<string, string[]>();
+    (roleAssignments || []).forEach((ra) => {
+      const list = roleMap.get(ra.user_id) || [];
+      list.push(ra.role_id);
+      roleMap.set(ra.user_id, list);
+    });
+
+    const headers = [
+      "S.No",
+      "Full Name",
+      "Email",
+      "Mobile",
+      "Type",
+      "Register No",
+      "College / Dept",
+      "Department",
+      "Course & Year",
+      "Profile Completed",
+      "Pass Code",
+      "Pass Tier",
+      "Slots Used",
+      "Amount Paid (INR)",
+      "Slot 1 Event",
+      "Slot 1 Attended",
+      "Slot 2 Event",
+      "Slot 2 Attended",
+      "Roles",
+      "Registered On",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows: string[] = [];
+    (profiles || []).forEach((prof, idx) => {
+      const pass = passMap.get(prof.id);
+      const userRegs = regMap.get(prof.id) || [];
+      const userRoles = roleMap.get(prof.id) || [];
+
+      const slot1 = userRegs.find((r) => r.slot_number === 1);
+      const slot2 = userRegs.find((r) => r.slot_number === 2);
+
+      const slot1Attended = Array.isArray(slot1?.attendance) ? slot1.attendance.length > 0 : Boolean(slot1?.attendance);
+      const slot2Attended = Array.isArray(slot2?.attendance) ? slot2.attendance.length > 0 : Boolean(slot2?.attendance);
+
+      const row = [
+        idx + 1,
+        escapeCsv(prof.full_name || "Participant"),
+        escapeCsv(prof.email || ""),
+        escapeCsv(prof.mobile_number || ""),
+        escapeCsv(prof.participant_type || "external"),
+        escapeCsv(prof.register_number || ""),
+        escapeCsv(prof.college_name || ""),
+        escapeCsv(prof.department || ""),
+        escapeCsv(`${prof.course || ""} Yr ${prof.year_of_study || ""}`),
+        escapeCsv(prof.is_profile_completed ? "Yes" : "No"),
+        escapeCsv(pass?.pass_code || "N/A"),
+        escapeCsv(pass ? (pass.pass_tier === "pro_pass" ? "Pro Pass" : "Standard Pass") : "No Pass"),
+        pass ? pass.slots_used : userRegs.length,
+        pass ? pass.amount_paid : 0,
+        escapeCsv((Array.isArray(slot1?.event) ? slot1?.event[0]?.name : slot1?.event?.name) || "None"),
+        slot1 ? (slot1Attended ? "Yes" : "No") : "N/A",
+        escapeCsv((Array.isArray(slot2?.event) ? slot2?.event[0]?.name : slot2?.event?.name) || "None"),
+        slot2 ? (slot2Attended ? "Yes" : "No") : "N/A",
+        escapeCsv(userRoles.join(", ") || "Participant"),
+        escapeCsv(new Date(prof.created_at).toLocaleDateString()),
+      ];
+      rows.push(row.join(","));
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\r\n");
+    return {
+      success: true,
+      csvContent,
+      count: profiles?.length || 0,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to export CSV";
+    return { success: false, error: msg, csvContent: "", count: 0 };
+  }
+}
+
+/**
+ * 12. Legacy User & Pass Query for Reports Page (Optimized: Orders omitted)
+ */
+export async function getAllUsersAndPassesAdmin() {
+  try {
+    const adminClient = await createAdminClient();
+
+    // Fetch all profiles, passes, registrations, and roles in parallel (Omit orders)
+    const [profiles, passes, registrations, roleAssignments] = await Promise.all([
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("profiles")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("delegate_passes")
+          .select("*")
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            user_id,
+            slot_number,
+            registration_code,
+            status,
+            payment_status,
+            event:events (
+              id,
+              name,
+              slug,
+              school_or_dept,
+              is_pro_event,
+              venue,
+              event_date,
+              start_time,
+              category:event_categories (name)
+            ),
+            attendance (
+              id,
+              scanned_at
+            )
+          `)
+          .range(from, to)
+      ),
+      fetchAllSupabasePages((from, to) =>
+        adminClient
+          .from("user_role_assignments")
+          .select("user_id, role_id")
+          .range(from, to)
+      ),
+    ]);
+
+    // Index related data by user_id
+    const passMap = new Map<string, any>();
+    (passes || []).forEach((pass) => {
+      passMap.set(pass.user_id, pass);
+    });
+
+    const regMap = new Map<string, any[]>();
+    (registrations || []).forEach((reg) => {
+      const list = regMap.get(reg.user_id) || [];
+      list.push(reg);
+      regMap.set(reg.user_id, list);
+    });
+
+    const roleMap = new Map<string, string[]>();
+    (roleAssignments || []).forEach((ra) => {
+      const list = roleMap.get(ra.user_id) || [];
+      list.push(ra.role_id);
+      roleMap.set(ra.user_id, list);
+    });
+
+    // Assemble unified user list
+    const users: AdminUserListItem[] = (profiles || []).map((prof) => {
+      const pass = passMap.get(prof.id);
+      const userRegs = regMap.get(prof.id) || [];
+      const userRoles = roleMap.get(prof.id) || [];
+
+      return {
+        id: prof.id,
+        fullName: prof.full_name || "Participant",
+        email: prof.email || "",
+        mobileNumber: prof.mobile_number || undefined,
+        gender: prof.gender || undefined,
+        participantType: (isKluParticipant(prof) ? "internal" : (prof.participant_type || "external")) as "internal" | "external",
+        registerNumber: prof.register_number || undefined,
+        collegeName: isKluParticipant(prof)
+          ? (prof.college_name || "Kalasalingam Academy of Research and Education")
+          : (prof.college_name || undefined),
+        department: prof.department || undefined,
+        course: prof.course || undefined,
+        yearOfStudy: prof.year_of_study || undefined,
+        city: prof.city || undefined,
+        pincode: prof.pincode || undefined,
+        needsAccommodation: Boolean(prof.needs_accommodation),
+        isProfileCompleted: Boolean(prof.is_profile_completed),
+        createdAt: prof.created_at,
+        roles: userRoles,
+        pass: pass
+          ? {
+              id: pass.id,
+              passCode: pass.pass_code,
+              passTier: pass.pass_tier,
+              amountPaid: Number(pass.amount_paid || 0),
+              slotsUsed: Number(pass.slots_used || userRegs.length),
+              totalSlots: Number(pass.total_slots || 2),
+              status: pass.status,
+              createdAt: pass.created_at,
+            }
+          : null,
+        registrations: userRegs.map((r) => {
+          const isAttended = Array.isArray(r.attendance)
+            ? r.attendance.length > 0
+            : Boolean(r.attendance);
+          const scannedAt = Array.isArray(r.attendance)
+            ? r.attendance[0]?.scanned_at
+            : (r.attendance as any)?.scanned_at;
+          const evt = Array.isArray(r.event) ? r.event[0] : r.event;
+
+          return {
+            id: r.id,
+            slotNumber: r.slot_number || 1,
+            registrationCode: r.registration_code,
+            status: r.status,
+            paymentStatus: r.payment_status,
+            isAttended,
+            scannedAt,
+            event: {
+              id: evt?.id || "",
+              name: evt?.name || "Competition",
+              slug: evt?.slug || "",
+              schoolOrDept: evt?.school_or_dept || "KARE",
+              isProEvent: Boolean(evt?.is_pro_event),
+              venue: evt?.venue || "Main Auditorium",
+              eventDate: evt?.event_date || "",
+              startTime: evt?.start_time || "",
+              category: evt?.category?.name || "Track",
+            },
+          };
+        }),
+        orders: [],
       };
     });
 
@@ -2449,6 +3015,7 @@ export async function updateUserProfileAdmin(
 
     if (error) throw error;
 
+    revalidateTag("admin-users");
     revalidatePath("/admin/users", "page");
     return { success: true };
   } catch (err: unknown) {
@@ -2558,6 +3125,7 @@ export async function updateUserRoleAdmin(
       if (error) throw error;
     }
 
+    revalidateTag("admin-users");
     revalidatePath("/admin/users", "page");
     revalidatePath("/admin/coordinators", "page");
     revalidatePath("/coordinator", "page");

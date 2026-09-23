@@ -771,6 +771,14 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                     </div>
                   </div>
 
+                  {/* Paid Preference Notice */}
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-50/90 border border-amber-200/80 px-3 py-2 text-xs text-amber-900 shadow-2xs">
+                    <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span className="text-[11px] leading-snug">
+                      <strong>Paid Participant Preference:</strong> You can select any competition even if slots are full, as your payment was already completed.
+                    </span>
+                  </div>
+
                   {/* The 2-Slot Event Selector */}
                   <div className="space-y-1.5 pt-0.5">
                     <div className="flex items-center justify-between">
@@ -906,18 +914,16 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                                   <div
                                     key={ev.id}
                                     onClick={() => {
-                                      if (!ev.isFull) {
-                                        setSlot1Id(ev.id);
-                                        setOpenSlotPicker(null);
-                                        setSlotSearch("");
-                                        setSubmitError(null);
-                                        if (!slot2Id) setOpenSlotPicker(2);
-                                      }
+                                      setSlot1Id(ev.id);
+                                      setOpenSlotPicker(null);
+                                      setSlotSearch("");
+                                      setSubmitError(null);
+                                      if (!slot2Id) setOpenSlotPicker(2);
                                     }}
-                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 ${
+                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 cursor-pointer ${
                                       ev.isFull
-                                        ? "opacity-50 bg-slate-50 cursor-not-allowed"
-                                        : "hover:bg-indigo-50/80 cursor-pointer text-slate-800"
+                                        ? "hover:bg-amber-50/80 bg-amber-50/30 text-slate-900 border border-amber-200/60"
+                                        : "hover:bg-indigo-50/80 text-slate-800"
                                     }`}
                                   >
                                     <div className="min-w-0 pr-1">
@@ -925,8 +931,8 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                                       <div className="text-[10px] text-slate-400 truncate">{ev.schoolOrDept}</div>
                                     </div>
                                     {ev.isFull ? (
-                                      <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 px-1 py-0.5 rounded">
-                                        Full
+                                      <span className="text-[9px] font-black uppercase text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded shadow-2xs shrink-0">
+                                        Full • Priority
                                       </span>
                                     ) : (
                                       <span className="text-[10px] text-primary font-bold shrink-0">
@@ -1050,17 +1056,15 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                                   <div
                                     key={ev.id}
                                     onClick={() => {
-                                      if (!ev.isFull) {
-                                        setSlot2Id(ev.id);
-                                        setOpenSlotPicker(null);
-                                        setSlotSearch("");
-                                        setSubmitError(null);
-                                      }
+                                      setSlot2Id(ev.id);
+                                      setOpenSlotPicker(null);
+                                      setSlotSearch("");
+                                      setSubmitError(null);
                                     }}
-                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 ${
+                                    className={`p-2 rounded-lg text-xs transition-colors flex items-center justify-between gap-1.5 cursor-pointer ${
                                       ev.isFull
-                                        ? "opacity-50 bg-slate-50 cursor-not-allowed"
-                                        : "hover:bg-indigo-50/80 cursor-pointer text-slate-800"
+                                        ? "hover:bg-amber-50/80 bg-amber-50/30 text-slate-900 border border-amber-200/60"
+                                        : "hover:bg-indigo-50/80 text-slate-800"
                                     }`}
                                   >
                                     <div className="min-w-0 pr-1">
@@ -1068,8 +1072,8 @@ export function PaymentIssueModal({ isOpen, onClose }: PaymentIssueModalProps) {
                                       <div className="text-[10px] text-slate-400 truncate">{ev.schoolOrDept}</div>
                                     </div>
                                     {ev.isFull ? (
-                                      <span className="text-[9px] font-black uppercase text-rose-600 bg-rose-50 px-1 py-0.5 rounded">
-                                        Full
+                                      <span className="text-[9px] font-black uppercase text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded shadow-2xs shrink-0">
+                                        Full • Priority
                                       </span>
                                     ) : (
                                       <span className="text-[10px] text-primary font-bold shrink-0">

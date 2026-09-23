@@ -887,6 +887,14 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                   </select>
                 </div>
 
+                {/* Paid Preference Notice */}
+                <div className="flex items-center gap-2 rounded-xl bg-amber-50/90 border border-amber-200/80 px-3 py-2 text-xs text-amber-900 shadow-2xs">
+                  <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span className="text-[11px] leading-snug">
+                    <strong>Paid Participant Preference:</strong> You can select any competition even if slots are full, as your payment was already completed.
+                  </span>
+                </div>
+
                 {/* 2 Competition Slots (Compact Side-by-Side or Stacked) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5 w-full">
                   {/* Slot 1 Box */}
@@ -942,8 +950,8 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                           return true;
                         })
                         .map((ev) => (
-                          <option key={ev.id} value={ev.id} disabled={ev.isFull || ev.id === slot2Id}>
-                            {ev.isProEvent ? "⭐ " : ""}{ev.name} • {ev.schoolOrDept} {ev.isFull ? "(FULL)" : ""}
+                          <option key={ev.id} value={ev.id} disabled={ev.id === slot2Id}>
+                            {ev.isProEvent ? "⭐ " : ""}{ev.name} • {ev.schoolOrDept} {ev.isFull ? "(Full • Priority Pass)" : ""}
                           </option>
                         ))}
                     </select>
@@ -1009,8 +1017,8 @@ export function PaymentHelpClient({ initialContext }: PaymentHelpClientProps) {
                           return true;
                         })
                         .map((ev) => (
-                          <option key={ev.id} value={ev.id} disabled={ev.isFull || ev.id === slot1Id}>
-                            {ev.name} • {ev.schoolOrDept} {ev.isFull ? "(FULL)" : ""}
+                          <option key={ev.id} value={ev.id} disabled={ev.id === slot1Id}>
+                            {ev.name} • {ev.schoolOrDept} {ev.isFull ? "(Full • Priority Pass)" : ""}
                           </option>
                         ))}
                     </select>

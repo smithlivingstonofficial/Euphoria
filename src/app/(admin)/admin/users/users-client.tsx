@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   AdminUserListItem,
+  AdminUsersMetrics,
+  getAdminUsersPaginatedAction,
+  getUserOrdersAdmin,
+  refreshAdminUsersCacheAction,
+  exportAdminUsersCsvAction,
   updateUserProfileAdmin,
   updateUserRoleAdmin,
   CallerAuthInfo,
@@ -36,17 +41,34 @@ import {
   Crown,
   Shield,
   Globe,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Loader2,
+  Zap,
 } from "lucide-react";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 
 export function UsersAdminClient({
   initialUsers,
+  initialTotalCount,
+  initialMetrics,
   currentUserRole,
 }: {
   initialUsers: AdminUserListItem[];
+  initialTotalCount: number;
+  initialMetrics: AdminUsersMetrics;
   currentUserRole?: CallerAuthInfo | null;
 }) {
   const [users, setUsers] = useState<AdminUserListItem[]>(initialUsers);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [metrics, setMetrics] = useState<AdminUsersMetrics>(initialMetrics);
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(50); // Display limit: 25, 50, 100
+  const [jumpPage, setJumpPage] = useState<string>("");
+
   const [searchQuery, setSearchQuery] = useState("");
   const [passFilter, setPassFilter] = useState<"all" | "pro_pass" | "standard_pass" | "no_pass">("all");
   const [slotFilter, setSlotFilter] = useState<"all" | "0" | "1" | "2">("all");
@@ -54,8 +76,14 @@ export function UsersAdminClient({
   const [profileFilter, setProfileFilter] = useState<"all" | "completed" | "incomplete">("all");
   const [roleFilter, setRoleFilter] = useState<"all" | "super_admin" | "admin" | "overall_coordinator" | "staff_coordinator" | "student_coordinator" | "participant">("all");
 
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
   // Modal State
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
+  const [userOrders, setUserOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState<boolean>(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState({
     fullName: "",
@@ -71,72 +99,93 @@ export function UsersAdminClient({
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Filtered list
-  const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      const q = searchQuery.trim().toLowerCase();
-      const name = u.fullName.toLowerCase();
-      const email = u.email.toLowerCase();
-      const mobile = (u.mobileNumber || "").toLowerCase();
-      const regNo = (u.registerNumber || "").toLowerCase();
-      const college = (u.collegeName || "").toLowerCase();
-      const passCode = (u.pass?.passCode || "").toLowerCase();
+  const isInitialMount = useRef(true);
 
-      const matchesSearch =
-        !q ||
-        name.includes(q) ||
-        email.includes(q) ||
-        mobile.includes(q) ||
-        regNo.includes(q) ||
-        college.includes(q) ||
-        passCode.includes(q);
+  // Core Data Fetcher
+  const loadData = useCallback(
+    async (
+      targetPage: number,
+      limit: number,
+      search: string,
+      pass: typeof passFilter,
+      slot: typeof slotFilter,
+      type: typeof typeFilter,
+      prof: typeof profileFilter,
+      role: typeof roleFilter
+    ) => {
+      setIsLoading(true);
+      try {
+        const res = await getAdminUsersPaginatedAction({
+          page: targetPage,
+          limit,
+          search,
+          passFilter: pass,
+          slotFilter: slot,
+          typeFilter: type,
+          profileFilter: prof,
+          roleFilter: role,
+        });
 
-      if (!matchesSearch) return false;
-
-      // Pass Filter
-      if (passFilter !== "all") {
-        if (passFilter === "no_pass" && u.pass) return false;
-        if (passFilter === "pro_pass" && u.pass?.passTier !== "pro_pass") return false;
-        if (passFilter === "standard_pass" && u.pass?.passTier !== "standard_pass") return false;
+        if (res.success) {
+          setUsers(res.users);
+          setTotalCount(res.totalCount);
+          setPage(res.page);
+          if (res.metrics) setMetrics(res.metrics);
+        }
+      } catch (err) {
+        console.error("Error fetching admin users page:", err);
+      } finally {
+        setIsLoading(false);
       }
+    },
+    []
+  );
 
-      // Slot Filter
-      if (slotFilter !== "all") {
-        const slotsUsed = u.pass ? u.pass.slotsUsed : u.registrations.length;
-        if (String(slotsUsed) !== slotFilter) return false;
-      }
+  // Debounced search & filter trigger
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
 
-      // Type Filter
-      if (typeFilter !== "all" && u.participantType !== typeFilter) return false;
+    const timer = setTimeout(() => {
+      loadData(1, pageSize, searchQuery, passFilter, slotFilter, typeFilter, profileFilter, roleFilter);
+    }, 300);
 
-      // Profile Completion Filter
-      if (profileFilter === "completed" && !u.isProfileCompleted) return false;
-      if (profileFilter === "incomplete" && u.isProfileCompleted) return false;
+    return () => clearTimeout(timer);
+  }, [searchQuery, passFilter, slotFilter, typeFilter, profileFilter, roleFilter, pageSize, loadData]);
 
-      // Role Filter
-      if (roleFilter !== "all") {
-        if (roleFilter === "participant" && u.roles.length > 0) return false;
-        if (roleFilter !== "participant" && !u.roles.includes(roleFilter)) return false;
-      }
+  // Pagination Calculations
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const fromRow = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toRow = Math.min(page * pageSize, totalCount);
 
-      return true;
-    });
-  }, [
-    users,
-    searchQuery,
-    passFilter,
-    slotFilter,
-    typeFilter,
-    profileFilter,
-    roleFilter,
-  ]);
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === page || isLoading) return;
+    loadData(newPage, pageSize, searchQuery, passFilter, slotFilter, typeFilter, profileFilter, roleFilter);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  // Overall metric aggregations
-  const totalPassCount = users.filter((u) => u.pass !== null).length;
-  const proPassCount = users.filter((u) => u.pass?.passTier === "pro_pass").length;
-  const completedProfileCount = users.filter((u) => u.isProfileCompleted).length;
+  const handleJumpPage = (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = parseInt(jumpPage, 10);
+    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+      handlePageChange(target);
+      setJumpPage("");
+    }
+  };
 
-  const handleOpenUserModal = (user: AdminUserListItem) => {
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshAdminUsersCacheAction();
+      await loadData(page, pageSize, searchQuery, passFilter, slotFilter, typeFilter, profileFilter, roleFilter);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleOpenUserModal = async (user: AdminUserListItem) => {
     setSelectedUser(user);
     setIsEditMode(false);
     setEditFormData({
@@ -151,6 +200,20 @@ export function UsersAdminClient({
     });
     setActionSuccess(null);
     setActionError(null);
+
+    // Fetch user's orders on-demand (0 bulk egress)
+    setLoadingOrders(true);
+    setUserOrders([]);
+    try {
+      const res = await getUserOrdersAdmin(user.id);
+      if (res.success) {
+        setUserOrders(res.orders || []);
+      }
+    } catch {
+      setUserOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -245,73 +308,42 @@ export function UsersAdminClient({
     setIsSubmitting(false);
   };
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    const headers = [
-      "Sl No",
-      "Full Name",
-      "Email",
-      "Mobile Number",
-      "Participant Type",
-      "Register Number",
-      "College / Institution",
-      "Department",
-      "Course & Year",
-      "Profile Completed",
-      "Pass Code",
-      "Pass Tier",
-      "Slots Used",
-      "Amount Paid",
-      "Slot 1 Event",
-      "Slot 1 Attended",
-      "Slot 2 Event",
-      "Slot 2 Attended",
-      "Roles",
-      "Registered On",
-    ];
+  // Dedicated full CSV export
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const res = await exportAdminUsersCsvAction({
+        search: searchQuery,
+        passFilter,
+        slotFilter,
+        typeFilter,
+        profileFilter,
+        roleFilter,
+      });
 
-    const rows = filteredUsers.map((u, idx) => {
-      const slot1 = u.registrations.find((r) => r.slotNumber === 1);
-      const slot2 = u.registrations.find((r) => r.slotNumber === 2);
+      if (!res.success || !res.csvContent) {
+        alert(res.error || "Failed to generate CSV export");
+        return;
+      }
 
-      return [
-        idx + 1,
-        `"${u.fullName}"`,
-        `"${u.email}"`,
-        `"${u.mobileNumber || ""}"`,
-        `"${u.participantType}"`,
-        `"${u.registerNumber || ""}"`,
-        `"${u.collegeName || ""}"`,
-        `"${u.department || ""}"`,
-        `"${u.course || ""} Year ${u.yearOfStudy || ""}"`,
-        u.isProfileCompleted ? "Yes" : "No",
-        `"${u.pass?.passCode || "N/A"}"`,
-        `"${u.pass ? (u.pass.passTier === "pro_pass" ? "Pro Pass" : "Standard Pass") : "No Pass"}"`,
-        u.pass ? u.pass.slotsUsed : u.registrations.length,
-        u.pass ? u.pass.amountPaid : 0,
-        `"${slot1?.event?.name || "None"}"`,
-        slot1 ? (slot1.isAttended ? "Yes" : "No") : "N/A",
-        `"${slot2?.event?.name || "None"}"`,
-        slot2 ? (slot2.isAttended ? "Yes" : "No") : "N/A",
-        `"${u.roles.join(", ") || "Participant"}"`,
-        `"${new Date(u.createdAt).toLocaleDateString()}"`,
-      ];
-    });
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute(
-      "download",
-      `euphoria_2026_users_${new Date().toISOString().split("T")[0]}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const blob = new Blob([res.csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `euphoria_2026_users_${new Date().toISOString().split("T")[0]}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Failed to export CSV");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const clearFilters = () => {
@@ -332,114 +364,231 @@ export function UsersAdminClient({
     roleFilter !== "all";
 
   return (
-    <div className="space-y-5">
-      {/* Metric Cards Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="text-xs font-semibold text-slate-500">Registered Accounts</div>
-          <div className="text-2xl font-black text-slate-900 font-mono mt-0.5">
-            {users.length}
+    <div className="space-y-4">
+      {/* Dynamic Executive Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Card 1: Registered Accounts */}
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs hover:border-indigo-300 hover:shadow-md transition-all duration-300">
+          <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-indigo-500/5 blur-2xl group-hover:bg-indigo-500/10 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-500/25 group-hover:scale-105 transition-transform">
+              <Users className="h-5 w-5" />
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200/70 shadow-2xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Live DB</span>
+            </span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
-            {completedProfileCount} Completed Profiles
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-3.5">
+            Registered Accounts
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display mt-0.5">
+            {metrics.totalUsers.toLocaleString()}
+          </div>
+          <div className="mt-3.5 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">Completed Profiles</span>
+              <span className="font-bold text-indigo-600 font-mono">
+                {metrics.completedProfiles.toLocaleString()}{" "}
+                <span className="text-slate-400 font-normal">
+                  ({Math.round((metrics.completedProfiles / Math.max(1, metrics.totalUsers)) * 100)}%)
+                </span>
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mt-1.5">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round((metrics.completedProfiles / Math.max(1, metrics.totalUsers)) * 100))}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-xs">
-          <div className="text-xs font-bold text-indigo-900 flex items-center gap-1">
-            <Layers className="h-3 w-3 text-primary" />
-            <span>Active Festival Passes</span>
+        {/* Card 2: Active Festival Passes */}
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all duration-300">
+          <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-emerald-500/5 blur-2xl group-hover:bg-emerald-500/10 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/25 group-hover:scale-105 transition-transform">
+              <Layers className="h-5 w-5" />
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200/70 shadow-2xs">
+              <span>{Math.round((metrics.totalPasses / Math.max(1, metrics.totalUsers)) * 100)}% Issued</span>
+            </span>
           </div>
-          <div className="text-2xl font-black text-indigo-950 font-mono mt-0.5">
-            {totalPassCount}
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-3.5">
+            Active Festival Passes
           </div>
-          <div className="text-[11px] text-indigo-800 mt-0.5">
-            {users.length - totalPassCount} Pass Pending
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display mt-0.5">
+            {metrics.totalPasses.toLocaleString()}
+          </div>
+          <div className="mt-3.5 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 font-medium">Pending Checkout</span>
+              <span className="font-bold text-amber-600 font-mono">
+                {(metrics.totalUsers - metrics.totalPasses).toLocaleString()}{" "}
+                <span className="text-slate-400 font-normal">
+                  ({Math.round(((metrics.totalUsers - metrics.totalPasses) / Math.max(1, metrics.totalUsers)) * 100)}%)
+                </span>
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mt-1.5">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round((metrics.totalPasses / Math.max(1, metrics.totalUsers)) * 100))}%`,
+                }}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-xs">
-          <div className="text-xs font-bold text-amber-900 flex items-center gap-1">
-            <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
-            <span>Flagship Pass Holders</span>
+        {/* Card 3: Flagship Pass Holders */}
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs hover:border-amber-300 hover:shadow-md transition-all duration-300">
+          <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-amber-500/5 blur-2xl group-hover:bg-amber-500/10 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm shadow-amber-500/25 group-hover:scale-105 transition-transform">
+              <Crown className="h-5 w-5" />
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-black text-amber-800 border border-amber-200/70 shadow-2xs">
+              <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+              <span>₹300 Tier</span>
+            </span>
           </div>
-          <div className="text-2xl font-black text-amber-950 font-mono mt-0.5">
-            {proPassCount}
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-3.5">
+            Flagship Pass Holders
           </div>
-          <div className="text-[11px] text-amber-800 mt-0.5">
-            ₹300 Tier Delegates
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display mt-0.5">
+            {metrics.proPasses.toLocaleString()}
+          </div>
+          <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500 font-medium">Standard Passes (₹200)</span>
+            <span className="font-bold text-slate-800 font-mono">
+              {metrics.standardPasses.toLocaleString()}
+            </span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-xs">
-          <div className="text-xs font-bold text-emerald-900 flex items-center gap-1">
-            <Users className="h-3 w-3 text-emerald-600" />
-            <span>Filtered Users</span>
+        {/* Card 4: Filter Scope / Matching Directory */}
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs hover:border-sky-300 hover:shadow-md transition-all duration-300">
+          <div className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-sky-500/5 blur-2xl group-hover:bg-sky-500/10 transition-all pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm shadow-sky-500/25 group-hover:scale-105 transition-transform">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-[10px] font-bold text-sky-800 border border-sky-200/70 shadow-2xs">
+              <span>Page {page} / {totalPages}</span>
+            </span>
           </div>
-          <div className="text-2xl font-black text-emerald-950 font-mono mt-0.5">
-            {filteredUsers.length}
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-3.5">
+            Matching Query
           </div>
-          <div className="text-[11px] text-emerald-800 mt-0.5">
-            Matching current query
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display mt-0.5">
+            {totalCount.toLocaleString()}
+          </div>
+          <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500 font-medium">Displaying Window</span>
+            <span className="font-bold text-sky-700 font-mono">
+              {fromRow}–{toRow} <span className="text-slate-400 font-normal">records</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Filter Toolbar */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+      {/* Filter & Egress Controls Toolbar */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Search Box */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+          {/* Modern Search Input */}
+          <div className="relative flex-1 min-w-[260px] group">
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by delegate name, email, mobile, reg no, college, or pass code..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:bg-white focus:outline-none transition-colors"
+              placeholder="Search by name, email, mobile, register number, college, or pass code..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-2 p-1 rounded-full text-slate-400 hover:bg-slate-200 cursor-pointer"
+                className="absolute right-2.5 top-2 p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer transition-colors"
+                title="Clear search"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action & Limit Controls */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* Display Limit Dropdown */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs text-slate-600 font-semibold shadow-2xs hover:border-slate-300 transition-colors">
+              <span className="text-slate-400 text-[11px]">Show:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer"
+              >
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+              </select>
+            </div>
+
+            {/* Cache Refresh Button */}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing || isLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+              title="Refresh server cache & fetch latest data"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${isRefreshing ? "animate-spin text-indigo-600" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+
+            {/* Reset Filters (Visible when active) */}
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 shadow-2xs transition-colors cursor-pointer"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Reset</span>
+                <X className="h-3.5 w-3.5" />
+                <span>Reset Filters</span>
               </button>
             )}
 
+            {/* Export CSV Button */}
             <button
               type="button"
               onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-primary transition-colors cursor-pointer shrink-0"
+              disabled={isExporting}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:shadow-md hover:shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
             >
-              <FileSpreadsheet className="h-4 w-4" />
-              <span>Export CSV ({filteredUsers.length})</span>
+              {isExporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+              )}
+              <span>{isExporting ? "Exporting..." : `Export CSV (${totalCount.toLocaleString()})`}</span>
             </button>
           </div>
         </div>
 
-        {/* Filter Dropdowns Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100">
+        {/* Filter Dropdowns Grid with dynamic active highlighting */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2.5 border-t border-slate-100">
           {/* Pass Tier Filter */}
           <select
             value={passFilter}
             onChange={(e) => setPassFilter(e.target.value as any)}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium focus:outline-none cursor-pointer transition-all ${
+              passFilter !== "all"
+                ? "border-indigo-400 bg-indigo-50/50 text-indigo-950 font-bold ring-1 ring-indigo-400/30"
+                : "border-slate-200 bg-slate-50/70 text-slate-800 hover:border-slate-300"
+            }`}
           >
             <option value="all">All Pass Statuses</option>
             <option value="pro_pass">⭐ Pro Pass (₹300)</option>
@@ -451,7 +600,11 @@ export function UsersAdminClient({
           <select
             value={slotFilter}
             onChange={(e) => setSlotFilter(e.target.value as any)}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium focus:outline-none cursor-pointer transition-all ${
+              slotFilter !== "all"
+                ? "border-indigo-400 bg-indigo-50/50 text-indigo-950 font-bold ring-1 ring-indigo-400/30"
+                : "border-slate-200 bg-slate-50/70 text-slate-800 hover:border-slate-300"
+            }`}
           >
             <option value="all">All Slot Usages</option>
             <option value="0">0/2 Slots (No Events)</option>
@@ -463,7 +616,11 @@ export function UsersAdminClient({
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as any)}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium focus:outline-none cursor-pointer transition-all ${
+              typeFilter !== "all"
+                ? "border-indigo-400 bg-indigo-50/50 text-indigo-950 font-bold ring-1 ring-indigo-400/30"
+                : "border-slate-200 bg-slate-50/70 text-slate-800 hover:border-slate-300"
+            }`}
           >
             <option value="all">Internal &amp; External</option>
             <option value="internal">KARE Internal Students</option>
@@ -474,7 +631,11 @@ export function UsersAdminClient({
           <select
             value={profileFilter}
             onChange={(e) => setProfileFilter(e.target.value as any)}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium focus:outline-none cursor-pointer transition-all ${
+              profileFilter !== "all"
+                ? "border-indigo-400 bg-indigo-50/50 text-indigo-950 font-bold ring-1 ring-indigo-400/30"
+                : "border-slate-200 bg-slate-50/70 text-slate-800 hover:border-slate-300"
+            }`}
           >
             <option value="all">All Profile States</option>
             <option value="completed">Completed Profile</option>
@@ -485,12 +646,16 @@ export function UsersAdminClient({
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as any)}
-            className="rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-slate-900 focus:outline-none cursor-pointer"
+            className={`rounded-xl border px-2.5 py-1.5 text-xs font-medium focus:outline-none cursor-pointer transition-all ${
+              roleFilter !== "all"
+                ? "border-indigo-400 bg-indigo-50/50 text-indigo-950 font-bold ring-1 ring-indigo-400/30"
+                : "border-slate-200 bg-slate-50/70 text-slate-800 hover:border-slate-300"
+            }`}
           >
             <option value="all">All Roles</option>
             <option value="super_admin">👑 Super Admin</option>
             <option value="admin">🛡️ Platform Administrator</option>
-            <option value="overall_coordinator">🌐 Overall Coordinator (Read-Only)</option>
+            <option value="overall_coordinator">🌐 Overall Coordinator</option>
             <option value="staff_coordinator">👔 Staff Coordinator</option>
             <option value="student_coordinator">🎓 Student Coordinator</option>
             <option value="participant">👤 Participant Only</option>
@@ -498,11 +663,20 @@ export function UsersAdminClient({
         </div>
       </div>
 
-      {/* Users Master Table */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+      {/* Users Master Table Container */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden relative">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 bg-white/70 backdrop-blur-2xs flex items-center justify-center">
+            <div className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-xl">
+              <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+              <span>Fetching directory page...</span>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+            <thead className="bg-slate-50/90 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3.5">Participant Details</th>
                 <th className="px-4 py-3.5">Institution &amp; Dept</th>
@@ -513,32 +687,52 @@ export function UsersAdminClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => {
+              {users.length > 0 ? (
+                users.map((user) => {
                   const isPro = user.pass?.passTier === "pro_pass";
                   const slotsUsed = user.pass ? user.pass.slotsUsed : user.registrations.length;
+
+                  // Dynamic avatar gradient
+                  const avatarGradients = [
+                    "from-indigo-500 to-purple-600",
+                    "from-blue-500 to-cyan-600",
+                    "from-emerald-500 to-teal-600",
+                    "from-amber-500 to-orange-600",
+                    "from-rose-500 to-pink-600",
+                    "from-violet-600 to-indigo-700",
+                  ];
+                  let hash = 0;
+                  for (let i = 0; i < user.fullName.length; i++) {
+                    hash = user.fullName.charCodeAt(i) + ((hash << 5) - hash);
+                  }
+                  const avatarGradient = avatarGradients[Math.abs(hash) % avatarGradients.length];
 
                   return (
                     <tr
                       key={user.id}
-                      className="hover:bg-slate-50/80 transition-colors"
+                      className="hover:bg-indigo-50/20 transition-colors"
                     >
                       {/* Participant Details */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 font-extrabold text-xs">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${avatarGradient} text-white font-extrabold text-xs shadow-2xs`}>
                             {user.fullName.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenUserModal(user)}
+                              className="font-bold text-slate-900 text-xs text-left hover:text-indigo-600 transition-colors block cursor-pointer"
+                            >
                               {user.fullName}
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
+                            </button>
+                            <div className="text-[11px] text-slate-500 font-mono truncate max-w-[210px]">
                               {user.email}
                             </div>
                             {user.mobileNumber && (
-                              <div className="text-[10px] text-slate-400">
-                                Tel: {user.mobileNumber}
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5 font-mono">
+                                <Phone className="h-2.5 w-2.5 text-slate-400" />
+                                <span>{user.mobileNumber}</span>
                               </div>
                             )}
                           </div>
@@ -547,23 +741,31 @@ export function UsersAdminClient({
 
                       {/* College / Institution */}
                       <td className="px-4 py-3">
-                        <div className="space-y-0.5 max-w-[200px]">
+                        <div className="space-y-1 max-w-[210px]">
                           <span
-                            className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-bold border ${
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[9px] font-bold border ${
                               user.participantType === "internal"
                                 ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                                 : "bg-purple-50 text-purple-800 border-purple-200"
                             }`}
                           >
-                            {user.participantType === "internal"
-                              ? "KARE Internal"
-                              : "External"}
+                            {user.participantType === "internal" ? (
+                              <>
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                <span>KARE Internal</span>
+                              </>
+                            ) : (
+                              <>
+                                <Globe className="h-2.5 w-2.5 text-purple-600" />
+                                <span>External Delegate</span>
+                              </>
+                            )}
                           </span>
                           <div className="font-semibold text-slate-800 truncate text-[11px]">
-                            {user.collegeName || user.department || "Kalasalingam University"}
+                            {user.collegeName || user.department || "Kalasalingam Academy"}
                           </div>
                           {user.registerNumber && (
-                            <div className="text-[10px] font-mono text-slate-500">
+                            <div className="text-[10px] font-mono text-slate-400">
                               Reg: {user.registerNumber}
                             </div>
                           )}
@@ -571,27 +773,31 @@ export function UsersAdminClient({
                       </td>
 
                       {/* Festival Pass */}
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-4 py-3">
                         {user.pass ? (
                           <div className="space-y-1">
-                            <span className="font-bold text-slate-900 block text-[11px]">
-                              {user.pass.passCode}
-                            </span>
-                            <div className="flex items-center gap-1 flex-wrap">
+                            <div className="flex items-center gap-1.5">
                               {isPro ? (
-                                <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.2 text-[9px]">
-                                  <Star className="h-2.5 w-2.5 fill-amber-500" />
-                                  <span>PRO PASS • ₹{user.pass.amountPaid}</span>
+                                <span className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-amber-50 to-amber-100/90 text-amber-900 border border-amber-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                                  <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                                  <span>PRO PASS</span>
                                 </span>
                               ) : (
-                                <span className="rounded bg-indigo-50 text-primary border border-indigo-200 font-bold px-1.5 py-0.2 text-[9px]">
-                                  STD PASS • ₹{user.pass.amountPaid}
+                                <span className="inline-flex items-center rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                  STD PASS
                                 </span>
                               )}
+                              <span className="font-mono text-[11px] font-bold text-slate-800">
+                                {user.pass.passCode}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Paid: {formatCurrency(user.pass.amountPaid)}
                             </div>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded bg-slate-100 text-slate-500 px-2 py-0.5 text-[10px] font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-500 px-2 py-0.5 text-[10px] font-medium">
+                            <AlertCircle className="h-3 w-3 text-slate-400" />
                             <span>No Pass</span>
                           </span>
                         )}
@@ -612,15 +818,19 @@ export function UsersAdminClient({
                               {user.registrations.map((reg) => (
                                 <div
                                   key={reg.id}
-                                  className="flex items-center justify-between gap-1 text-[11px] bg-slate-50 rounded-lg px-2 py-0.5 border border-slate-100"
+                                  className="flex items-center justify-between gap-1 text-[11px] bg-slate-50/90 rounded-lg px-2 py-1 border border-slate-100/90 hover:border-slate-200 transition-colors"
                                 >
-                                  <span className="truncate max-w-[150px] font-medium text-slate-800">
-                                    #{reg.slotNumber}: {reg.event.name}
+                                  <span className="truncate max-w-[145px] font-medium text-slate-800">
+                                    <span className="text-slate-400 font-mono text-[10px] mr-1">#{reg.slotNumber}</span>
+                                    {reg.event.name}
                                   </span>
                                   {reg.isAttended ? (
-                                    <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0">
+                                      <Check className="h-2.5 w-2.5" />
+                                      <span>In</span>
+                                    </span>
                                   ) : (
-                                    <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <Clock className="h-3 w-3 text-slate-300 shrink-0" />
                                   )}
                                 </div>
                               ))}
@@ -637,12 +847,12 @@ export function UsersAdminClient({
                       <td className="px-4 py-3">
                         <div className="space-y-1">
                           {user.isProfileCompleted ? (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 text-[9px] font-bold">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold">
                               <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
                               <span>Completed</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 px-1.5 py-0.2 text-[9px] font-bold">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 text-[9px] font-bold">
                               <AlertCircle className="h-2.5 w-2.5 text-rose-600" />
                               <span>Incomplete</span>
                             </span>
@@ -655,7 +865,7 @@ export function UsersAdminClient({
                                   return (
                                     <span
                                       key={r}
-                                      className="rounded bg-gradient-to-r from-purple-700 via-indigo-700 to-amber-500 text-white font-black px-1.5 py-0.2 text-[9px] uppercase tracking-wider shadow-2xs"
+                                      className="rounded-md bg-gradient-to-r from-purple-700 via-indigo-700 to-amber-500 text-white font-black px-1.5 py-0.5 text-[9px] uppercase tracking-wider shadow-2xs"
                                     >
                                       👑 SUPER ADMIN
                                     </span>
@@ -665,7 +875,7 @@ export function UsersAdminClient({
                                   return (
                                     <span
                                       key={r}
-                                      className="rounded bg-indigo-700 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                      className="rounded-md bg-indigo-700 text-white font-bold px-1.5 py-0.5 text-[9px] uppercase tracking-wider"
                                     >
                                       🛡️ ADMIN
                                     </span>
@@ -675,7 +885,7 @@ export function UsersAdminClient({
                                   return (
                                     <span
                                       key={r}
-                                      className="rounded bg-sky-600 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider shadow-2xs"
+                                      className="rounded-md bg-sky-600 text-white font-bold px-1.5 py-0.5 text-[9px] uppercase tracking-wider shadow-2xs"
                                     >
                                       🌐 OVERALL COORD
                                     </span>
@@ -685,9 +895,9 @@ export function UsersAdminClient({
                                   return (
                                     <span
                                       key={r}
-                                      className="rounded bg-amber-600 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                      className="rounded-md bg-amber-600 text-white font-bold px-1.5 py-0.5 text-[9px] uppercase tracking-wider shadow-2xs"
                                     >
-                                      👔 STAFF
+                                      👔 STAFF COORD
                                     </span>
                                   );
                                 }
@@ -695,34 +905,27 @@ export function UsersAdminClient({
                                   return (
                                     <span
                                       key={r}
-                                      className="rounded bg-teal-700 text-white font-bold px-1.5 py-0.2 text-[9px] uppercase tracking-wider"
+                                      className="rounded-md bg-emerald-700 text-white font-bold px-1.5 py-0.5 text-[9px] uppercase tracking-wider shadow-2xs"
                                     >
-                                      🎓 COORD
+                                      🎓 STUDENT COORD
                                     </span>
                                   );
                                 }
-                                return (
-                                  <span
-                                    key={r}
-                                    className="rounded bg-slate-100 text-slate-600 font-bold px-1.5 py-0.2 text-[9px] capitalize"
-                                  >
-                                    {r}
-                                  </span>
-                                );
+                                return null;
                               })}
                             </div>
                           )}
                         </div>
                       </td>
 
-                      {/* Actions */}
+                      {/* Inspect Button */}
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
                           onClick={() => handleOpenUserModal(user)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-900 hover:text-white hover:border-slate-900 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition-all duration-150 cursor-pointer group/btn"
                         >
-                          <Eye className="h-3.5 w-3.5 text-slate-400" />
+                          <Eye className="h-3.5 w-3.5 text-slate-400 group-hover/btn:text-white transition-colors" />
                           <span>Inspect</span>
                         </button>
                       </td>
@@ -731,13 +934,114 @@ export function UsersAdminClient({
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
-                    No participant accounts found matching current query.
+                  <td colSpan={6} className="py-16 text-center">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center space-y-3">
+                      <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                        <Users className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">No Participants Found</h4>
+                        <p className="text-xs text-slate-500 mt-1">No user accounts match the current filters or search query.</p>
+                      </div>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-600 transition-colors cursor-pointer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          <span>Reset All Filters</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Polished Modern Pagination Footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <span>
+              Showing <strong className="font-bold text-slate-900">{fromRow}</strong> to{" "}
+              <strong className="font-bold text-slate-900">{toRow}</strong> of{" "}
+              <strong className="font-bold text-slate-900">{totalCount.toLocaleString()}</strong> participants
+            </span>
+            {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600 ml-1" />}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {/* First Page */}
+            <button
+              type="button"
+              disabled={page <= 1 || isLoading}
+              onClick={() => handlePageChange(1)}
+              className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+              title="First Page"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+
+            {/* Prev Page */}
+            <button
+              type="button"
+              disabled={page <= 1 || isLoading}
+              onClick={() => handlePageChange(page - 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Prev</span>
+            </button>
+
+            {/* Current Page Badge */}
+            <span className="px-3.5 py-1.5 font-mono font-bold text-slate-900 bg-white border border-slate-200 rounded-xl shadow-2xs">
+              Page {page} of {totalPages}
+            </span>
+
+            {/* Next Page */}
+            <button
+              type="button"
+              disabled={page >= totalPages || isLoading}
+              onClick={() => handlePageChange(page + 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            >
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Last Page */}
+            <button
+              type="button"
+              disabled={page >= totalPages || isLoading}
+              onClick={() => handlePageChange(totalPages)}
+              className="p-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+              title="Last Page"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </button>
+
+            {/* Jump to page form */}
+            <form onSubmit={handleJumpPage} className="hidden md:flex items-center gap-1 ml-2">
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={jumpPage}
+                onChange={(e) => setJumpPage(e.target.value)}
+                placeholder="Go to"
+                className="w-16 rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-center font-mono text-slate-900 focus:outline-none focus:border-indigo-600"
+              />
+              <button
+                type="submit"
+                disabled={!jumpPage || isLoading}
+                className="rounded-xl bg-slate-900 px-2.5 py-1 text-xs font-bold text-white hover:bg-indigo-600 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                Go
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -1062,17 +1366,17 @@ export function UsersAdminClient({
                       )}
                     </div>
 
-                    {/* 3. Student Coordinator Role */}
-                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("student_coordinator") ? "border-teal-300 bg-teal-50/50" : "border-slate-200 bg-white"}`}>
+                    {/* 4. Student Coordinator Role */}
+                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("student_coordinator") ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 bg-white"}`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
-                          <GraduationCap className={`h-4 w-4 ${selectedUser.roles.includes("student_coordinator") ? "text-teal-600" : "text-slate-400"}`} />
+                          <GraduationCap className={`h-4 w-4 ${selectedUser.roles.includes("student_coordinator") ? "text-emerald-600" : "text-slate-400"}`} />
                           <span className="text-xs font-bold text-slate-900">Student Coord</span>
                         </div>
                         <span className="text-[9px] font-mono font-bold text-slate-400">Level 1</span>
                       </div>
                       <p className="text-[10px] text-slate-500 mb-3">
-                        Attendance scanner &amp; desk operations on event day.
+                        Field lead. Manages check-ins, attendance scans, &amp; participant assistance.
                       </p>
                       {(currentUserRole?.roleLevel ?? 0) >= 2 ? (
                         <button
@@ -1082,10 +1386,10 @@ export function UsersAdminClient({
                           className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
                             selectedUser.roles.includes("student_coordinator")
                               ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                              : "bg-teal-600 text-white hover:bg-teal-700"
+                              : "bg-emerald-600 text-white hover:bg-emerald-700"
                           }`}
                         >
-                          {selectedUser.roles.includes("student_coordinator") ? "Revoke Coord" : "Grant Coord"}
+                          {selectedUser.roles.includes("student_coordinator") ? "Revoke Student" : "Grant Student"}
                         </button>
                       ) : (
                         <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
@@ -1196,6 +1500,43 @@ export function UsersAdminClient({
                 ) : (
                   <div className="p-3 rounded-xl bg-slate-50 text-slate-400 italic text-center">
                     No event slots registered.
+                  </div>
+                )}
+              </div>
+
+              {/* Payment & Order History (Loaded On-Demand) */}
+              <div className="space-y-3">
+                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
+                  Payment &amp; Order Transactions
+                </span>
+
+                {loadingOrders ? (
+                  <div className="flex items-center justify-center p-6 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span>Loading transaction history...</span>
+                  </div>
+                ) : userOrders.length > 0 ? (
+                  <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                    {userOrders.map((ord) => (
+                      <div key={ord.id} className="p-3 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-mono font-bold text-slate-900">{ord.orderNumber}</span>
+                          <span className="text-[10px] text-slate-400 block">{formatDate(ord.createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-extrabold text-slate-900">{formatCurrency(ord.amount)}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            ord.status === "paid" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}>
+                            {ord.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-slate-50 text-slate-400 italic text-center">
+                    No payment orders on file for this user.
                   </div>
                 )}
               </div>
