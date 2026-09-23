@@ -10,17 +10,21 @@ import {
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { FloatingCartPill } from "@/components/cart/floating-cart-pill";
 import { PaymentReconciler } from "@/components/cart/payment-reconciler";
-import { createClient } from "@/lib/supabase/client";
-import { getUserPassSummary } from "@/actions/passes";
+import { getAppUserSessionBundle } from "@/actions/passes";
 
-const SESSION_CACHE_KEY = "euphoria_auth_cache_v2";
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const STORAGE_CACHE_KEY = "euphoria_auth_cache_v3";
+const OLD_SESSION_KEY = "euphoria_auth_cache_v2";
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes Vercel Pro client shield
 
 export function invalidateAppSessionCache() {
   if (typeof window !== "undefined") {
     try {
-      sessionStorage.removeItem(SESSION_CACHE_KEY);
+      localStorage.removeItem(STORAGE_CACHE_KEY);
+      sessionStorage.removeItem(STORAGE_CACHE_KEY);
+      sessionStorage.removeItem(OLD_SESSION_KEY);
       sessionStorage.removeItem("euphoria_reconciler_checked");
+      // Signal other tabs via localStorage mutation
+      localStorage.setItem("euphoria_auth_inval_signal", String(Date.now()));
       window.dispatchEvent(new CustomEvent("euphoria:session-invalidate"));
     } catch {
       // Safe fallback
@@ -51,9 +55,12 @@ export function AppProviders({
 
   useEffect(() => {
     async function loadAppState() {
-      // 1. High-Efficiency Cache Check (0 Supabase Network Roundtrips)
+      // 1. High-Efficiency LocalStorage Check (0 Network Roundtrips across all tabs)
       try {
-        const cachedStr = sessionStorage.getItem(SESSION_CACHE_KEY);
+        let cachedStr = localStorage.getItem(STORAGE_CACHE_KEY);
+        if (!cachedStr) {
+          cachedStr = sessionStorage.getItem(STORAGE_CACHE_KEY);
+        }
         if (cachedStr) {
           const cached = JSON.parse(cachedStr);
           if (
@@ -72,118 +79,39 @@ export function AppProviders({
         // Safe fallback to fresh fetch
       }
 
+      // 2. Single consolidated server action (Cuts 3 client-to-Supabase PostgREST queries down to 1 server bundle)
       try {
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const bundle = await getAppUserSessionBundle();
 
-        if (!session?.user) {
-          setUser(null);
-          setUserPass(undefined);
-          setConfirmedEvents([]);
-          setIsAuthLoaded(true);
+        if (bundle.success && bundle.user) {
+          setUser(bundle.user);
+          setUserPass(bundle.userPass);
+          setConfirmedEvents(bundle.confirmedEvents || []);
+
           try {
-            sessionStorage.removeItem(SESSION_CACHE_KEY);
+            const payload = JSON.stringify({
+              timestamp: Date.now(),
+              user: bundle.user,
+              userPass: bundle.userPass,
+              confirmedEvents: bundle.confirmedEvents || [],
+            });
+            localStorage.setItem(STORAGE_CACHE_KEY, payload);
           } catch {
             // Safe fallback
           }
-          return;
-        }
-
-        const authUser = session.user;
-        const [{ data: p }, { data: roleAss }, passRes] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id, email, full_name, participant_type, is_profile_completed")
-            .eq("id", authUser.id)
-            .maybeSingle(),
-          supabase
-            .from("user_role_assignments")
-            .select("role_id")
-            .eq("user_id", authUser.id),
-          getUserPassSummary(),
-        ]);
-
-        const roles = (roleAss || []).map((r: any) => r.role_id);
-        const normalizedEmail = (authUser.email || "").toLowerCase().trim();
-        const isSuperAdmin = roles.includes("super_admin");
-        const isAdmin =
-          roles.includes("admin") ||
-          isSuperAdmin ||
-          normalizedEmail.includes("admin") ||
-          normalizedEmail.includes("smith");
-        const isOverall = roles.includes("overall_coordinator");
-        const isStaffCoord = roles.includes("staff_coordinator") || roles.includes("faculty");
-        const isStudentCoord =
-          roles.includes("student_coordinator") || roles.includes("coordinator");
-
-        const resolvedRole: GlobalUser["role"] = isSuperAdmin
-          ? "super_admin"
-          : isAdmin
-          ? "admin"
-          : isOverall
-          ? "overall_coordinator"
-          : isStaffCoord
-          ? "staff_coordinator"
-          : isStudentCoord
-          ? "student_coordinator"
-          : "participant";
-
-        let loadedUser: GlobalUser | null = null;
-        if (p) {
-          loadedUser = {
-            id: p.id,
-            email: p.email,
-            fullName: p.full_name,
-            participantType: p.participant_type as "internal" | "external",
-            isProfileCompleted: Boolean(p.is_profile_completed),
-            role: resolvedRole,
-          };
-          setUser(loadedUser);
-        }
-
-        let loadedPass: UserPassInfo | undefined = undefined;
-        let loadedEvents: ConfirmedEventItem[] = [];
-
-        if (passRes.success && passRes.data) {
-          loadedPass = {
-            hasPass: passRes.data.hasPass,
-            passCode: passRes.data.passCode,
-            passTier: passRes.data.passTier,
-            amountPaid: passRes.data.amountPaid,
-            totalSlots: passRes.data.totalSlots,
-            slotsUsed: passRes.data.slotsUsed,
-            remainingSlots: passRes.data.remainingSlots,
-          };
-          setUserPass(loadedPass);
-
-          loadedEvents = passRes.data.registeredEvents.map((r: any) => ({
-            id: r.registrationId,
-            eventId: r.eventId,
-            name: r.name,
-            isProEvent: r.isProEvent,
-            slotNumber: r.slotNumber,
-            registrationCode: passRes.data?.passCode || "",
-          }));
-          setConfirmedEvents(loadedEvents);
-        }
-
-        try {
-          sessionStorage.setItem(
-            SESSION_CACHE_KEY,
-            JSON.stringify({
-              timestamp: Date.now(),
-              user: loadedUser,
-              userPass: loadedPass,
-              confirmedEvents: loadedEvents,
-            })
-          );
-        } catch {
-          // Safe fallback
+        } else {
+          setUser(null);
+          setUserPass(undefined);
+          setConfirmedEvents([]);
+          try {
+            localStorage.removeItem(STORAGE_CACHE_KEY);
+            sessionStorage.removeItem(STORAGE_CACHE_KEY);
+          } catch {
+            // Safe fallback
+          }
         }
       } catch (err) {
-        console.error("Failed to load app state", err);
+        console.error("Failed to load app state bundle", err);
       } finally {
         setIsAuthLoaded(true);
       }
@@ -194,9 +122,18 @@ export function AppProviders({
     const handleInvalidate = () => {
       loadAppState();
     };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "euphoria_auth_inval_signal" || e.key === STORAGE_CACHE_KEY) {
+        loadAppState();
+      }
+    };
+
     window.addEventListener("euphoria:session-invalidate", handleInvalidate);
+    window.addEventListener("storage", handleStorageChange);
     return () => {
       window.removeEventListener("euphoria:session-invalidate", handleInvalidate);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 

@@ -32,7 +32,7 @@ import { HeroCtaButton } from "@/components/home/hero-cta-button";
 import { ClosingCtaButton } from "@/components/home/closing-cta-button";
 import { PaymentSupportBanner } from "@/components/home/payment-support-banner";
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 export default function HomePage() {
   return (

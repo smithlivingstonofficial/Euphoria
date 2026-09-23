@@ -162,11 +162,11 @@ async function fetchCoordinatorRoleRaw(
   return "unauthorized";
 }
 
-// 60-Second cached role lookup per user & event (90%+ egress reduction on repetitive authorization calls)
+// 120-Second cached role lookup per user & event (90%+ egress reduction on repetitive authorization calls)
 const getCoordinatorRoleCached = unstable_cache(
   fetchCoordinatorRoleRaw,
   ["coordinator-role-cache"],
-  { revalidate: 60, tags: ["coordinator-roles"] }
+  { revalidate: 120, tags: ["coordinator-roles"] }
 );
 
 // React cache wrapper for per-request deduplication (prevents redundant calls during a single render pass)
@@ -247,7 +247,7 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
 export const getCachedGlobalWorkspaceData = unstable_cache(
   fetchGlobalWorkspaceDataRaw,
   ["global-coordinator-workspace-cache"],
-  { revalidate: 30, tags: ["coordinator-workspace"] }
+  { revalidate: 60, tags: ["coordinator-workspace"] }
 );
 
 // 1. Get Coordinator Workspace Overview (With Ultra-Low Egress Head Counts & 30s Shared Cache)

@@ -13,7 +13,6 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { createClient } from "@/lib/supabase/server";
-import { getUserPassSummary } from "@/actions/passes";
 import { DigitalPassClient } from "./passes/digital-pass-client";
 
 import { isProfileComplete } from "@/lib/profile";
@@ -32,65 +31,68 @@ export default async function ParticipantDashboardPage() {
     redirect("/login");
   }
 
-  // Fetch user profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Fetch user profile, active pass, orders, and event registrations in parallel with selective column projections
+  const [{ data: profile }, { data: passDataRow }, { data: ordersData }, { data: registrationsData }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, gender, participant_type, register_number, college_name, department, course, year_of_study, mobile_number, needs_accommodation, is_profile_completed")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("delegate_passes")
+        .select("id, pass_code, pass_tier, amount_paid, total_slots, slots_used, status")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle(),
+      supabase
+        .from("orders")
+        .select("id, order_number, status, amount, currency, provider, created_at, metadata")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("event_registrations")
+        .select(`
+          id,
+          slot_number,
+          registration_code,
+          status,
+          payment_status,
+          created_at,
+          attendance (
+            id,
+            scanned_at,
+            scan_method
+          ),
+          event:events (
+            id,
+            name,
+            slug,
+            is_pro_event,
+            school_or_dept,
+            venue,
+            event_date,
+            start_time,
+            end_time,
+            category:event_categories (
+              id,
+              name,
+              slug
+            )
+          )
+        `)
+        .eq("user_id", user.id)
+        .order("slot_number", { ascending: true }),
+    ]);
 
   // If profile is not complete or has missing data, redirect to complete-profile
   if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
     redirect("/complete-profile");
   }
 
-  // Fetch pass summary, orders, and event registrations in parallel
-  const [passSummaryRes, ordersRes, registrationsRes] = await Promise.all([
-    getUserPassSummary(),
-    supabase
-      .from("orders")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("event_registrations")
-      .select(`
-        id,
-        slot_number,
-        registration_code,
-        status,
-        payment_status,
-        created_at,
-        attendance (
-          id,
-          scanned_at,
-          scan_method
-        ),
-        event:events (
-          id,
-          name,
-          slug,
-          is_pro_event,
-          school_or_dept,
-          venue,
-          event_date,
-          start_time,
-          end_time,
-          category:event_categories (
-            id,
-            name,
-            slug
-          )
-        )
-      `)
-      .eq("user_id", user.id)
-      .order("slot_number", { ascending: true }),
-  ]);
+  const orders = ordersData ?? [];
 
-  const passData = passSummaryRes.data;
-  const orders = ordersRes.data ?? [];
-
-  const userRegistrations = (registrationsRes.data || []).map((r) => {
+  const userRegistrations = (registrationsData || []).map((r: any) => {
     const isAttended = Array.isArray(r.attendance)
       ? r.attendance.length > 0
       : Boolean(r.attendance);
@@ -100,9 +102,40 @@ export default async function ParticipantDashboardPage() {
     };
   });
 
-  const slotsUsed = passData?.slotsUsed ?? userRegistrations.length;
-  const remainingSlots = Math.max(0, 2 - slotsUsed);
-  const hasActivePass = Boolean(passData?.hasPass || userRegistrations.length > 0);
+  const slotsUsed = passDataRow?.slots_used ?? userRegistrations.length;
+  const totalSlots = passDataRow?.total_slots || 2;
+  const remainingSlots = Math.max(0, totalSlots - slotsUsed);
+  const hasActivePass = Boolean(passDataRow || userRegistrations.length > 0);
+
+  const passData = passDataRow
+    ? {
+        hasPass: true,
+        passId: passDataRow.id,
+        passCode: passDataRow.pass_code,
+        passTier: passDataRow.pass_tier,
+        amountPaid: passDataRow.amount_paid,
+        totalSlots,
+        slotsUsed,
+        remainingSlots,
+        passStatus: passDataRow.status,
+        registeredEvents: userRegistrations.map((r: any) => ({
+          registrationId: r.id,
+          slotNumber: r.slot_number || 1,
+          eventId: r.event?.id || "",
+          name: r.event?.name || "Event",
+          slug: r.event?.slug || "",
+          isProEvent: Boolean(r.event?.is_pro_event),
+          schoolOrDept: r.event?.school_or_dept || "",
+          venue: r.event?.venue || "",
+          eventDate: r.event?.event_date || "",
+          startTime: r.event?.start_time || "",
+          endTime: r.event?.end_time || "",
+          status: r.status,
+          paymentStatus: r.payment_status,
+          createdAt: r.created_at,
+        })),
+      }
+    : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-primary">

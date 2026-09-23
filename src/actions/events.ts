@@ -146,11 +146,11 @@ async function fetchPublicEventsRaw() {
   }
 }
 
-// 1. Cached Public Events with Tag-Based Revalidation & Egress Control
+// 1. Cached Public Events with Tag-Based Revalidation & Egress Control (5-minute Vercel Data Cache shield)
 export const getPublicEvents = unstable_cache(
   fetchPublicEventsRaw,
   ["public-events-catalog-cache"],
-  { revalidate: 60, tags: ["public-events"] }
+  { revalidate: 300, tags: ["public-events"] }
 );
 
 // Raw query for single event detail
@@ -445,11 +445,11 @@ async function fetchPublicAnnouncementsRaw() {
   }
 }
 
-// 5. Fetch Public Announcements with Cache
+// 5. Fetch Public Announcements with Cache (5-minute Vercel Data Cache shield)
 export const getPublicAnnouncements = unstable_cache(
   fetchPublicAnnouncementsRaw,
   ["public-announcements-cache"],
-  { revalidate: 60, tags: ["public-announcements"] }
+  { revalidate: 300, tags: ["public-announcements"] }
 );
 
 async function fetchPublicPricingSettingsRaw() {

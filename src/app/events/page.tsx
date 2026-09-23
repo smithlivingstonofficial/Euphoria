@@ -4,7 +4,7 @@ import { EventCatalogExplorer, PublicEvent } from "@/components/events/event-cat
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 export default async function EventsDirectoryPage() {
   const { events, categories } = await getPublicEvents();

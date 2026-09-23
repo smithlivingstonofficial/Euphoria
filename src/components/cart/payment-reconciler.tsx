@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { reconcileUserPendingPaymentAction } from "@/actions/payments";
+import { invalidateAppSessionCache } from "@/components/providers";
 
 /**
  * Silent, non-intrusive background reconciler that checks if a returning
@@ -33,9 +34,7 @@ export function PaymentReconciler() {
         const res = await reconcileUserPendingPaymentAction();
         if (res.success && res.reconciled) {
           console.log("🎉 Euphoria Payment Auto-Reconciled:", res.passCode);
-          try {
-            sessionStorage.removeItem("euphoria_auth_cache_v2");
-          } catch {}
+          invalidateAppSessionCache();
           router.refresh();
         }
       } catch {

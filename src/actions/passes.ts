@@ -2,6 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { getCurrentUser } from "@/actions/auth";
 
 export interface UserPassSummary {
   hasPass: boolean;
@@ -417,3 +418,94 @@ export async function claimSecondSlotAction(eventId: string) {
     return { success: false, error: msg };
   }
 }
+
+// 4. Unified Session Bundle for App Providers (Cuts 3 client-to-Supabase PostgREST queries down to 1 cached server bundle)
+export async function getAppUserSessionBundle() {
+  try {
+    const authState = await getCurrentUser();
+    if (!authState || !authState.user) {
+      return {
+        success: true,
+        user: null,
+        userPass: undefined,
+        confirmedEvents: [],
+      };
+    }
+
+    const { user, profile, roles, isAdmin, isStaff, isCoordinator } = authState;
+
+    const isSuperAdmin = roles.includes("super_admin");
+    const isOverall = roles.includes("overall_coordinator");
+    const isStaffCoord = isStaff;
+    const isStudentCoord = roles.includes("student_coordinator") || isCoordinator;
+
+    const resolvedRole = isSuperAdmin
+      ? "super_admin"
+      : isAdmin
+      ? "admin"
+      : isOverall
+      ? "overall_coordinator"
+      : isStaffCoord
+      ? "staff_coordinator"
+      : isStudentCoord
+      ? "student_coordinator"
+      : "participant";
+
+    const loadedUser = {
+      id: user.id,
+      email: user.email || "",
+      fullName: profile?.full_name || undefined,
+      participantType: (profile?.participant_type as "internal" | "external") || null,
+      isProfileCompleted: Boolean(profile?.is_profile_completed),
+      role: resolvedRole as any,
+    };
+
+    const passRes = await getUserPassSummary();
+    let loadedPass = undefined;
+    let loadedEvents: Array<{
+      id: string;
+      eventId: string;
+      name: string;
+      isProEvent: boolean;
+      slotNumber: number;
+      registrationCode: string;
+    }> = [];
+
+    if (passRes.success && passRes.data) {
+      loadedPass = {
+        hasPass: passRes.data.hasPass,
+        passCode: passRes.data.passCode,
+        passTier: passRes.data.passTier,
+        amountPaid: passRes.data.amountPaid,
+        totalSlots: passRes.data.totalSlots,
+        slotsUsed: passRes.data.slotsUsed,
+        remainingSlots: passRes.data.remainingSlots,
+      };
+
+      loadedEvents = (passRes.data.registeredEvents || []).map((r: any) => ({
+        id: r.registrationId,
+        eventId: r.eventId,
+        name: r.name,
+        isProEvent: r.isProEvent,
+        slotNumber: r.slotNumber,
+        registrationCode: passRes.data?.passCode || "",
+      }));
+    }
+
+    return {
+      success: true,
+      user: loadedUser,
+      userPass: loadedPass,
+      confirmedEvents: loadedEvents,
+    };
+  } catch (err) {
+    console.error("getAppUserSessionBundle error:", err);
+    return {
+      success: false,
+      user: null,
+      userPass: undefined,
+      confirmedEvents: [],
+    };
+  }
+}
+
