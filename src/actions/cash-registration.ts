@@ -237,36 +237,29 @@ export async function getCashRegistrationPageData(): Promise<{
         .order("name", { ascending: true }),
       adminClient.from("event_categories").select("id, name, slug").order("name"),
       adminClient
-        .from("event_registrations")
-        .select(`
-          event_id,
-          status,
-          user:profiles (
-            email,
-            participant_type
-          )
-        `)
-        .eq("status", "confirmed"),
+        .from("vw_public_events_stats")
+        .select("event_id, total_registered, internal_registered"),
     ]);
 
-    const registrations = regsRes.data || [];
+    const statsMap = new Map<string, { total: number; internal: number }>();
+    (regsRes.data || []).forEach((s: any) => {
+      statsMap.set(s.event_id, {
+        total: Number(s.total_registered || 0),
+        internal: Number(s.internal_registered || 0),
+      });
+    });
+
     const isUserInternal = Boolean(
       profile.participant_type === "internal" ||
       profile.email?.toLowerCase().endsWith("@klu.ac.in")
     );
 
-    // Compute live registration stats for each event
+    // Compute live registration stats for each event with 0 table scan overhead
     const enrichedEvents: PublicEventForCash[] = (eventsRes.data || []).map((ev: any) => {
-      const evRegs = registrations.filter((r: any) => r.event_id === ev.id);
-      const totalRegistered = evRegs.length;
-      const internalRegistered = evRegs.filter((r: any) => {
-        const u = r.user as any;
-        return (
-          u?.participant_type === "internal" ||
-          u?.email?.toLowerCase()?.endsWith("@klu.ac.in")
-        );
-      }).length;
-      const externalRegistered = totalRegistered - internalRegistered;
+      const stat = statsMap.get(ev.id) || { total: 0, internal: 0 };
+      const totalRegistered = stat.total;
+      const internalRegistered = stat.internal;
+      const externalRegistered = Math.max(0, totalRegistered - internalRegistered);
 
       const partLimit = Number(ev.participant_limit || 100);
       const intLimit = ev.internal_limit !== null && ev.internal_limit !== undefined

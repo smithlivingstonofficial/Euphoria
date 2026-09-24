@@ -1492,8 +1492,8 @@ export async function updateRegistrationStatus(
   }
 }
 
-// 9. Coordinator Management (Strict Single-Event Scoping)
-export async function getAllCoordinatorsAdmin() {
+// 9. Coordinator Management (Strict Single-Event Scoping with 60s Cache Shield)
+async function fetchAllCoordinatorsAdminRaw() {
   try {
     const adminClient = await createAdminClient();
 
@@ -1720,6 +1720,28 @@ export async function getAllCoordinatorsAdmin() {
   }
 }
 
+const getCachedAllCoordinatorsAdmin = unstable_cache(
+  fetchAllCoordinatorsAdminRaw,
+  ["admin-all-coordinators-cache"],
+  { revalidate: 60, tags: ["admin-coordinators"] }
+);
+
+export async function getAllCoordinatorsAdmin() {
+  const { authorized } = await verifyAdminSession();
+  if (!authorized) {
+    return {
+      success: false,
+      error: "Unauthorized",
+      staffAssignments: [],
+      studentAssignments: [],
+      overallAssignments: [],
+      allProfiles: [],
+      allEvents: [],
+    };
+  }
+  return getCachedAllCoordinatorsAdmin();
+}
+
 export async function assignCoordinatorAdmin(
   type: "staff" | "student",
   eventId: string,
@@ -1794,6 +1816,7 @@ export async function assignCoordinatorAdmin(
       );
     }
 
+    revalidateTag("admin-coordinators");
     revalidatePath("/admin/coordinators", "page");
     revalidatePath("/coordinator", "page");
     return { success: true };
@@ -1883,6 +1906,7 @@ export async function revokeCoordinatorAdmin(
       }
     }
 
+    revalidateTag("admin-coordinators");
     revalidatePath("/admin/coordinators", "page");
     revalidatePath("/coordinator", "page");
     return { success: true };
@@ -4542,6 +4566,177 @@ export interface AdminEventSlotControlItem {
   remaining_external_reserved: number;
 }
 
+async function fetchEventsSlotControlAdminRaw() {
+  const adminClient = await createAdminClient();
+
+  // 1. Fetch all events with categories (resilient to first_preference_only column presence)
+  let allEventsList: any[] = [];
+  const { data: eventsWithCol, error: colErr } = await adminClient
+    .from("events")
+    .select(`
+      id,
+      name,
+      slug,
+      school_or_dept,
+      venue,
+      event_date,
+      start_time,
+      end_time,
+      participant_limit,
+      internal_limit,
+      allow_internal,
+      allow_external,
+      first_preference_only,
+      is_pro_event,
+      status,
+      category:event_categories (
+        id,
+        name,
+        slug
+      )
+    `)
+    .order("event_date", { ascending: true })
+    .order("start_time", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (colErr) {
+    // Graceful fallback if migration column is not yet executed in Supabase
+    const { data: eventsFallback, error: fallbackErr } = await adminClient
+      .from("events")
+      .select(`
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        participant_limit,
+        internal_limit,
+        allow_internal,
+        allow_external,
+        is_pro_event,
+        status,
+        category:event_categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .order("event_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (fallbackErr) throw fallbackErr;
+    allEventsList = eventsFallback || [];
+  } else {
+    allEventsList = eventsWithCol || [];
+  }
+  const eventIds = allEventsList.map((e) => e.id);
+
+  // 2. Fetch pre-aggregated event stats directly from DB view (Zero-Egress Overhead)
+  const { data: statsList } = await adminClient
+    .from("vw_public_events_stats")
+    .select("event_id, total_registered, internal_registered")
+    .in("event_id", eventIds);
+
+  // Aggregate counts per event
+  const internalCounts: Record<string, number> = {};
+  const totalCounts: Record<string, number> = {};
+
+  (statsList || []).forEach((s: any) => {
+    totalCounts[s.event_id] = Number(s.total_registered || 0);
+    internalCounts[s.event_id] = Number(s.internal_registered || 0);
+  });
+
+  let kluBlockedCount = 0;
+  let fullCapacityCount = 0;
+  let totalCapSum = 0;
+  let totalConfirmedSum = 0;
+  let totalInternalSum = 0;
+  let totalExternalSum = 0;
+
+  const formattedEvents: AdminEventSlotControlItem[] = allEventsList.map((evt) => {
+    const totalConfirmed = totalCounts[evt.id] || 0;
+    const internalConfirmed = internalCounts[evt.id] || 0;
+    const externalConfirmed = Math.max(0, totalConfirmed - internalConfirmed);
+
+    const partLimit = Number(evt.participant_limit || 100);
+    const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
+    const allowInt = evt.allow_internal !== false;
+    const allowExt = evt.allow_external !== false;
+
+    const isTotalFull = totalConfirmed >= partLimit;
+    const isIntFull = intLimit !== null ? internalConfirmed >= intLimit : false;
+    const isKluBlocked = !allowInt || isIntFull;
+
+    const remainingTotal = Math.max(0, partLimit - totalConfirmed);
+    const remainingInternal = intLimit !== null ? Math.max(0, intLimit - internalConfirmed) : null;
+    const remainingExternal = isKluBlocked ? remainingTotal : remainingTotal;
+
+    if (isKluBlocked) kluBlockedCount++;
+    if (isTotalFull) fullCapacityCount++;
+    totalCapSum += partLimit;
+    totalConfirmedSum += totalConfirmed;
+    totalInternalSum += internalConfirmed;
+    totalExternalSum += externalConfirmed;
+
+    const catObj = Array.isArray(evt.category) ? evt.category[0] : evt.category;
+
+    return {
+      id: evt.id,
+      name: evt.name,
+      slug: evt.slug,
+      school_or_dept: evt.school_or_dept,
+      venue: evt.venue,
+      event_date: evt.event_date,
+      start_time: evt.start_time,
+      end_time: evt.end_time,
+      participant_limit: partLimit,
+      internal_limit: intLimit,
+      allow_internal: allowInt,
+      allow_external: allowExt,
+      first_preference_only: Boolean(evt.first_preference_only),
+      is_pro_event: Boolean(evt.is_pro_event),
+      status: evt.status,
+      category: catObj || null,
+      total_confirmed: totalConfirmed,
+      internal_confirmed: internalConfirmed,
+      external_confirmed: externalConfirmed,
+      is_total_full: isTotalFull,
+      is_internal_full: isIntFull,
+      is_klu_blocked: isKluBlocked,
+      remaining_total_slots: remainingTotal,
+      remaining_internal_slots: remainingInternal,
+      remaining_external_reserved: remainingExternal,
+    };
+  });
+
+  return {
+    success: true,
+    events: formattedEvents,
+    stats: {
+      totalEvents: formattedEvents.length,
+      kluBlockedEvents: kluBlockedCount,
+      fullCapacityEvents: fullCapacityCount,
+      totalCapacity: totalCapSum,
+      totalConfirmed: totalConfirmedSum,
+      totalInternalConfirmed: totalInternalSum,
+      totalExternalConfirmed: totalExternalSum,
+    },
+  };
+}
+
+const getCachedEventsSlotControlRaw = unstable_cache(
+  async () => fetchEventsSlotControlAdminRaw(),
+  ["admin-events-slot-control-cache-v1"],
+  {
+    revalidate: 30, // 30s cache
+    tags: ["admin-slot-controls", "admin-events", "public-events"],
+  }
+);
+
 /**
  * Fetches all events with detailed slot capacity, KLU vs External breakdown, and quota status
  */
@@ -4578,165 +4773,7 @@ export async function getEventsSlotControlAdmin(): Promise<{
       };
     }
 
-    const adminClient = await createAdminClient();
-
-    // 1. Fetch all events with categories (resilient to first_preference_only column presence)
-    let allEventsList: any[] = [];
-    const { data: eventsWithCol, error: colErr } = await adminClient
-      .from("events")
-      .select(`
-        id,
-        name,
-        slug,
-        school_or_dept,
-        venue,
-        event_date,
-        start_time,
-        end_time,
-        participant_limit,
-        internal_limit,
-        allow_internal,
-        allow_external,
-        first_preference_only,
-        is_pro_event,
-        status,
-        category:event_categories (
-          id,
-          name,
-          slug
-        )
-      `)
-      .order("event_date", { ascending: true })
-      .order("start_time", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (colErr) {
-      // Graceful fallback if migration column is not yet executed in Supabase
-      const { data: eventsFallback, error: fallbackErr } = await adminClient
-        .from("events")
-        .select(`
-          id,
-          name,
-          slug,
-          school_or_dept,
-          venue,
-          event_date,
-          start_time,
-          end_time,
-          participant_limit,
-          internal_limit,
-          allow_internal,
-          allow_external,
-          is_pro_event,
-          status,
-          category:event_categories (
-            id,
-            name,
-            slug
-          )
-        `)
-        .order("event_date", { ascending: true })
-        .order("start_time", { ascending: true })
-        .order("name", { ascending: true });
-
-      if (fallbackErr) throw fallbackErr;
-      allEventsList = eventsFallback || [];
-    } else {
-      allEventsList = eventsWithCol || [];
-    }
-    const eventIds = allEventsList.map((e) => e.id);
-
-    // 2. Fetch pre-aggregated event stats directly from DB view (Zero-Egress Overhead)
-    const { data: statsList } = await adminClient
-      .from("vw_public_events_stats")
-      .select("event_id, total_registered, internal_registered")
-      .in("event_id", eventIds);
-
-    // Aggregate counts per event
-    const internalCounts: Record<string, number> = {};
-    const totalCounts: Record<string, number> = {};
-
-    (statsList || []).forEach((s: any) => {
-      totalCounts[s.event_id] = Number(s.total_registered || 0);
-      internalCounts[s.event_id] = Number(s.internal_registered || 0);
-    });
-
-    let kluBlockedCount = 0;
-    let fullCapacityCount = 0;
-    let totalCapSum = 0;
-    let totalConfirmedSum = 0;
-    let totalInternalSum = 0;
-    let totalExternalSum = 0;
-
-    const formattedEvents: AdminEventSlotControlItem[] = allEventsList.map((evt) => {
-      const totalConfirmed = totalCounts[evt.id] || 0;
-      const internalConfirmed = internalCounts[evt.id] || 0;
-      const externalConfirmed = Math.max(0, totalConfirmed - internalConfirmed);
-
-      const partLimit = Number(evt.participant_limit || 100);
-      const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
-      const allowInt = evt.allow_internal !== false;
-      const allowExt = evt.allow_external !== false;
-
-      const isTotalFull = totalConfirmed >= partLimit;
-      const isIntFull = intLimit !== null ? internalConfirmed >= intLimit : false;
-      const isKluBlocked = !allowInt || isIntFull;
-
-      const remainingTotal = Math.max(0, partLimit - totalConfirmed);
-      const remainingInternal = intLimit !== null ? Math.max(0, intLimit - internalConfirmed) : null;
-      const remainingExternal = isKluBlocked ? remainingTotal : remainingTotal;
-
-      if (isKluBlocked) kluBlockedCount++;
-      if (isTotalFull) fullCapacityCount++;
-      totalCapSum += partLimit;
-      totalConfirmedSum += totalConfirmed;
-      totalInternalSum += internalConfirmed;
-      totalExternalSum += externalConfirmed;
-
-      const catObj = Array.isArray(evt.category) ? evt.category[0] : evt.category;
-
-      return {
-        id: evt.id,
-        name: evt.name,
-        slug: evt.slug,
-        school_or_dept: evt.school_or_dept,
-        venue: evt.venue,
-        event_date: evt.event_date,
-        start_time: evt.start_time,
-        end_time: evt.end_time,
-        participant_limit: partLimit,
-        internal_limit: intLimit,
-        allow_internal: allowInt,
-        allow_external: allowExt,
-        first_preference_only: Boolean(evt.first_preference_only),
-        is_pro_event: Boolean(evt.is_pro_event),
-        status: evt.status,
-        category: catObj || null,
-        total_confirmed: totalConfirmed,
-        internal_confirmed: internalConfirmed,
-        external_confirmed: externalConfirmed,
-        is_total_full: isTotalFull,
-        is_internal_full: isIntFull,
-        is_klu_blocked: isKluBlocked,
-        remaining_total_slots: remainingTotal,
-        remaining_internal_slots: remainingInternal,
-        remaining_external_reserved: remainingExternal,
-      };
-    });
-
-    return {
-      success: true,
-      events: formattedEvents,
-      stats: {
-        totalEvents: formattedEvents.length,
-        kluBlockedEvents: kluBlockedCount,
-        fullCapacityEvents: fullCapacityCount,
-        totalCapacity: totalCapSum,
-        totalConfirmed: totalConfirmedSum,
-        totalInternalConfirmed: totalInternalSum,
-        totalExternalConfirmed: totalExternalSum,
-      },
-    };
+    return await getCachedEventsSlotControlRaw();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to load event slot controls";
     return {
@@ -4862,6 +4899,8 @@ export async function updateEventSlotControlAdmin(params: {
     }
 
     // 3. Multi-role Cache Invalidation to guarantee atomic UI updates across users, coordinators, and admins
+    revalidateTag("admin-slot-controls");
+    revalidateTag("admin-events");
     revalidateTag("public-events");
     revalidatePath("/events");
     revalidatePath("/coordinator");
@@ -4967,6 +5006,8 @@ export async function bulkUpdateEventSlotControlAdmin(params: {
       }
     }
 
+    revalidateTag("admin-slot-controls");
+    revalidateTag("admin-events");
     revalidateTag("public-events");
     revalidatePath("/events");
     revalidatePath("/coordinator");

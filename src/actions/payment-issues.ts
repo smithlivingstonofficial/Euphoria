@@ -3,7 +3,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getCallerAuthInfo } from "@/actions/admin";
 import { checkEasebuzzTransactionStatus } from "@/lib/payments/easebuzz";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 
 export interface StudentPaymentIssue {
   id: string;
@@ -518,6 +518,51 @@ export async function submitPaymentIssue(formData: {
   }
 }
 
+// 60-Second cached event capacity and quota stats for admin dispute processing
+const getCachedAvailableEventsWithStats = unstable_cache(
+  async () => {
+    const adminClient = await createAdminClient();
+    const [{ data: allAvailableEvents }, { data: statsList }] = await Promise.all([
+      adminClient
+        .from("events")
+        .select("id, name, is_pro_event, school_or_dept, participant_limit, internal_limit, first_preference_only, status, allow_internal, allow_external")
+        .order("name", { ascending: true }),
+      adminClient
+        .from("vw_public_events_stats")
+        .select("event_id, total_registered, internal_registered"),
+    ]);
+
+    const statsMap = (statsList || []).reduce((acc: any, curr: any) => {
+      acc[curr.event_id] = curr;
+      return acc;
+    }, {});
+
+    return (allAvailableEvents || []).map((e: any) => {
+      const stats = statsMap[e.id] || { total_registered: 0, internal_registered: 0 };
+      const regCount = Number(stats.total_registered || 0);
+      const intCount = Number(stats.internal_registered || 0);
+      const limit = Number(e.participant_limit || 100);
+      const intLimit = e.internal_limit !== null && e.internal_limit !== undefined ? Number(e.internal_limit) : null;
+
+      return {
+        id: e.id,
+        name: e.name,
+        isProEvent: Boolean(e.is_pro_event),
+        schoolOrDept: e.school_or_dept || "General",
+        participantLimit: limit,
+        internalLimit: intLimit,
+        currentRegs: regCount,
+        internalRegs: intCount,
+        isFull: regCount >= limit,
+        firstPreferenceOnly: Boolean(e.first_preference_only),
+        status: e.status,
+      };
+    });
+  },
+  ["admin-available-events-cache"],
+  { revalidate: 60, tags: ["admin-events", "admin-registrations"] }
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. ADMIN: GET PAYMENT ISSUES WITH METRICS & FILTERING
 // ─────────────────────────────────────────────────────────────────────────────
@@ -727,43 +772,8 @@ export async function getPaymentIssuesAdmin(params?: {
       });
     }
 
-    // Fetch all events with live quota and stats for admin pickers
-    const [{ data: allAvailableEvents }, { data: statsList }] = await Promise.all([
-      adminClient
-        .from("events")
-        .select("id, name, is_pro_event, school_or_dept, participant_limit, internal_limit, first_preference_only, status, allow_internal, allow_external")
-        .order("name", { ascending: true }),
-      adminClient
-        .from("vw_public_events_stats")
-        .select("event_id, total_registered, internal_registered"),
-    ]);
-
-    const statsMap = (statsList || []).reduce((acc: any, curr: any) => {
-      acc[curr.event_id] = curr;
-      return acc;
-    }, {});
-
-    const enrichedAvailableEvents = (allAvailableEvents || []).map((e: any) => {
-      const stats = statsMap[e.id] || { total_registered: 0, internal_registered: 0 };
-      const regCount = Number(stats.total_registered || 0);
-      const intCount = Number(stats.internal_registered || 0);
-      const limit = Number(e.participant_limit || 100);
-      const intLimit = e.internal_limit !== null && e.internal_limit !== undefined ? Number(e.internal_limit) : null;
-
-      return {
-        id: e.id,
-        name: e.name,
-        isProEvent: Boolean(e.is_pro_event),
-        schoolOrDept: e.school_or_dept || "General",
-        participantLimit: limit,
-        internalLimit: intLimit,
-        currentRegs: regCount,
-        internalRegs: intCount,
-        isFull: regCount >= limit,
-        firstPreferenceOnly: Boolean(e.first_preference_only),
-        status: e.status,
-      };
-    });
+    // Use 60-Second cached event quota and stats (Zero DB Egress on repeat calls)
+    const enrichedAvailableEvents = await getCachedAvailableEventsWithStats();
 
     return {
       success: true,
@@ -1631,6 +1641,9 @@ export async function approveAndIssuePassAdmin(
     }
 
     revalidateTag("public-events");
+    revalidateTag("admin-events");
+    revalidateTag("admin-registrations");
+    revalidateTag("admin-slot-controls");
     revalidatePath("/admin/payment-requests", "page");
     revalidatePath("/admin/payments", "page");
     revalidatePath("/admin/events/slots", "page");

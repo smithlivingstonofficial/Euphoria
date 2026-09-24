@@ -3,7 +3,6 @@ import { verifyAdminSession, getEventsSlotControlAdmin } from "@/actions/admin";
 import { SlotsControlClient } from "./slots-control-client";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 export const metadata = {
   title: "Slot & Quota Control Center | Euphoria Admin",
