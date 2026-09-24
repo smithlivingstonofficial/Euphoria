@@ -48,6 +48,7 @@ async function fetchPublicEventsRaw() {
               slug
             )
           `)
+          .neq("status", "draft")
           .order("event_date", { ascending: true })
           .order("start_time", { ascending: true }),
         supabase
@@ -215,7 +216,7 @@ export async function registerForEvent(eventId: string) {
     // Verify profile is completed with all required fields
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -516,7 +517,7 @@ export async function batchRegisterEvents(eventIds: string[]) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -564,7 +565,7 @@ export async function batchRegisterEvents(eventIds: string[]) {
     // 2. Check if user already has an active pass
     const { data: existingPass } = await supabase
       .from("delegate_passes")
-      .select("*")
+      .select("id, pass_code, pass_tier, status, slots_used, total_slots")
       .eq("user_id", user.id)
       .eq("status", "active")
       .maybeSingle();

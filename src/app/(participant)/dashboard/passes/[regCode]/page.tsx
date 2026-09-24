@@ -26,7 +26,7 @@ export default async function DynamicPassPage({
   // Fetch user profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, participant_type, is_profile_completed, full_name, mobile_number, college_name, department, course, year_of_study, register_number, gender, school, state")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -90,11 +90,11 @@ export default async function DynamicPassPage({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
           <div className="space-y-1">
             <Link
-              href="/dashboard/passes"
+              href="/dashboard"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors mb-1"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Back to All Passes</span>
+              <span>Back to Dashboard</span>
             </Link>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">

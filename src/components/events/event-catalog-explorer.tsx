@@ -596,57 +596,60 @@ export function EventCatalogExplorer({
             )}
           </div>
 
-          {/* Secondary Controls Group (Fixed & Balanced Widths) */}
+          {/* Secondary Controls Group (Fixed & Balanced Widths, Compact 2-Col on Mobile) */}
           <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
-            {/* 2. Tier Dropdown (Controlled width: 155px) */}
-            <div className="relative w-full sm:w-[155px] shrink-0">
-              <select
-                value={selectedTier}
-                onChange={(e) => setSelectedTier(e.target.value as "all" | "pro" | "normal")}
-                className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
-                  selectedTier !== "all"
-                    ? selectedTier === "pro"
-                      ? "border-amber-400 bg-amber-50/90 text-amber-950 ring-1 ring-amber-300"
-                      : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
-                    : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
-                } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
-              >
-                <option value="all">All Tiers ({initialEvents.length})</option>
-                <option value="pro">Flagship ({proCount})</option>
-                <option value="normal">Regular ({normalCount})</option>
-              </select>
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                {selectedTier === "pro" ? (
-                  <Star className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
-                ) : selectedTier === "normal" ? (
-                  <Zap className="h-3.5 w-3.5 text-indigo-600" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 text-slate-400" />
-                )}
-              </span>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            </div>
+            {/* 2 & 3. Tier and Date Dropdowns (2-column grid on mobile, individual widths on desktop) */}
+            <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto">
+              {/* Tier Dropdown */}
+              <div className="relative w-full sm:w-[155px] shrink-0">
+                <select
+                  value={selectedTier}
+                  onChange={(e) => setSelectedTier(e.target.value as "all" | "pro" | "normal")}
+                  className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
+                    selectedTier !== "all"
+                      ? selectedTier === "pro"
+                        ? "border-amber-400 bg-amber-50/90 text-amber-950 ring-1 ring-amber-300"
+                        : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
+                      : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
+                  } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                >
+                  <option value="all">All Tiers ({initialEvents.length})</option>
+                  <option value="pro">Flagship ({proCount})</option>
+                  <option value="normal">Regular ({normalCount})</option>
+                </select>
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                  {selectedTier === "pro" ? (
+                    <Star className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
+                  ) : selectedTier === "normal" ? (
+                    <Zap className="h-3.5 w-3.5 text-indigo-600" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                  )}
+                </span>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              </div>
 
-            {/* 3. Schedule / Days Dropdown (Controlled width: 155px) */}
-            <div className="relative w-full sm:w-[155px] shrink-0">
-              <select
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
-                  selectedDate !== "all"
-                    ? selectedDate === "both"
-                      ? "border-purple-400 bg-purple-50/90 text-purple-950 ring-1 ring-purple-300"
-                      : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
-                    : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
-                } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
-              >
-                <option value="all">All Dates ({initialEvents.length})</option>
-                <option value="2026-09-25">Day 1 • Sep 25 ({day1Count})</option>
-                <option value="2026-09-26">Day 2 • Sep 26 ({day2Count})</option>
-                <option value="both">Both Days ({bothDaysCount})</option>
-              </select>
-              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              {/* Schedule / Days Dropdown */}
+              <div className="relative w-full sm:w-[155px] shrink-0">
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className={`w-full h-10 appearance-none rounded-xl border pl-8 pr-7 text-xs font-bold transition-all cursor-pointer truncate ${
+                    selectedDate !== "all"
+                      ? selectedDate === "both"
+                        ? "border-purple-400 bg-purple-50/90 text-purple-950 ring-1 ring-purple-300"
+                        : "border-indigo-400 bg-indigo-50/90 text-indigo-950 ring-1 ring-indigo-300"
+                      : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-slate-100"
+                  } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                >
+                  <option value="all">All Dates ({initialEvents.length})</option>
+                  <option value="2026-09-25">Day 1 • Sep 25 ({day1Count})</option>
+                  <option value="2026-09-26">Day 2 • Sep 26 ({day2Count})</option>
+                  <option value="both">Both Days ({bothDaysCount})</option>
+                </select>
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              </div>
             </div>
 
             {/* 4. School / Department Dropdown (Controlled width: 190px) */}
@@ -847,6 +850,8 @@ export function EventCatalogExplorer({
                     <img
                       src={coverImg}
                       alt={school.name}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-80 group-hover:opacity-95"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />

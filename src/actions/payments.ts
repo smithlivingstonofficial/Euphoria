@@ -48,7 +48,7 @@ export async function createEasebuzzOrderAction(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, city, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -216,7 +216,7 @@ export async function createEasebuzzOrderAction(
     // Unique Transaction ID (max 40 alphanumeric characters with Euphoria 2026 prefix)
     const txnid = `EUPH26-${isTestPayment ? "TEST-" : (hasProEvent ? "FLAG-" : "REG-")}${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     // Ensure 10-digit clean phone and sanitized customer name for payment gateway
-    const rawPhone = (profile.mobile_number || profile.phone || "9999999999").replace(/\D/g, "");
+    const rawPhone = (profile.mobile_number || (profile as any).phone || "9999999999").replace(/\D/g, "");
     const userPhone = rawPhone.length > 10 ? rawPhone.slice(-10) : rawPhone.padStart(10, "9");
     const userName = (profile.full_name || "Delegate").replace(/[^a-zA-Z ]/g, "").trim().slice(0, 50) || "Delegate";
     const userEmail = (user.email || profile.email || "delegate@kareeuphoria.in").trim().toLowerCase();
@@ -356,7 +356,7 @@ export async function verifyEasebuzzPaymentAction(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -559,7 +559,7 @@ export async function bypassTestRegisterAction(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -815,7 +815,7 @@ export async function reconcileUserPendingPaymentAction(): Promise<{
     const fortyEightHoursAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
     const { data: pendingOrders } = await adminClient
       .from("orders")
-      .select("*")
+      .select("id, order_number, status, amount, currency, provider, metadata, created_at")
       .eq("user_id", user.id)
       .in("status", ["attempted", "pending", "created"])
       .gte("created_at", fortyEightHoursAgo)
