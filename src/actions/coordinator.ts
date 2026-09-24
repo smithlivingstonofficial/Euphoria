@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { fetchAllSupabasePages } from "@/lib/supabase/paginate";
+import { formatSectionLabel, getOrdinal } from "@/lib/utils";
 
 export interface CoordinatorEventItem {
   id: string;
@@ -1262,8 +1263,8 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
       "Year",
       "Overall Attendance",
       "Sections Attended",
-      "Section 1 (Morning)",
-      "Section 2 (Afternoon)",
+      "1st Section",
+      "2nd Section",
       "First Scanned At",
       "Scan Method",
       "Registered At",
@@ -1658,10 +1659,11 @@ async function processAttendanceRecord(
 
   const currentSection = eventCtrl?.current_section || 1;
   const scannerStatus = eventCtrl?.scanner_status || "active";
-  const sectionLabels = Array.isArray(eventCtrl?.section_labels)
+  const rawLabels = Array.isArray(eventCtrl?.section_labels) && eventCtrl.section_labels.length > 0
     ? eventCtrl.section_labels
-    : ["Morning Section", "Afternoon Section"];
-  const sectionLabel = sectionLabels[currentSection - 1] || `Section ${currentSection}`;
+    : ["1st Section", "2nd Section", "3rd Section", "4th Section"];
+  const sectionLabels = rawLabels.map((l: string, i: number) => formatSectionLabel(i + 1, l));
+  const sectionLabel = sectionLabels[currentSection - 1] || formatSectionLabel(currentSection);
 
   if (scannerStatus === "paused" || scannerStatus === "closed") {
     return {
@@ -1794,9 +1796,10 @@ const getCachedScannerControlData = unstable_cache(
     const totalSections = rawCtrl?.total_sections || 2;
     const currentSection = rawCtrl?.current_section || 1;
     const scannerStatus = (rawCtrl?.scanner_status as "active" | "paused" | "closed") || "active";
-    const sectionLabels = Array.isArray(rawCtrl?.section_labels) && rawCtrl.section_labels.length > 0
+    const rawLabels = Array.isArray(rawCtrl?.section_labels) && rawCtrl.section_labels.length > 0
       ? rawCtrl.section_labels
-      : ["Morning Section", "Afternoon Section"];
+      : Array.from({ length: totalSections }, (_, i) => `${getOrdinal(i + 1)} Section`);
+    const sectionLabels = rawLabels.map((l: string, i: number) => formatSectionLabel(i + 1, l));
     const allowStaffSwitch = rawCtrl?.allow_staff_switch !== false;
     const autoClosePrevious = rawCtrl?.auto_close_previous !== false;
     const allowEarlyScan = Boolean(rawCtrl?.allow_early_scan);
@@ -1945,7 +1948,7 @@ export async function updateEventSectionStaffAction(params: {
     // Check if staff switch is permitted
     const { data: ctrl } = await adminClient
       .from("event_scanner_controls")
-      .select("id, allow_staff_switch, total_sections, section_labels")
+      .select("id, allow_staff_switch, total_sections, current_section, section_labels")
       .eq("event_id", params.eventId)
       .maybeSingle();
 
@@ -1953,6 +1956,23 @@ export async function updateEventSectionStaffAction(params: {
       return {
         success: false,
         error: "Section switching is locked by Administration. Please contact Central Control Desk.",
+      };
+    }
+
+    const currentSec = ctrl?.current_section || 1;
+    const isNext = params.targetSection === currentSec + 1;
+    const isPrev = params.targetSection === currentSec - 1;
+
+    // Strict Sequential Progression: Staff Coordinators can ONLY move to Next or Previous
+    if (roleType !== "admin" && !isNext && !isPrev) {
+      const nextName = formatSectionLabel(currentSec + 1);
+      const prevName = currentSec > 1 ? formatSectionLabel(currentSec - 1) : null;
+      const allowedMsg = prevName
+        ? `move to Next Section (${nextName}) or return to Previous Section (${prevName})`
+        : `move to Next Section (${nextName})`;
+      return {
+        success: false,
+        error: `Sequential Progression Required: You can only ${allowedMsg}. Skipping or jumping sections is disabled.`,
       };
     }
 
@@ -1975,8 +1995,11 @@ export async function updateEventSectionStaffAction(params: {
       { onConflict: "event_id" }
     );
 
-    const labels = Array.isArray(ctrl?.section_labels) ? ctrl.section_labels : ["Morning Section", "Afternoon Section"];
-    const sectionName = labels[params.targetSection - 1] || `Section ${params.targetSection}`;
+    const rawLabels = Array.isArray(ctrl?.section_labels) && ctrl.section_labels.length > 0
+      ? ctrl.section_labels
+      : Array.from({ length: totalSections }, (_, i) => formatSectionLabel(i + 1));
+    const labels = rawLabels.map((l: string, i: number) => formatSectionLabel(i + 1, l));
+    const sectionName = labels[params.targetSection - 1] || formatSectionLabel(params.targetSection);
 
     revalidateTag("admin-scanner");
     revalidateTag("scanner-controls");

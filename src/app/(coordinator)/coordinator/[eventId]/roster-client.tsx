@@ -67,7 +67,7 @@ import {
   Pause,
   Radio,
 } from "lucide-react";
-import { formatDate, formatTime } from "@/lib/utils";
+import { formatDate, formatTime, formatSectionLabel, formatCompactSectionLabel } from "@/lib/utils";
 import { CustomReportModal } from "@/components/coordinator/custom-report-modal";
 
 interface StudentCoordinator {
@@ -1100,8 +1100,48 @@ export function EventRosterClient({
               </div>
             </div>
 
-            {/* Right: Quick Action Buttons (Balanced 2-Button Grid on Mobile) */}
-            <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+            {/* Right: Quick Action Buttons & Sequential Stepper */}
+            <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto flex-wrap">
+              {/* Strict Sequential Section Stepper */}
+              {canStaffSwitch && scannerControl && scannerControl.totalSections > 1 && (
+                <div className="flex items-center gap-1.5">
+                  {/* Return to Previous Button */}
+                  {scannerControl.currentSection > 1 && (
+                    <button
+                      type="button"
+                      disabled={isSwitchingSection}
+                      onClick={() => {
+                        setPendingTargetSection(scannerControl.currentSection - 1);
+                        setIsConfirmSectionModalOpen(true);
+                      }}
+                      className="h-8 sm:h-8.5 inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold px-2.5 shadow-2xs transition-all cursor-pointer active:scale-95"
+                      title={`Return to Previous Section (${formatSectionLabel(scannerControl.currentSection - 1, scannerControl.sectionLabels[scannerControl.currentSection - 2])})`}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5 text-slate-500" />
+                      <span className="hidden sm:inline">Previous Section</span>
+                      <span className="sm:hidden">Prev</span>
+                    </button>
+                  )}
+
+                  {/* Move to Next Button */}
+                  {scannerControl.currentSection < scannerControl.totalSections && (
+                    <button
+                      type="button"
+                      disabled={isSwitchingSection}
+                      onClick={() => {
+                        setPendingTargetSection(scannerControl.currentSection + 1);
+                        setIsConfirmSectionModalOpen(true);
+                      }}
+                      className="h-8 sm:h-8.5 inline-flex items-center justify-center gap-1 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs font-bold px-3 shadow-xs transition-all cursor-pointer active:scale-95"
+                      title={`Move to Next Section (${formatSectionLabel(scannerControl.currentSection + 1, scannerControl.sectionLabels[scannerControl.currentSection])})`}
+                    >
+                      <span>Move to Next Section</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-indigo-300" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Pause / Resume Scanner Toggle */}
               {canStaffSwitch && masterScannerEnabled && (
                 <button
@@ -1114,7 +1154,7 @@ export function EventRosterClient({
                       setIsConfirmPauseModalOpen(true);
                     }
                   }}
-                  className={`flex-1 sm:flex-initial h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold transition-all cursor-pointer border shadow-2xs active:scale-95 disabled:opacity-50 ${scannerControl?.scannerStatus === "paused"
+                  className={`h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold transition-all cursor-pointer border shadow-2xs active:scale-95 disabled:opacity-50 ${scannerControl?.scannerStatus === "paused"
                       ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-emerald-600/20"
                       : "bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300/80"
                     }`}
@@ -1139,7 +1179,7 @@ export function EventRosterClient({
                 <Link
                   href={`/coordinator/scanner?event=${eventId}`}
                   target="_blank"
-                  className="flex-1 sm:flex-initial h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-800 text-xs font-bold px-3 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                  className="h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-800 text-xs font-bold px-3 shadow-2xs transition-all active:scale-95 cursor-pointer"
                   title="Open camera pass scanner in new tab"
                 >
                   <QrCode className="h-3.5 w-3.5 text-indigo-600" />
@@ -1150,7 +1190,7 @@ export function EventRosterClient({
             </div>
           </div>
 
-          {/* Section Pipeline Cards (Mobile-Optimized 2-Column Grid) */}
+          {/* Section Pipeline Cards (Strict Sequential Progression) */}
           {scannerControl && scannerControl.totalSections > 1 ? (
             <div
               className={`relative grid gap-2 sm:gap-3 pt-2.5 sm:pt-3 ${scannerControl.totalSections === 2
@@ -1163,13 +1203,10 @@ export function EventRosterClient({
               {Array.from({ length: scannerControl.totalSections }, (_, idx) => idx + 1).map((secNum) => {
                 const isActive = scannerControl.currentSection === secNum;
                 const isPast = scannerControl.currentSection > secNum;
-                const label =
-                  scannerControl.sectionLabels[secNum - 1] ||
-                  (secNum === 1
-                    ? "Morning Section"
-                    : secNum === 2
-                      ? "Afternoon Section"
-                      : `Round ${secNum}`);
+                const isNext = secNum === scannerControl.currentSection + 1;
+                const isPrev = secNum === scannerControl.currentSection - 1;
+                const isFutureLocked = secNum > scannerControl.currentSection + 1;
+                const label = formatSectionLabel(secNum, scannerControl.sectionLabels[secNum - 1]);
                 const count = sectionCounts[secNum] || 0;
 
                 return (
@@ -1179,19 +1216,21 @@ export function EventRosterClient({
                         ? "bg-gradient-to-br from-white via-indigo-50/50 to-indigo-100/30 border-2 border-indigo-500 shadow-xs ring-2 sm:ring-4 ring-indigo-500/10"
                         : isPast
                           ? "bg-slate-50/80 border-slate-200 opacity-85"
-                          : "bg-white/95 border-slate-200/90 hover:border-indigo-300 shadow-2xs hover:shadow-xs group"
+                          : isNext
+                            ? "bg-white/95 border-indigo-200 hover:border-indigo-400 shadow-2xs hover:shadow-xs group"
+                            : "bg-slate-50/60 border-slate-200/80 opacity-75"
                       }`}
                   >
                     <div>
-                      {/* Card Top: Round # & Badge */}
+                      {/* Card Top: Section Title & Status Badge */}
                       <div className="flex items-center justify-between gap-1 mb-1.5 sm:mb-2">
                         <span
                           className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md ${isActive
                               ? "text-indigo-700 bg-indigo-100/80 border border-indigo-200"
-                              : "text-slate-400 bg-slate-100"
+                              : "text-slate-500 bg-slate-100"
                             }`}
                         >
-                          Round {secNum}
+                          {label}
                         </span>
                         {isActive ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-900 text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 border border-emerald-300 shadow-2xs">
@@ -1203,34 +1242,38 @@ export function EventRosterClient({
                             <Check className="h-2.5 w-2.5 text-slate-600" />
                             <span>Closed</span>
                           </span>
+                        ) : isNext ? (
+                          <span className="rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5">
+                            Next in Line
+                          </span>
                         ) : (
-                          <span className="rounded-full bg-slate-100 text-slate-500 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 border border-slate-200/80">
-                            Upcoming
+                          <span className="rounded-full bg-slate-100 text-slate-400 text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 border border-slate-200/80">
+                            Locked
                           </span>
                         )}
                       </div>
 
-                      {/* Card Middle: Icon & Name */}
+                      {/* Card Middle: Numbered Badge & Name */}
                       <div className="flex items-start gap-1.5 sm:gap-2.5 min-w-0">
                         <div
-                          className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl shrink-0 shadow-2xs transition-all ${isActive
-                              ? secNum === 1
-                                ? "bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 text-white shadow-amber-500/30"
-                                : "bg-gradient-to-br from-indigo-500 via-indigo-600 to-sky-600 text-white shadow-indigo-500/30"
-                              : secNum === 1
-                                ? "bg-amber-50 border border-amber-200/80 text-amber-600"
-                                : "bg-indigo-50 border border-indigo-200/80 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white"
+                          className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl shrink-0 shadow-2xs transition-all font-mono font-black text-xs sm:text-sm ${isActive
+                              ? "bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-800 text-white shadow-indigo-500/30"
+                              : isPast
+                                ? "bg-slate-200 text-slate-600"
+                                : isNext
+                                  ? "bg-indigo-50 border border-indigo-200/90 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white"
+                                  : "bg-slate-100 border border-slate-200 text-slate-400"
                             }`}
                         >
-                          {secNum === 1 ? (
-                            <Sun className="h-4 w-4 sm:h-5 sm:w-5" />
-                          ) : (
-                            <Moon className="h-4 w-4 sm:h-5 sm:w-5" />
-                          )}
+                          <span>{secNum}</span>
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4
-                            className={`text-xs sm:text-sm font-black truncate tracking-tight transition-colors ${isActive ? "text-slate-900" : "text-slate-800 group-hover:text-indigo-950"
+                            className={`text-xs sm:text-sm font-black truncate tracking-tight transition-colors ${isActive
+                                ? "text-slate-900"
+                                : isNext
+                                  ? "text-slate-800 group-hover:text-indigo-950"
+                                  : "text-slate-500"
                               }`}
                             title={label}
                           >
@@ -1249,14 +1292,34 @@ export function EventRosterClient({
                       </div>
                     </div>
 
-                    {/* Card Bottom: Perfectly Symmetrical Action Bar */}
+                    {/* Card Bottom: Strict Symmetrical Action Bar */}
                     <div className="mt-2.5 sm:mt-3 pt-2 border-t border-slate-100/90">
                       {isActive ? (
                         <div className="h-8 sm:h-8.5 w-full rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 text-emerald-800 text-[10px] sm:text-[11px] font-extrabold inline-flex items-center justify-center gap-1.5 shadow-2xs">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           <span>Live Check-ins</span>
                         </div>
-                      ) : isPast ? (
+                      ) : isNext ? (
+                        /* STRICT PROGRESSION: ADVANCE TO NEXT SECTION */
+                        canStaffSwitch ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingTargetSection(secNum);
+                              setIsConfirmSectionModalOpen(true);
+                            }}
+                            className="w-full h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-slate-800 hover:to-indigo-900 active:bg-slate-950 text-white text-[10px] sm:text-xs font-bold px-2 shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                          >
+                            <span>Move to Next Section</span>
+                            <ChevronRight className="h-3.5 w-3.5 text-indigo-300" />
+                          </button>
+                        ) : (
+                          <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold inline-flex items-center justify-center">
+                            Locked
+                          </span>
+                        )
+                      ) : isPrev ? (
+                        /* STRICT PROGRESSION: RETURN TO PREVIOUS SECTION */
                         canStaffSwitch ? (
                           <button
                             type="button"
@@ -1266,28 +1329,25 @@ export function EventRosterClient({
                             }}
                             className="w-full h-8 sm:h-8.5 inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer"
                           >
-                            <span>Reactivate R{secNum}</span>
+                            <ChevronLeft className="h-3.5 w-3.5 text-slate-500" />
+                            <span>Return to Previous</span>
                           </button>
                         ) : (
                           <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold inline-flex items-center justify-center">
                             Closed
                           </span>
                         )
-                      ) : canStaffSwitch ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPendingTargetSection(secNum);
-                            setIsConfirmSectionModalOpen(true);
-                          }}
-                          className="w-full h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-slate-800 hover:to-indigo-900 active:bg-slate-950 text-white text-[10px] sm:text-xs font-bold px-2 shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer"
-                        >
-                          <span>Switch to R{secNum}</span>
-                          <ChevronRight className="h-3.5 w-3.5 text-indigo-300" />
-                        </button>
+                      ) : isFutureLocked ? (
+                        /* LATER SECTIONS ARE STRICTLY LOCKED */
+                        <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-medium inline-flex items-center justify-center gap-1">
+                          <Lock className="h-3 w-3 text-slate-400" />
+                          <span>Upcoming (Locked)</span>
+                        </span>
                       ) : (
-                        <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold inline-flex items-center justify-center">
-                          Locked
+                        /* EARLIER PAST SECTIONS ARE CLOSED */
+                        <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-medium inline-flex items-center justify-center gap-1">
+                          <Check className="h-3 w-3 text-slate-400" />
+                          <span>Completed</span>
                         </span>
                       )}
                     </div>
@@ -1780,12 +1840,7 @@ export function EventRosterClient({
                                   {scannerControl && scannerControl.totalSections > 1 ? (
                                     Array.from({ length: scannerControl.totalSections }, (_, idx) => idx + 1).map((secNum) => {
                                       const isSecAttended = (item.attendedSections || []).includes(secNum);
-                                      const secShort =
-                                        secNum === 1
-                                          ? "Morning"
-                                          : secNum === 2
-                                            ? "Afternoon"
-                                            : `Round ${secNum}`;
+                                      const secShort = formatCompactSectionLabel(secNum, scannerControl.sectionLabels[secNum - 1]);
                                       return (
                                         <span
                                           key={secNum}
@@ -2997,7 +3052,11 @@ export function EventRosterClient({
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">Confirm Round Switch</h3>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  {pendingTargetSection > scannerControl.currentSection
+                    ? "Confirm Move to Next Section"
+                    : "Confirm Return to Previous Section"}
+                </h3>
                 <p className="text-xs text-slate-500">Live attendance check-in window</p>
               </div>
             </div>
@@ -3008,15 +3067,14 @@ export function EventRosterClient({
               </p>
               <div className="rounded-lg bg-white p-2.5 font-black text-slate-900 border border-amber-300 flex items-center justify-between">
                 <span>
-                  Round {pendingTargetSection}:{" "}
-                  {scannerControl.sectionLabels[pendingTargetSection - 1] || `Section ${pendingTargetSection}`}
+                  {formatSectionLabel(pendingTargetSection, scannerControl.sectionLabels[pendingTargetSection - 1])}
                 </span>
                 <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
-                  Upcoming
+                  {pendingTargetSection > scannerControl.currentSection ? "Next Section" : "Previous Section"}
                 </span>
               </div>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                ⚠️ <strong>Fail-Safe Notice:</strong> Once switched, previous section check-ins will be locked. Any newly arriving or re-attending participants will be recorded exclusively under this round.
+                ⚠️ <strong>Fail-Safe Notice:</strong> Once switched, check-ins for earlier sections are locked. Newly scanned attendees will be recorded under {formatSectionLabel(pendingTargetSection, scannerControl.sectionLabels[pendingTargetSection - 1])}.
               </p>
             </div>
 
@@ -3043,7 +3101,11 @@ export function EventRosterClient({
                 onClick={handleExecuteSectionSwitch}
                 className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
               >
-                {isSwitchingSection ? "Activating..." : "Confirm & Activate"}
+                {isSwitchingSection
+                  ? "Switching..."
+                  : pendingTargetSection > scannerControl.currentSection
+                    ? "Confirm & Advance to Next Section"
+                    : "Confirm & Return to Previous Section"}
               </button>
             </div>
           </div>
@@ -3076,7 +3138,10 @@ export function EventRosterClient({
                 <div className="flex items-center justify-between font-bold">
                   <span>Current Active Session:</span>
                   <span className="text-indigo-900 font-extrabold">
-                    {scannerControl?.sectionLabels[(scannerControl?.currentSection || 1) - 1] || `Section ${scannerControl?.currentSection || 1}`}
+                    {formatSectionLabel(
+                      scannerControl?.currentSection || 1,
+                      scannerControl?.sectionLabels[(scannerControl?.currentSection || 1) - 1]
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600">

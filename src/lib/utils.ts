@@ -45,3 +45,34 @@ export function formatEventTimeRange(startTime?: string, endTime?: string): stri
   }
   return `${start} - ${end}`;
 }
+
+export function getOrdinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+export function formatSectionLabel(secNum: number, rawLabel?: string | null): string {
+  if (rawLabel) {
+    const clean = rawLabel.trim();
+    if (
+      clean.toLowerCase().includes("morning") ||
+      clean.toLowerCase().includes("afternoon") ||
+      clean.toLowerCase().includes("day 1") ||
+      clean.toLowerCase().includes("day 2")
+    ) {
+      return `${getOrdinal(secNum)} Section`;
+    }
+    return clean;
+  }
+  return `${getOrdinal(secNum)} Section`;
+}
+
+export function formatCompactSectionLabel(secNum: number, rawLabel?: string | null): string {
+  const full = formatSectionLabel(secNum, rawLabel);
+  if (full.endsWith(" Section")) {
+    return full.replace(" Section", " Sec");
+  }
+  return full;
+}
+

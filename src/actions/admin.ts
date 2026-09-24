@@ -21,6 +21,7 @@ const ROLE_HIERARCHY: Record<string, number> = {
 };
 
 import { isKluParticipant } from "@/lib/profile";
+import { formatSectionLabel } from "@/lib/utils";
 
 
 
@@ -5209,13 +5210,13 @@ async function fetchAdminScannerOverviewRaw(): Promise<ScannerOverviewData> {
     const allowEarly = Boolean(dbCtrl?.allow_early_scan ?? memCtrl?.allow_early_scan ?? false);
 
     let labels: string[] = isTwoDay
-      ? ["Day 1 - Morning", "Day 1 - Afternoon", "Day 2 - Morning", "Day 2 - Afternoon"]
-      : ["Morning Section", "Afternoon Section"];
+      ? ["1st Section", "2nd Section", "3rd Section", "4th Section"]
+      : ["1st Section", "2nd Section"];
 
     if (Array.isArray(dbCtrl?.section_labels) && dbCtrl.section_labels.length > 0) {
-      labels = dbCtrl.section_labels;
+      labels = dbCtrl.section_labels.map((l: string, i: number) => formatSectionLabel(i + 1, l));
     } else if (Array.isArray(memCtrl?.section_labels) && memCtrl.section_labels.length > 0) {
-      labels = memCtrl.section_labels;
+      labels = memCtrl.section_labels.map((l: string, i: number) => formatSectionLabel(i + 1, l));
     }
 
     if (status === "active") activeScannersCount++;
@@ -5316,7 +5317,7 @@ export async function updateEventScannerSectionAction(params: {
     // 1. Update in-memory fallback
     const prev = memoryScannerControlsCache.get(params.eventId) || {
       total_sections: 2,
-      section_labels: ["Morning Section", "Afternoon Section"],
+      section_labels: ["1st Section", "2nd Section"],
       allow_staff_switch: true,
       current_section: 1,
       scanner_status: "active",
@@ -5433,7 +5434,7 @@ export async function bulkUpdateScannerSectionAction(params: {
     for (const eId of params.eventIds) {
       const prev = memoryScannerControlsCache.get(eId) || {
         total_sections: 2,
-        section_labels: ["Morning Section", "Afternoon Section"],
+        section_labels: ["1st Section", "2nd Section"],
         allow_staff_switch: true,
         current_section: 1,
         scanner_status: "active",

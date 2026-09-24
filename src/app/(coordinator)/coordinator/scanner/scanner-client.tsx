@@ -31,10 +31,11 @@ import {
   Layers,
   Play,
   Pause,
+  ChevronLeft,
   ChevronRight,
   RotateCcw,
 } from "lucide-react";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, formatSectionLabel, formatCompactSectionLabel } from "@/lib/utils";
 
 interface RecentScan {
   code: string;
@@ -610,17 +611,13 @@ export function ScannerClient({
             {activeEvent && scannerControl && (
               <div className="rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50/80 via-sky-50/40 to-white p-2.5 sm:p-3 flex items-center justify-between gap-2 shadow-2xs">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0 shadow-2xs">
-                    {scannerControl.currentSection === 1 ? (
-                      <Sun className="h-4 w-4 text-amber-300" />
-                    ) : (
-                      <Moon className="h-4 w-4 text-sky-200" />
-                    )}
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0 shadow-2xs font-mono font-black text-xs">
+                    {scannerControl.currentSection}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
-                        Active Attendance Round
+                        Active Attendance Section
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.2">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -628,10 +625,12 @@ export function ScannerClient({
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                      {scannerControl.sectionLabels[scannerControl.currentSection - 1] ||
-                        `Section ${scannerControl.currentSection}`}
+                      {formatSectionLabel(
+                        scannerControl.currentSection,
+                        scannerControl.sectionLabels[scannerControl.currentSection - 1]
+                      )}
                       <span className="text-[11px] font-normal text-slate-500 ml-1.5">
-                        (Round {scannerControl.currentSection} of {scannerControl.totalSections})
+                        ({scannerControl.currentSection} of {scannerControl.totalSections})
                       </span>
                     </p>
                   </div>
@@ -640,32 +639,45 @@ export function ScannerClient({
                 <div className="flex items-center gap-2.5 shrink-0">
                   <div className="text-right">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                      Round Turnout
+                      Section Scanned
                     </span>
                     <span className="text-xs sm:text-sm font-black text-indigo-950 font-mono">
                       {sectionCounts[scannerControl.currentSection] || 0}
                     </span>
                   </div>
 
-                  {/* Staff Coordinator Fast Controls */}
+                  {/* Staff Coordinator Strict Sequential Controls */}
                   {canStaffSwitch && (
                     <div className="flex items-center gap-1.5 border-l border-indigo-100 pl-2">
-                      {scannerControl.totalSections > 1 && (
+                      {scannerControl.currentSection > 1 && (
                         <button
                           type="button"
                           onClick={() => {
-                            const nextSec =
-                              scannerControl.currentSection >= scannerControl.totalSections
-                                ? 1
-                                : scannerControl.currentSection + 1;
-                            setPendingSwitchSection(nextSec);
+                            setPendingSwitchSection(scannerControl.currentSection - 1);
+                            setIsConfirmSwitchModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                          title="Return to previous section"
+                        >
+                          <ChevronLeft className="h-3 w-3 text-slate-500" />
+                          <span className="hidden sm:inline">Previous Section</span>
+                          <span className="sm:hidden">Prev</span>
+                        </button>
+                      )}
+
+                      {scannerControl.currentSection < scannerControl.totalSections && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingSwitchSection(scannerControl.currentSection + 1);
                             setIsConfirmSwitchModalOpen(true);
                           }}
                           className="inline-flex items-center gap-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
-                          title="Switch to next round with fail-safe confirmation"
+                          title="Move to next section with fail-safe confirmation"
                         >
-                          <Layers className="h-3 w-3" />
-                          <span className="hidden sm:inline">Change Round</span>
+                          <span className="hidden sm:inline">Move to Next Section</span>
+                          <span className="sm:hidden">Next Sec</span>
+                          <ChevronRight className="h-3 w-3" />
                         </button>
                       )}
 
@@ -985,7 +997,11 @@ export function ScannerClient({
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">Confirm Round Switch</h3>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  {pendingSwitchSection > scannerControl.currentSection
+                    ? "Confirm Move to Next Section"
+                    : "Confirm Return to Previous Section"}
+                </h3>
                 <p className="text-xs text-slate-500">Live attendance check-in window</p>
               </div>
             </div>
@@ -996,15 +1012,20 @@ export function ScannerClient({
               </p>
               <div className="rounded-lg bg-white p-2.5 font-black text-slate-900 border border-amber-300 flex items-center justify-between">
                 <span>
-                  Round {pendingSwitchSection}:{" "}
-                  {scannerControl.sectionLabels[pendingSwitchSection - 1] || `Section ${pendingSwitchSection}`}
+                  {formatSectionLabel(
+                    pendingSwitchSection,
+                    scannerControl.sectionLabels[pendingSwitchSection - 1]
+                  )}
                 </span>
                 <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
-                  Upcoming
+                  {pendingSwitchSection > scannerControl.currentSection ? "Next Section" : "Previous Section"}
                 </span>
               </div>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                ⚠️ <strong>Fail-Safe Notice:</strong> Once activated, previous section check-ins will be locked. Any newly arriving or re-attending participants will be recorded exclusively under this round.
+                ⚠️ <strong>Fail-Safe Notice:</strong>{" "}
+                {pendingSwitchSection > scannerControl.currentSection
+                  ? "Advancing to the next section will seal the current section. Any arriving delegates will be recorded under this new section."
+                  : "Returning to the previous section will reopen check-ins for that section."}
               </p>
             </div>
 
@@ -1031,7 +1052,11 @@ export function ScannerClient({
                 onClick={handleExecuteSectionSwitch}
                 className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
               >
-                {isSwitchingSection ? "Activating..." : "Confirm & Activate"}
+                {isSwitchingSection
+                  ? "Switching..."
+                  : pendingSwitchSection > scannerControl.currentSection
+                  ? "Confirm & Advance"
+                  : "Confirm & Return"}
               </button>
             </div>
           </div>

@@ -48,7 +48,7 @@ import {
   ExternalLink,
   ChevronDown,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatSectionLabel, formatCompactSectionLabel } from "@/lib/utils";
 
 interface ToastState {
   type: "success" | "error";
@@ -120,12 +120,12 @@ export function ScannerManagementClient({
   const [rosterData, setRosterData] = useState<any[] | null>(null);
   const [isLoadingRoster, setIsLoadingRoster] = useState(false);
   const [rosterSearch, setRosterSearch] = useState("");
-  const [rosterFilter, setRosterFilter] = useState<"all" | "morning_only" | "afternoon_only" | "both" | "absent">("all");
+  const [rosterFilter, setRosterFilter] = useState<"all" | "sec1_only" | "sec2_only" | "morning_only" | "afternoon_only" | "both" | "absent">("all");
 
   // Configure modal
   const [configuringEvent, setConfiguringEvent] = useState<EventScannerItem | null>(null);
   const [configTotalSections, setConfigTotalSections] = useState(2);
-  const [configSectionLabels, setConfigSectionLabels] = useState<string[]>(["Morning Section", "Afternoon Section"]);
+  const [configSectionLabels, setConfigSectionLabels] = useState<string[]>(["1st Section", "2nd Section"]);
   const [configAllowStaff, setConfigAllowStaff] = useState(true);
   const [configStatus, setConfigStatus] = useState<"active" | "paused" | "closed">("active");
 
@@ -202,7 +202,7 @@ export function ScannerManagementClient({
     const targetIds = selectedEventIds.length > 0 ? selectedEventIds : filteredEvents.map((e) => e.id);
     if (targetIds.length === 0) return;
 
-    const label = targetSection === 1 ? "Morning Section (1)" : "Afternoon Section (2)";
+    const label = formatSectionLabel(targetSection);
 
     setPendingAction({
       type: "bulk_switch",
@@ -504,10 +504,10 @@ export function ScannerManagementClient({
         if (!matchesCode && !matchesName && !matchesCollege) return false;
       }
 
-      if (rosterFilter === "morning_only") {
+      if (rosterFilter === "morning_only" || (rosterFilter as string) === "sec1_only") {
         return r.sectionsAttended.includes(1) && !r.sectionsAttended.includes(2);
       }
-      if (rosterFilter === "afternoon_only") {
+      if (rosterFilter === "afternoon_only" || (rosterFilter as string) === "sec2_only") {
         return !r.sectionsAttended.includes(1) && r.sectionsAttended.includes(2);
       }
       if (rosterFilter === "both") {
@@ -521,18 +521,8 @@ export function ScannerManagementClient({
   }, [rosterData, rosterFilter, rosterSearch]);
 
   // Compact section label helper
-  const getCompactLabel = (label: string) => {
-    const clean = label.trim();
-    if (clean === "Morning Section") return "Morning";
-    if (clean === "Afternoon Section") return "Afternoon";
-    if (clean.startsWith("Day 1 - Morning")) return "D1 Morning";
-    if (clean.startsWith("Day 1 - Afternoon")) return "D1 Afternoon";
-    if (clean.startsWith("Day 2 - Morning")) return "D2 Morning";
-    if (clean.startsWith("Day 2 - Afternoon")) return "D2 Afternoon";
-    if (clean.length > 15) {
-      return clean.replace(/Section/i, "").trim();
-    }
-    return clean;
+  const getCompactLabel = (label: string, secNum?: number) => {
+    return formatCompactSectionLabel(secNum || 1, label);
   };
 
   // Select all / Deselect all
@@ -698,14 +688,14 @@ export function ScannerManagementClient({
           </div>
         </div>
 
-        {/* Card 3: Morning Section Turnout */}
+        {/* Card 3: 1st Section Turnout */}
         <div className="rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/70 via-white to-amber-50/30 p-3.5 shadow-xs hover:border-amber-300 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
-              Morning Sections
+              1st Section Turnout
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-              <Sun className="h-4 w-4 text-amber-600" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 font-mono font-black text-xs">
+              1
             </div>
           </div>
           <div className="my-2">
@@ -716,23 +706,23 @@ export function ScannerManagementClient({
               <span className="text-xs text-amber-800 font-bold">Checked In</span>
             </div>
             <div className="text-[11px] text-amber-800/80 mt-0.5">
-              Section 1 scan records
+              1st Section scan records
             </div>
           </div>
           <div className="pt-2 text-[11px] text-amber-800 border-t border-amber-100/80 font-medium flex items-center justify-between">
-            <span>Stage: Prelims</span>
-            <span className="font-bold text-amber-900">Morning Session</span>
+            <span>Stage: Round 1</span>
+            <span className="font-bold text-amber-900">1st Section</span>
           </div>
         </div>
 
-        {/* Card 4: Afternoon Section Turnout */}
+        {/* Card 4: 2nd Section Turnout */}
         <div className="rounded-2xl border border-purple-200/90 bg-gradient-to-br from-purple-50/70 via-white to-purple-50/30 p-3.5 shadow-xs hover:border-purple-300 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">
-              Afternoon Sections
+              2nd Section Turnout
             </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
-              <Moon className="h-4 w-4 text-purple-600" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700 font-mono font-black text-xs">
+              2
             </div>
           </div>
           <div className="my-2">
@@ -743,12 +733,12 @@ export function ScannerManagementClient({
               <span className="text-xs text-purple-800 font-bold">Checked In</span>
             </div>
             <div className="text-[11px] text-purple-800/80 mt-0.5">
-              Section 2 scan records
+              2nd Section scan records
             </div>
           </div>
           <div className="pt-2 text-[11px] text-purple-800 border-t border-purple-100/80 font-medium flex items-center justify-between">
-            <span>Stage: Finals</span>
-            <span className="font-bold text-purple-900">Afternoon Session</span>
+            <span>Stage: Round 2</span>
+            <span className="font-bold text-purple-900">2nd Section</span>
           </div>
         </div>
       </div>
@@ -790,21 +780,21 @@ export function ScannerManagementClient({
                 type="button"
                 onClick={() => requestBulkSwitch(1)}
                 disabled={isPending}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white text-amber-900 border border-amber-200/70 shadow-2xs hover:bg-amber-50 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                title="Activate Morning Section (1) for matching events"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white text-indigo-900 border border-indigo-200/70 shadow-2xs hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                title="Activate 1st Section for matching events"
               >
-                <Sun className="h-3.5 w-3.5 text-amber-600" />
-                <span>Morning (Sec 1)</span>
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">1</span>
+                <span>1st Section</span>
               </button>
               <button
                 type="button"
                 onClick={() => requestBulkSwitch(2)}
                 disabled={isPending}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white text-purple-900 border border-purple-200/70 shadow-2xs hover:bg-purple-50 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                title="Activate Afternoon Section (2) for matching events and seal morning"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white text-indigo-900 border border-indigo-200/70 shadow-2xs hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                title="Activate 2nd Section for matching events"
               >
-                <Moon className="h-3.5 w-3.5 text-purple-600" />
-                <span>Afternoon (Sec 2)</span>
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">2</span>
+                <span>2nd Section</span>
               </button>
             </div>
 
@@ -1124,8 +1114,8 @@ export function ScannerManagementClient({
                         const isActive = evt.current_section === secNum && evt.scanner_status === "active";
                         const isPast = evt.current_section > secNum;
                         const attendeesCount = evt.section_counts[secNum] || 0;
-                        const compactLabel = getCompactLabel(label);
-                        const isMorning = label.toLowerCase().includes("morning") || secNum % 2 !== 0;
+                        const formattedLabel = formatSectionLabel(secNum, label);
+                        const compactLabel = formatCompactSectionLabel(secNum, label);
 
                         return (
                           <button
@@ -1135,8 +1125,8 @@ export function ScannerManagementClient({
                             disabled={isPending}
                             title={
                               isActive
-                                ? `${label} is currently active and scanning!`
-                                : `Click to activate ${label} (will prompt for confirmation)`
+                                ? `${formattedLabel} is currently active and scanning!`
+                                : `Click to activate ${formattedLabel} (will prompt for confirmation)`
                             }
                             className={cn(
                               "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
@@ -1154,10 +1144,10 @@ export function ScannerManagementClient({
                               </span>
                             ) : isPast ? (
                               <Check className="h-3 w-3 text-emerald-600 shrink-0" />
-                            ) : isMorning ? (
-                              <Sun className="h-3 w-3 text-amber-500 shrink-0" />
                             ) : (
-                              <Moon className="h-3 w-3 text-purple-500 shrink-0" />
+                              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-200/90 text-[9px] font-mono font-bold text-slate-700 shrink-0">
+                                {secNum}
+                              </span>
                             )}
 
                             <span className="whitespace-nowrap">{compactLabel}</span>
@@ -1248,7 +1238,7 @@ export function ScannerManagementClient({
                       type="button"
                       onClick={() => handleOpenRoster(evt)}
                       className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                      title="Inspect who attended Morning vs Afternoon"
+                      title="Inspect attendance roster breakdown by section"
                     >
                       <Users className="h-3.5 w-3.5 text-indigo-600" />
                       <span>Roster</span>
@@ -1332,11 +1322,11 @@ export function ScannerManagementClient({
                     </p>
                     <p className="flex items-start gap-1.5">
                       <span className="text-amber-600 font-bold">⚠️</span>
-                      <span><strong>{pendingAction.currentLabel}</strong> will be locked. New participants joining now will only be marked present for the afternoon.</span>
+                      <span><strong>{pendingAction.currentLabel}</strong> will be locked. New participants joining now will be marked present for <strong>{pendingAction.targetLabel}</strong>.</span>
                     </p>
                     <p className="flex items-start gap-1.5">
                       <span className="text-slate-500 font-bold">•</span>
-                      <span>Participants who already scanned in the morning will keep their attendance and can scan again for afternoon entry.</span>
+                      <span>Participants who already scanned in earlier sections will keep their attendance and can scan again for this section entry.</span>
                     </p>
                   </div>
                 </>
@@ -1562,31 +1552,31 @@ export function ScannerManagementClient({
                       : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100/80 border border-emerald-200/80"
                   )}
                 >
-                  Full Day (Both Secs)
+                  Both Sections
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRosterFilter("morning_only")}
+                  onClick={() => setRosterFilter("sec1_only")}
                   className={cn(
                     "px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 shadow-2xs",
-                    rosterFilter === "morning_only"
+                    rosterFilter === "sec1_only" || rosterFilter === "morning_only"
                       ? "bg-amber-600 text-white"
                       : "bg-amber-50 text-amber-800 hover:bg-amber-100/80 border border-amber-200/80"
                   )}
                 >
-                  Morning Only
+                  1st Sec Only
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRosterFilter("afternoon_only")}
+                  onClick={() => setRosterFilter("sec2_only")}
                   className={cn(
                     "px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 shadow-2xs",
-                    rosterFilter === "afternoon_only"
+                    rosterFilter === "sec2_only" || rosterFilter === "afternoon_only"
                       ? "bg-purple-600 text-white"
                       : "bg-purple-50 text-purple-800 hover:bg-purple-100/80 border border-purple-200/80"
                   )}
                 >
-                  Afternoon Only
+                  2nd Sec Only
                 </button>
                 <button
                   type="button"
@@ -1643,8 +1633,8 @@ export function ScannerManagementClient({
                         <th className="py-2.5 px-3.5 font-bold w-40">Pass Code</th>
                         <th className="py-2.5 px-3.5 font-bold min-w-[200px]">Participant</th>
                         <th className="py-2.5 px-3.5 font-bold min-w-[180px]">College</th>
-                        <th className="py-2.5 px-3.5 font-bold text-center w-36">Section 1 (Morning)</th>
-                        <th className="py-2.5 px-3.5 font-bold text-center w-36">Section 2 (Afternoon)</th>
+                        <th className="py-2.5 px-3.5 font-bold text-center w-36">1st Section</th>
+                        <th className="py-2.5 px-3.5 font-bold text-center w-36">2nd Section</th>
                         <th className="py-2.5 px-3.5 font-bold text-center w-28">Status</th>
                       </tr>
                     </thead>
@@ -1748,7 +1738,7 @@ export function ScannerManagementClient({
                     type="button"
                     onClick={() => {
                       setConfigTotalSections(2);
-                      setConfigSectionLabels(["Morning Section", "Afternoon Section"]);
+                      setConfigSectionLabels(["1st Section", "2nd Section"]);
                     }}
                     className={cn(
                       "p-2.5 rounded-xl border text-left transition-all cursor-pointer shadow-2xs",
@@ -1761,14 +1751,14 @@ export function ScannerManagementClient({
                       <span className="text-xs font-bold text-slate-900">2 Sections</span>
                       {configTotalSections === 2 && <CheckCircle2 className="h-4 w-4 text-indigo-600" />}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Morning &amp; Afternoon</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">1st &amp; 2nd Section</p>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
                       setConfigTotalSections(4);
-                      setConfigSectionLabels(["Day 1 - Morning", "Day 1 - Afternoon", "Day 2 - Morning", "Day 2 - Afternoon"]);
+                      setConfigSectionLabels(["1st Section", "2nd Section", "3rd Section", "4th Section"]);
                     }}
                     className={cn(
                       "p-2.5 rounded-xl border text-left transition-all cursor-pointer shadow-2xs",
@@ -1781,7 +1771,7 @@ export function ScannerManagementClient({
                       <span className="text-xs font-bold text-slate-900">4 Sections</span>
                       {configTotalSections === 4 && <CheckCircle2 className="h-4 w-4 text-indigo-600" />}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">2-Day Prelims &amp; Finals</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">1st, 2nd, 3rd &amp; 4th Section</p>
                   </button>
                 </div>
               </div>
@@ -1798,7 +1788,9 @@ export function ScannerManagementClient({
                       className="flex items-center rounded-xl border border-slate-200/90 bg-slate-50/50 overflow-hidden focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500/10 transition-all shadow-2xs"
                     >
                       <div className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-bold text-slate-600 bg-slate-100/80 border-r border-slate-200/80 shrink-0">
-                        {idx % 2 === 0 ? <Sun className="h-3 w-3 text-amber-500" /> : <Moon className="h-3 w-3 text-purple-500" />}
+                        <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700">
+                          {idx + 1}
+                        </span>
                         <span>Sec {idx + 1}</span>
                       </div>
                       <input
@@ -1809,7 +1801,7 @@ export function ScannerManagementClient({
                           newLabels[idx] = e.target.value;
                           setConfigSectionLabels(newLabels);
                         }}
-                        placeholder={`Section ${idx + 1} Name`}
+                        placeholder={formatSectionLabel(idx + 1)}
                         className="flex-1 px-3 py-1.5 text-xs font-medium text-slate-900 bg-transparent focus:outline-none"
                       />
                     </div>
@@ -1825,7 +1817,7 @@ export function ScannerManagementClient({
                 <div className="pr-3">
                   <div className="font-bold text-slate-900 text-xs">Staff Coordinator Switch Access</div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Allow coordinators to advance to Section 2 from gate scanner app
+                    Allow coordinators to advance to sequential sections from gate scanner app
                   </div>
                 </div>
                 <div
