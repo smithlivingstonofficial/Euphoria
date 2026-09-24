@@ -27,6 +27,7 @@ import {
   X,
   Banknote,
   Radio,
+  Headphones,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,13 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/admin/coordinators",
         label: "Coordinators & Roles",
         icon: ShieldCheck,
+      },
+      {
+        href: "/admin/helpdesk",
+        label: "Help Desk Access",
+        icon: Headphones,
+        badge: "Live",
+        badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
       },
     ],
   },
