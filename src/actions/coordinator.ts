@@ -1697,44 +1697,25 @@ async function processAttendanceRecord(
     };
   }
 
-  // 5. Insert attendance record for this section
-  const scanMethodWithSec = `${scanMethod}:sec_${currentSection}`;
-  const insertPayload: Record<string, any> = {
+  // 5. Insert attendance record for this section adhering to Postgres CHECK (scan_method IN ('qr_camera', 'manual_search'))
+  const dbScanMethod: "qr_camera" | "manual_search" =
+    scanMethod === "manual" || scanMethod === "manual_search" || scanMethod === "staff_override"
+      ? "manual_search"
+      : "qr_camera";
+
+  const insertPayload = {
     registration_id: targetReg.id,
     event_id: targetReg.event_id,
     scanned_by: coordinatorUserId,
-    scan_method: scanMethodWithSec,
+    scan_method: dbScanMethod,
     scanned_at: new Date().toISOString(),
+    section_number: currentSection,
+    section_name: sectionLabel,
   };
 
-  let insertError: any = null;
-  const { error: fullErr } = await adminClient
+  const { error: insertError } = await adminClient
     .from("attendance")
-    .insert({
-      ...insertPayload,
-      section_number: currentSection,
-      section_name: sectionLabel,
-    });
-
-  if (fullErr) {
-    if (fullErr.code === "23505") {
-      return {
-        success: true,
-        alreadyCheckedIn: true,
-        message: `Already checked in for ${sectionLabel}. Entry confirmed.`,
-        student: studentProfile,
-        event: eventDetails,
-        slotNumber: targetReg.slot_number || 1,
-        registrationCode: targetReg.registration_code,
-        sectionNumber: currentSection,
-        sectionName: sectionLabel,
-      };
-    }
-    const { error: fallbackErr } = await adminClient
-      .from("attendance")
-      .insert(insertPayload);
-    insertError = fallbackErr;
-  }
+    .insert(insertPayload);
 
   if (insertError) {
     if (insertError.code === "23505") {
