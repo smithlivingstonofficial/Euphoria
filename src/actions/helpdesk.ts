@@ -387,41 +387,11 @@ export async function searchStudentsHelpdeskAction(rawQuery: string): Promise<{
     const adminClient = await createAdminClient();
     const hitsMap = new Map<string, StudentSearchHit>();
 
-    // A. Search by Registration Code / Pass Code
+    // A. Direct Search by Registration Code / Pass Code
     const isCodeFormat = q.toUpperCase().startsWith("EUPH-");
 
     if (isCodeFormat || q.length >= 4) {
-      // 1. Check event registrations
-      const { data: regHits } = await adminClient
-        .from("event_registrations")
-        .select(`
-          user_id,
-          registration_code,
-          user:profiles!event_registrations_user_id_fkey (
-            id, full_name, email, mobile_number, register_number, college_name, department, participant_type
-          )
-        `)
-        .ilike("registration_code", `%${q}%`)
-        .limit(10);
-
-      (regHits || []).forEach((r: any) => {
-        const u = r.user;
-        if (u && !hitsMap.has(u.id)) {
-          hitsMap.set(u.id, {
-            studentId: u.id,
-            fullName: u.full_name || "Unknown Name",
-            email: u.email || "",
-            mobileNumber: u.mobile_number,
-            registerNumber: u.register_number,
-            collegeName: u.college_name,
-            department: u.department,
-            participantType: u.participant_type,
-            matchedBy: "reg_code",
-          });
-        }
-      });
-
-      // 2. Check delegate passes
+      // 1. Check delegate passes (limit 5)
       const { data: passHits } = await adminClient
         .from("delegate_passes")
         .select(`
@@ -433,7 +403,7 @@ export async function searchStudentsHelpdeskAction(rawQuery: string): Promise<{
           )
         `)
         .ilike("pass_code", `%${q}%`)
-        .limit(10);
+        .limit(5);
 
       (passHits || []).forEach((p: any) => {
         const u = p.user;
@@ -453,14 +423,61 @@ export async function searchStudentsHelpdeskAction(rawQuery: string): Promise<{
           });
         }
       });
+
+      // 2. Check event registrations (limit 5)
+      const { data: regHits } = await adminClient
+        .from("event_registrations")
+        .select(`
+          user_id,
+          registration_code,
+          user:profiles!event_registrations_user_id_fkey (
+            id, full_name, email, mobile_number, register_number, college_name, department, participant_type
+          )
+        `)
+        .ilike("registration_code", `%${q}%`)
+        .limit(5);
+
+      (regHits || []).forEach((r: any) => {
+        const u = r.user;
+        if (u && !hitsMap.has(u.id)) {
+          hitsMap.set(u.id, {
+            studentId: u.id,
+            fullName: u.full_name || "Unknown Name",
+            email: u.email || "",
+            mobileNumber: u.mobile_number,
+            registerNumber: u.register_number,
+            collegeName: u.college_name,
+            department: u.department,
+            participantType: u.participant_type,
+            matchedBy: "reg_code",
+          });
+        }
+      });
+
+      // If exact code match found, return immediately without broad profile scan
+      if (isCodeFormat && hitsMap.size > 0) {
+        return { success: true, results: Array.from(hitsMap.values()) };
+      }
     }
 
-    // B. Search by Profile fields (Name, Email, Mobile, Register Number)
-    const { data: profileHits } = await adminClient
+    // B. Search Profiles with optimized query target
+    let profileQuery = adminClient
       .from("profiles")
-      .select("id, full_name, email, mobile_number, register_number, college_name, department, participant_type")
-      .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,mobile_number.ilike.%${q}%,register_number.ilike.%${q}%`)
-      .limit(15);
+      .select("id, full_name, email, mobile_number, register_number, college_name, department, participant_type");
+
+    if (q.includes("@")) {
+      profileQuery = profileQuery.ilike("email", `%${q}%`).limit(6);
+    } else if (/^\d+$/.test(q) && q.length >= 6) {
+      profileQuery = profileQuery
+        .or(`mobile_number.ilike.%${q}%,register_number.ilike.%${q}%`)
+        .limit(6);
+    } else {
+      profileQuery = profileQuery
+        .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,register_number.ilike.%${q}%`)
+        .limit(8);
+    }
+
+    const { data: profileHits } = await profileQuery;
 
     (profileHits || []).forEach((u: any) => {
       if (!hitsMap.has(u.id)) {
@@ -483,7 +500,7 @@ export async function searchStudentsHelpdeskAction(rawQuery: string): Promise<{
       }
     });
 
-    const results = Array.from(hitsMap.values());
+    const results = Array.from(hitsMap.values()).slice(0, 8);
     return { success: true, results };
   } catch (err: any) {
     console.error("Error in searchStudentsHelpdeskAction:", err);
@@ -546,7 +563,7 @@ export async function getStudentFullDossierHelpdeskAction(params: {
       return { success: false, error: "Student not found." };
     }
 
-    // 1. Fetch Profile, Pass, Registrations, and Attendance concurrently
+    // 1. Fetch Profile, Pass, Registrations, and Attendance with strictly targeted columns
     const [
       { data: profile, error: profErr },
       { data: pass },
@@ -555,12 +572,12 @@ export async function getStudentFullDossierHelpdeskAction(params: {
     ] = await Promise.all([
       adminClient
         .from("profiles")
-        .select("*")
+        .select("id, full_name, email, mobile_number, gender, participant_type, register_number, college_name, department, course, year_of_study, avatar_url, needs_accommodation, created_at")
         .eq("id", targetUserId)
         .single(),
       adminClient
         .from("delegate_passes")
-        .select("*")
+        .select("id, user_id, pass_code, pass_tier, amount_paid, total_slots, slots_used, status, created_at")
         .eq("user_id", targetUserId)
         .order("created_at", { ascending: false })
         .limit(1)

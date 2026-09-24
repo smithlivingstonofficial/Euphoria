@@ -244,85 +244,142 @@ export function HelpdeskManagementClient({
 
         {/* Table or Empty State */}
         {filteredOperators.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Operator</th>
-                  <th className="py-3 px-4">Department &amp; College</th>
-                  <th className="py-3 px-4">Assigned On</th>
-                  <th className="py-3 px-4">Assigned By</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredOperators.map((op) => {
-                  const initial = (op.fullName || op.email).charAt(0).toUpperCase();
-
-                  return (
-                    <tr key={op.userId} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 font-extrabold text-xs shrink-0">
-                            {initial}
+          <div>
+            {/* Mobile Cards View (< md) */}
+            <div className="block md:hidden divide-y divide-slate-100">
+              {filteredOperators.map((op) => {
+                const initial = (op.fullName || op.email).charAt(0).toUpperCase();
+                return (
+                  <div key={op.userId} className="p-4 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 font-extrabold text-xs shrink-0">
+                          {initial}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-slate-900 block leading-tight text-xs truncate">
+                            {op.fullName}
+                          </span>
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+                            <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="font-mono truncate">{op.email}</span>
                           </div>
-                          <div>
-                            <span className="font-bold text-slate-900 block leading-tight">
-                              {op.fullName}
+                          {op.registerNumber && (
+                            <span className="inline-block mt-1 text-[10px] font-mono text-indigo-700 font-semibold bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2">
+                              Reg #{op.registerNumber}
                             </span>
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                              <Mail className="h-3 w-3 text-slate-400" />
-                              <span className="font-mono">{op.email}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRevokeTarget(op)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold px-2.5 py-1.5 shrink-0 cursor-pointer shadow-2xs"
+                        title="Revoke access"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Revoke</span>
+                      </button>
+                    </div>
+
+                    <div className="bg-slate-50/80 rounded-xl p-2.5 text-[11px] text-slate-600 space-y-1 border border-slate-100">
+                      <div className="font-medium text-slate-800">
+                        {op.department || "General Department"}
+                      </div>
+                      <div className="text-slate-500 truncate text-[10px]">
+                        {op.collegeName || "Kalasalingam Academy of Research and Education"}
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px] text-slate-400">
+                        <span>Assigned {formatDate(op.assignedAt.slice(0, 10))}</span>
+                        <span>By {op.assignedByName || "Admin"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View (>= md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4">Operator</th>
+                    <th className="py-3 px-4">Department &amp; College</th>
+                    <th className="py-3 px-4">Assigned On</th>
+                    <th className="py-3 px-4">Assigned By</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredOperators.map((op) => {
+                    const initial = (op.fullName || op.email).charAt(0).toUpperCase();
+
+                    return (
+                      <tr key={op.userId} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 font-extrabold text-xs shrink-0">
+                              {initial}
                             </div>
-                            {op.registerNumber && (
-                              <span className="inline-block mt-0.5 text-[10px] font-mono text-indigo-700 font-semibold bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2">
-                                Reg #{op.registerNumber}
+                            <div>
+                              <span className="font-bold text-slate-900 block leading-tight">
+                                {op.fullName}
                               </span>
-                            )}
+                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                                <Mail className="h-3 w-3 text-slate-400" />
+                                <span className="font-mono">{op.email}</span>
+                              </div>
+                              {op.registerNumber && (
+                                <span className="inline-block mt-0.5 text-[10px] font-mono text-indigo-700 font-semibold bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2">
+                                  Reg #{op.registerNumber}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-0.5">
-                          <div className="font-medium text-slate-800">
-                            {op.department || "General Department"}
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-0.5">
+                            <div className="font-medium text-slate-800">
+                              {op.department || "General Department"}
+                            </div>
+                            <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                              {op.collegeName || "Kalasalingam Academy of Research and Education"}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-slate-500 truncate max-w-xs">
-                            {op.collegeName || "Kalasalingam Academy of Research and Education"}
+                        </td>
+
+                        <td className="py-3.5 px-4 whitespace-nowrap text-slate-600">
+                          <div className="flex items-center gap-1 text-[11px]">
+                            <Clock className="h-3 w-3 text-slate-400" />
+                            <span>{formatDate(op.assignedAt.slice(0, 10))}</span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-600">
-                        <div className="flex items-center gap-1 text-[11px]">
-                          <Clock className="h-3 w-3 text-slate-400" />
-                          <span>{formatDate(op.assignedAt.slice(0, 10))}</span>
-                        </div>
-                      </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap text-slate-600">
+                          <span className="font-medium text-[11px]">
+                            {op.assignedByName || "Admin"}
+                          </span>
+                        </td>
 
-                      <td className="py-3.5 px-4 whitespace-nowrap text-slate-600">
-                        <span className="font-medium text-[11px]">
-                          {op.assignedByName || "Admin"}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setRevokeTarget(op)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-100/80 text-rose-700 text-[11px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer"
-                          title="Revoke Help Desk access"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          <span>Revoke</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setRevokeTarget(op)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/50 hover:bg-rose-100/80 text-rose-700 text-[11px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer"
+                            title="Revoke Help Desk access"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>Revoke</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           <div className="py-12 px-4 text-center space-y-3">
