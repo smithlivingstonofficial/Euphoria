@@ -40,6 +40,7 @@ export function UniversalQRScanner({
   const isRunningRef = useRef(false);
   const lastScannedCodeRef = useRef<string | null>(null);
   const scannedHistorySetRef = useRef<Set<string>>(new Set());
+  const cooldownTimersRef = useRef<NodeJS.Timeout[]>([]);
   const containerId = "universal-html5-qr-reader";
 
   // Audio Beep Synthesizer using Web Audio API
@@ -87,14 +88,18 @@ export function UniversalQRScanner({
       try {
         const { Html5Qrcode } = await import("html5-qrcode");
 
-        if (scannerRef.current && isRunningRef.current) {
+        let scanner = scannerRef.current;
+        if (scanner && isRunningRef.current) {
           try {
-            await scannerRef.current.stop();
+            await scanner.stop();
+            isRunningRef.current = false;
           } catch {}
         }
 
-        const scanner = new Html5Qrcode(containerId);
-        scannerRef.current = scanner;
+        if (!scanner) {
+          scanner = new Html5Qrcode(containerId);
+          scannerRef.current = scanner;
+        }
 
         const devices = await Html5Qrcode.getCameras();
         if (isMounted) {
@@ -116,7 +121,7 @@ export function UniversalQRScanner({
           cameraConfig,
           {
             fps: 15,
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
               const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
               const qrboxSize = Math.floor(minEdge * 0.75);
               return { width: qrboxSize, height: qrboxSize };
@@ -132,6 +137,15 @@ export function UniversalQRScanner({
 
             lastScannedCodeRef.current = cleanCode;
             scannedHistorySetRef.current.add(cleanCode);
+
+            // Cooldown: release lockout after 2500ms so subsequent scans or retry can work smoothly
+            const timer = setTimeout(() => {
+              scannedHistorySetRef.current.delete(cleanCode);
+              if (lastScannedCodeRef.current === cleanCode) {
+                lastScannedCodeRef.current = null;
+              }
+            }, 2500);
+            cooldownTimersRef.current.push(timer);
 
             if (isMounted) {
               setLastScannedDisplay(cleanCode);
@@ -179,6 +193,8 @@ export function UniversalQRScanner({
 
     return () => {
       isMounted = false;
+      cooldownTimersRef.current.forEach(clearTimeout);
+      cooldownTimersRef.current = [];
       stopScanner();
     };
   }, [isScanning, activeCameraId]);
@@ -208,7 +224,10 @@ export function UniversalQRScanner({
   };
 
   const handleResetTarget = () => {
+    cooldownTimersRef.current.forEach(clearTimeout);
+    cooldownTimersRef.current = [];
     lastScannedCodeRef.current = null;
+    scannedHistorySetRef.current.clear();
     setLastScannedDisplay(null);
   };
 
@@ -225,6 +244,13 @@ export function UniversalQRScanner({
         const clean = result.trim();
         lastScannedCodeRef.current = clean;
         scannedHistorySetRef.current.add(clean);
+        const timer = setTimeout(() => {
+          scannedHistorySetRef.current.delete(clean);
+          if (lastScannedCodeRef.current === clean) {
+            lastScannedCodeRef.current = null;
+          }
+        }, 2500);
+        cooldownTimersRef.current.push(timer);
         setLastScannedDisplay(clean);
         playBeep();
         onScanSuccess(clean);

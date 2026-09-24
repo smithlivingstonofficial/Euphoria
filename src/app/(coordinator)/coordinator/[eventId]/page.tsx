@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import {
   getEventAttendeesForCoordinator,
   getEventStaffDetails,
+  getEventScannerControlForCoordinatorAction,
 } from "@/actions/coordinator";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
@@ -14,10 +15,11 @@ export default async function CoordinatorEventRosterPage({
 }: {
   params: { eventId: string };
 }) {
-  // Concurrently fetch event roster and staff details in parallel (reduces TTFB by ~50%)
-  const [data, staffRes] = await Promise.all([
+  // Concurrently fetch event roster, staff details, and live scanner control in parallel (1 single server pass)
+  const [data, staffRes, scannerCtrlRes] = await Promise.all([
     getEventAttendeesForCoordinator(params.eventId),
     getEventStaffDetails(params.eventId),
+    getEventScannerControlForCoordinatorAction(params.eventId),
   ]);
 
   if (!data.success || !data.event) {
@@ -77,6 +79,10 @@ export default async function CoordinatorEventRosterPage({
           initialTotalCount={data.totalCount ?? 0}
           initialAttendedCount={data.attendedCount ?? 0}
           staffDetails={staffDetails}
+          initialScannerControl={scannerCtrlRes?.control || null}
+          initialMasterScannerEnabled={scannerCtrlRes?.masterScannerEnabled !== false}
+          initialSectionCounts={scannerCtrlRes?.sectionCounts || {}}
+          initialCanStaffSwitch={Boolean(scannerCtrlRes?.canStaffSwitch)}
         />
       </main>
 

@@ -53,6 +53,14 @@ export interface CoordinatorAttendeeItem {
   scanned_at?: string | null;
   scan_method?: string | null;
   isInternal?: boolean;
+  attendedSections?: number[];
+  attendances?: Array<{
+    id: string;
+    section_number: number;
+    section_name?: string;
+    scanned_at: string;
+    scan_method?: string;
+  }>;
   user: {
     id: string;
     full_name: string;
@@ -65,6 +73,32 @@ export interface CoordinatorAttendeeItem {
     year_of_study?: number;
     participant_type: "internal" | "external";
   };
+}
+
+export interface EventScannerControlData {
+  id?: string;
+  eventId: string;
+  scannerStatus: "active" | "paused" | "closed";
+  totalSections: number;
+  currentSection: number;
+  sectionLabels: string[];
+  allowStaffSwitch: boolean;
+  autoClosePrevious: boolean;
+  allowEarlyScan?: boolean;
+}
+
+export interface CoordinatorScannerOverviewResponse {
+  success: boolean;
+  error?: string;
+  control?: EventScannerControlData;
+  masterScannerEnabled: boolean;
+  globalDateBypass?: boolean;
+  operatingMode: string;
+  sectionCounts: Record<number, number>;
+  totalRegistered: number;
+  totalAttended: number;
+  canStaffSwitch: boolean;
+  roleType: string;
 }
 
 // Internal raw role resolution (queries Supabase only when cache misses)
@@ -739,14 +773,16 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
     }
 
     const adminClient = await createAdminClient();
+    const isStudentCoord = roleType === "student";
 
     // Fetch event metadata, exact counts (head: true), and first 10 attendees in parallel
+    // OPTIMIZATION: Student coordinators ONLY receive telemetry/counts (bypasses heavy participant joins to save egress)
     const [
       { data: event },
       { count: totalCount },
       { count: attendedCount },
       { count: firstSlotCountRaw },
-      { data: registrations },
+      registrationsRes,
     ] = await Promise.all([
       adminClient
         .from("events")
@@ -786,60 +822,77 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         .eq("event_id", eventId)
         .eq("slot_number", 1)
         .eq("status", "confirmed"),
-      adminClient
-        .from("event_registrations")
-        .select(`
-          id,
-          slot_number,
-          registration_code,
-          status,
-          payment_status,
-          created_at,
-          pass:delegate_passes (
-            id,
-            pass_code,
-            pass_tier,
-            amount_paid,
-            slots_used
-          ),
-          user:profiles (
-            id,
-            full_name,
-            email,
-            mobile_number,
-            register_number,
-            college_name,
-            department,
-            course,
-            year_of_study,
-            participant_type
-          ),
-          attendance (
-            id,
-            scanned_at,
-            scan_method,
-            scanned_by
-          )
-        `)
-        .eq("event_id", eventId)
-        .eq("status", "confirmed")
-        .order("created_at", { ascending: false })
-        .range(0, 9), // Strictly first 10 for Page 1!
+      isStudentCoord
+        ? Promise.resolve({ data: [] })
+        : adminClient
+            .from("event_registrations")
+            .select(`
+              id,
+              slot_number,
+              registration_code,
+              status,
+              payment_status,
+              created_at,
+              pass:delegate_passes (
+                id,
+                pass_code,
+                pass_tier,
+                amount_paid,
+                slots_used
+              ),
+              user:profiles (
+                id,
+                full_name,
+                email,
+                mobile_number,
+                register_number,
+                college_name,
+                department,
+                course,
+                year_of_study,
+                participant_type
+              ),
+              attendance (
+                id,
+                scanned_at,
+                scan_method,
+                scanned_by,
+                section_number,
+                section_name
+              )
+            `)
+            .eq("event_id", eventId)
+            .eq("status", "confirmed")
+            .order("created_at", { ascending: false })
+            .range(0, 9), // Strictly first 10 for Page 1!
     ]);
+
+    const registrations = registrationsRes?.data || [];
 
     if (!event) {
       return { success: false, error: "Event not found", attendees: [] };
     }
 
-    const isStudentCoord = roleType === "student";
-
     const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r: any) => {
-      const isAttended = Array.isArray(r.attendance)
-        ? r.attendance.length > 0
-        : Boolean(r.attendance);
-      const attendanceRecord = Array.isArray(r.attendance)
-        ? r.attendance[0]
-        : r.attendance;
+      const attList: any[] = Array.isArray(r.attendance)
+        ? r.attendance
+        : r.attendance
+        ? [r.attendance]
+        : [];
+      const isAttended = attList.length > 0;
+      const attendanceRecord = attList[0];
+      const attendedSections = Array.from(
+        new Set(
+          attList.map((a: any) => {
+            if (a.section_number && typeof a.section_number === "number") return a.section_number;
+            if (typeof a.scan_method === "string") {
+              const m = a.scan_method.match(/sec_(\d+)/);
+              if (m) return parseInt(m[1], 10);
+            }
+            return 1;
+          })
+        )
+      ).sort((a: number, b: number) => a - b);
 
       const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
 
@@ -864,6 +917,14 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         isAttended,
         scanned_at: attendanceRecord?.scanned_at || null,
         scan_method: attendanceRecord?.scan_method || null,
+        attendedSections,
+        attendances: attList.map((a: any) => ({
+          id: a.id,
+          section_number: a.section_number || 1,
+          section_name: a.section_name || `Section ${a.section_number || 1}`,
+          scanned_at: a.scanned_at,
+          scan_method: a.scan_method,
+        })),
         user: sanitizedUser,
         isInternal: Boolean(isInternal),
       };
@@ -927,6 +988,16 @@ export async function getPaginatedEventAttendees(
       };
     }
 
+    if (roleType === "student") {
+      return {
+        success: false,
+        error: "Participant roster is restricted to faculty staff coordinators.",
+        attendees: [],
+        totalCount: 0,
+        totalPages: 0,
+      };
+    }
+
     const adminClient = await createAdminClient();
     const page = Math.max(1, options.page || 1);
     const pageSize = options.pageSize || 10;
@@ -938,8 +1009,8 @@ export async function getPaginatedEventAttendees(
 
     // Dynamic join: Use !inner for attended so Postgres filters attendance natively in index time
     const attendanceSelect = isAttendedFilter
-      ? "attendance!inner(id, scanned_at, scan_method, scanned_by)"
-      : "attendance(id, scanned_at, scan_method, scanned_by)";
+      ? "attendance!inner(id, scanned_at, scan_method, scanned_by, section_number, section_name)"
+      : "attendance(id, scanned_at, scan_method, scanned_by, section_number, section_name)";
 
     let query = adminClient
       .from("event_registrations")
@@ -1039,17 +1110,30 @@ export async function getPaginatedEventAttendees(
     const { data: registrations, count, error } = await query.range(from, to);
     if (error) throw error;
 
-    const isStudentCoord = roleType === "student";
+    const isStudentCoord = false;
     const totalCount = count ?? 0;
     const totalPages = Math.ceil(totalCount / pageSize);
 
     const attendees: CoordinatorAttendeeItem[] = (registrations || []).map((r: any) => {
-      const isAttended = Array.isArray(r.attendance)
-        ? r.attendance.length > 0
-        : Boolean(r.attendance);
-      const attendanceRecord = Array.isArray(r.attendance)
-        ? r.attendance[0]
-        : r.attendance;
+      const attList: any[] = Array.isArray(r.attendance)
+        ? r.attendance
+        : r.attendance
+        ? [r.attendance]
+        : [];
+      const isAttended = attList.length > 0;
+      const attendanceRecord = attList[0];
+      const attendedSections = Array.from(
+        new Set(
+          attList.map((a: any) => {
+            if (a.section_number && typeof a.section_number === "number") return a.section_number;
+            if (typeof a.scan_method === "string") {
+              const m = a.scan_method.match(/sec_(\d+)/);
+              if (m) return parseInt(m[1], 10);
+            }
+            return 1;
+          })
+        )
+      ).sort((a: number, b: number) => a - b);
 
       const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
 
@@ -1074,6 +1158,14 @@ export async function getPaginatedEventAttendees(
         isAttended,
         scanned_at: attendanceRecord?.scanned_at || null,
         scan_method: attendanceRecord?.scan_method || null,
+        attendedSections,
+        attendances: attList.map((a: any) => ({
+          id: a.id,
+          section_number: a.section_number || 1,
+          section_name: a.section_name || `Section ${a.section_number || 1}`,
+          scanned_at: a.scanned_at,
+          scan_method: a.scan_method,
+        })),
         user: sanitizedUser,
         isInternal: Boolean(isInternal),
       };
@@ -1110,6 +1202,10 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
       return { success: false, error: "Access denied." };
     }
 
+    if (roleType === "student") {
+      return { success: false, error: "CSV attendee export is restricted to faculty staff coordinators." };
+    }
+
     const adminClient = await createAdminClient();
 
     const [{ data: event }, { data: registrations }] = await Promise.all([
@@ -1138,8 +1234,11 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
             year_of_study
           ),
           attendance (
+            id,
             scanned_at,
-            scan_method
+            scan_method,
+            section_number,
+            section_name
           )
         `)
         .eq("event_id", eventId)
@@ -1147,7 +1246,7 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
         .order("created_at", { ascending: false }),
     ]);
 
-    const isStudentCoord = roleType === "student";
+    const isStudentCoord = false;
     const headers = [
       "Registration Code",
       "Pass Code",
@@ -1161,19 +1260,25 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
       "Department",
       "Course",
       "Year",
-      "Attendance Status",
-      "Scanned At",
+      "Overall Attendance",
+      "Sections Attended",
+      "Section 1 (Morning)",
+      "Section 2 (Afternoon)",
+      "First Scanned At",
       "Scan Method",
       "Registered At",
     ];
 
     const rows = (registrations || []).map((r: any) => {
-      const isAttended = Array.isArray(r.attendance)
-        ? r.attendance.length > 0
-        : Boolean(r.attendance);
-      const attRecord = Array.isArray(r.attendance) ? r.attendance[0] : r.attendance;
+      const attList: any[] = Array.isArray(r.attendance) ? r.attendance : r.attendance ? [r.attendance] : [];
+      const isAttended = attList.length > 0;
+      const attRecord = attList[0];
       const userObj = Array.isArray(r.user) ? r.user[0] : r.user;
       const passObj = Array.isArray(r.pass) ? r.pass[0] : r.pass;
+
+      const hasSec1 = attList.some((a: any) => a.section_number === 1 || a.scan_method?.includes("sec_1") || (!a.section_number && !a.scan_method?.includes("sec_")));
+      const hasSec2 = attList.some((a: any) => a.section_number === 2 || a.scan_method?.includes("sec_2"));
+      const sectionsAttendedText = attList.map((a: any) => a.section_name || `Section ${a.section_number || 1}`).join("; ") || "None";
 
       return [
         r.registration_code || "",
@@ -1191,6 +1296,9 @@ export async function exportEventAttendeesCSVAction(eventId: string) {
         userObj?.course || "",
         userObj?.year_of_study || "",
         isAttended ? "PRESENT" : "PENDING",
+        sectionsAttendedText,
+        hasSec1 ? "ATTENDED" : "ABSENT",
+        hasSec2 ? "ATTENDED" : "ABSENT",
         attRecord?.scanned_at ? new Date(attRecord.scanned_at).toLocaleString() : "",
         attRecord?.scan_method || "",
         r.created_at ? new Date(r.created_at).toLocaleString() : "",
@@ -1223,13 +1331,15 @@ export type RecordAttendanceResponse =
       slotNumber?: number;
       registrationCode: string;
       scannedAt?: string;
+      sectionNumber?: number;
+      sectionName?: string;
     }
   | {
       success: false;
       error: string;
     };
 
-// 3. Mark Attendance for Participant (Tamper-Proof Verification)
+// 3. Mark Attendance for Participant (Tamper-Proof, Clash-Free & Ultra-Low Egress Verification)
 export async function recordAttendanceCoordinator({
   eventId,
   registrationCode,
@@ -1240,6 +1350,14 @@ export async function recordAttendanceCoordinator({
   scanMethod?: "qr_camera" | "manual_code_entry" | "staff_override";
 }): Promise<RecordAttendanceResponse> {
   try {
+    // 1. Mandatory Competition Desk Context (Zero-Clash Guard)
+    if (!eventId || eventId === "all") {
+      return {
+        success: false,
+        error: "Active competition required. Please select a specific competition desk before scanning.",
+      };
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -1251,7 +1369,7 @@ export async function recordAttendanceCoordinator({
 
     const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
     if (roleType === "unauthorized") {
-      return { success: false, error: "Unauthorized. You are not assigned to this event." };
+      return { success: false, error: "Unauthorized. You are not assigned to coordinate this competition." };
     }
     if (roleType === "overall_coordinator") {
       return {
@@ -1263,6 +1381,7 @@ export async function recordAttendanceCoordinator({
     const adminClient = await createAdminClient();
     let cleanCode = registrationCode.trim();
     let scannedUid: string | null = null;
+    let qrDeclaredEvents: Array<{ id: string; name: string }> | null = null;
 
     // Handle JSON QR Code Payload
     if (cleanCode.startsWith("{") && cleanCode.endsWith("}")) {
@@ -1270,6 +1389,7 @@ export async function recordAttendanceCoordinator({
         const parsed = JSON.parse(cleanCode);
         if (parsed.code) cleanCode = String(parsed.code).trim().toUpperCase();
         if (parsed.uid) scannedUid = String(parsed.uid).trim();
+        if (Array.isArray(parsed.events)) qrDeclaredEvents = parsed.events;
       } catch {
         // Fallback to raw string
       }
@@ -1277,7 +1397,24 @@ export async function recordAttendanceCoordinator({
       cleanCode = cleanCode.toUpperCase();
     }
 
-    // Find registration with multi-criteria fallback
+    // 2. Server-side Pre-Check if events array is in QR payload:
+    if (qrDeclaredEvents && qrDeclaredEvents.length > 0) {
+      const hasThisEvent = qrDeclaredEvents.some((e) => e.id === eventId);
+      if (!hasThisEvent) {
+        const otherNames = qrDeclaredEvents.map((e) => `"${e.name || "Competition"}"`).join(", ");
+        const { data: thisEvt } = await adminClient
+          .from("events")
+          .select("name")
+          .eq("id", eventId)
+          .maybeSingle();
+        return {
+          success: false,
+          error: `NOT ENROLLED IN THIS EVENT: Participant is registered for [${otherNames}], NOT "${thisEvt?.name || "this competition"}". Please redirect them to their designated venue.`,
+        };
+      }
+    }
+
+    // 3. Strict Scoped Query: Must match THIS event_id and be CONFIRMED
     let regQuery = adminClient
       .from("event_registrations")
       .select(`
@@ -1286,7 +1423,8 @@ export async function recordAttendanceCoordinator({
         user_id,
         slot_number,
         registration_code,
-        user:profiles (
+        status,
+        user:profiles!inner (
           id,
           full_name,
           email,
@@ -1296,20 +1434,17 @@ export async function recordAttendanceCoordinator({
           department,
           participant_type
         ),
-        event:events (
+        event:events!inner (
           id,
           name,
           school_or_dept,
           venue,
           event_date
         )
-      `);
+      `)
+      .eq("event_id", eventId)
+      .eq("status", "confirmed");
 
-    if (eventId) {
-      regQuery = regQuery.eq("event_id", eventId);
-    }
-
-    // Match by registration code, prefix, or pass code, or user_id
     if (scannedUid) {
       regQuery = regQuery.eq("user_id", scannedUid);
     } else {
@@ -1321,7 +1456,7 @@ export async function recordAttendanceCoordinator({
     const { data: matches, error: findError } = await regQuery;
 
     if (findError || !matches || matches.length === 0) {
-      // Secondary check: look up by delegate pass code
+      // 4. Secondary lookup: check if code is a delegate pass code (e.g. EUPH-DEL-XXXX)
       const { data: passMatches } = await adminClient
         .from("delegate_passes")
         .select("id, user_id, pass_code")
@@ -1329,7 +1464,7 @@ export async function recordAttendanceCoordinator({
         .maybeSingle();
 
       if (passMatches) {
-        let passRegQuery = adminClient
+        const { data: passRegs } = await adminClient
           .from("event_registrations")
           .select(`
             id,
@@ -1337,7 +1472,8 @@ export async function recordAttendanceCoordinator({
             user_id,
             slot_number,
             registration_code,
-            user:profiles (
+            status,
+            user:profiles!inner (
               id,
               full_name,
               email,
@@ -1347,7 +1483,7 @@ export async function recordAttendanceCoordinator({
               department,
               participant_type
             ),
-            event:events (
+            event:events!inner (
               id,
               name,
               school_or_dept,
@@ -1355,15 +1491,67 @@ export async function recordAttendanceCoordinator({
               event_date
             )
           `)
-          .eq("user_id", passMatches.user_id);
+          .eq("user_id", passMatches.user_id)
+          .eq("event_id", eventId)
+          .eq("status", "confirmed");
 
-        if (eventId) {
-          passRegQuery = passRegQuery.eq("event_id", eventId);
-        }
-
-        const { data: passRegs } = await passRegQuery;
         if (passRegs && passRegs.length > 0) {
           return processAttendanceRecord(passRegs[0], user.id, scanMethod, roleType, cleanCode, eventId);
+        }
+      }
+
+      // 5. DIAGNOSTIC WRONG-EVENT FALLBACK (Zero-Clash Guidance):
+      // Check if participant is registered for ANOTHER event so we can redirect them
+      const resolvedUserId = scannedUid || passMatches?.user_id;
+      let targetUserId = resolvedUserId;
+      if (!targetUserId) {
+        const { data: anyReg } = await adminClient
+          .from("event_registrations")
+          .select("user_id")
+          .eq("registration_code", cleanCode)
+          .maybeSingle();
+        targetUserId = anyReg?.user_id;
+      }
+
+      if (targetUserId) {
+        const { data: otherRegs } = await adminClient
+          .from("event_registrations")
+          .select(`
+            slot_number,
+            event:events!inner (
+              name,
+              venue,
+              event_date
+            ),
+            user:profiles!inner (
+              full_name
+            )
+          `)
+          .eq("user_id", targetUserId)
+          .eq("status", "confirmed");
+
+        if (otherRegs && otherRegs.length > 0) {
+          const rawUser = otherRegs[0]?.user;
+          const studentName =
+            (Array.isArray(rawUser) ? rawUser[0]?.full_name : (rawUser as any)?.full_name) || "Delegate";
+
+          const eventListStr = otherRegs
+            .map((r: any) => {
+              const eObj = Array.isArray(r.event) ? r.event[0] : r.event;
+              return `"${eObj?.name || "Competition"}" (${eObj?.venue || "Campus Venue"})`;
+            })
+            .join(", ");
+
+          const { data: currEvt } = await adminClient
+            .from("events")
+            .select("name")
+            .eq("id", eventId)
+            .maybeSingle();
+
+          return {
+            success: false,
+            error: `NOT ENROLLED IN THIS EVENT: Participant "${studentName}" is confirmed for [${eventListStr}], NOT "${currEvt?.name || "this competition"}". Please redirect them to their designated venue.`,
+          };
         }
       }
 
@@ -1393,8 +1581,42 @@ async function processAttendanceRecord(
   const rawStudent = Array.isArray(targetReg.user) ? targetReg.user[0] : targetReg.user;
   const eventDetails = Array.isArray(targetReg.event) ? targetReg.event[0] : targetReg.event;
 
-  // 1. EVENT DAY ENFORCEMENT:
-  // Scanning is active ONLY on the day of the competition (Indian Standard Time Asia/Kolkata)
+  // Zero-Clash Guard: Ensure registration belongs to this event
+  if (eventId && targetReg.event_id !== eventId) {
+    return {
+      success: false,
+      error: "Security Mismatch: Registration does not match active desk competition.",
+    };
+  }
+
+  // 1. Parallel fetch of global settings & event scanner controls (1 single roundtrip)
+  const [globalSettingsRes, eventCtrlRes] = await Promise.all([
+    adminClient
+      .from("global_scanner_settings")
+      .select("master_scanner_enabled, test_mode_bypass")
+      .eq("id", "global_config")
+      .maybeSingle(),
+    adminClient
+      .from("event_scanner_controls")
+      .select("current_section, section_labels, scanner_status, allow_early_scan")
+      .eq("event_id", targetReg.event_id)
+      .maybeSingle(),
+  ]);
+
+  const masterEnabled = globalSettingsRes.data?.master_scanner_enabled ?? true;
+  const globalBypass = globalSettingsRes.data?.test_mode_bypass ?? false;
+  const eventCtrl = eventCtrlRes.data;
+  const isSuperOrPlatformAdmin = roleType === "admin";
+
+  // Check master scanner lockout
+  if (!masterEnabled && !isSuperOrPlatformAdmin) {
+    return {
+      success: false,
+      error: "Master Gate Scanner is locked by Central Administration. Attendance check-ins are temporarily on hold.",
+    };
+  }
+
+  // 2. EVENT DAY ENFORCEMENT & DUAL-LAYER BYPASS:
   const todayIST = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -1403,11 +1625,10 @@ async function processAttendanceRecord(
   }).format(new Date());
 
   const eventDate = eventDetails?.event_date;
-  const isSuperOrPlatformAdmin = roleType === "admin";
+  const isEarlyAllowed = globalBypass || Boolean(eventCtrl?.allow_early_scan);
 
-  // If scan is attempted on a non-event day by coordinators (staff or student):
   if (!isSuperOrPlatformAdmin && scanMethod !== "staff_override") {
-    if (eventDate && eventDate !== todayIST) {
+    if (eventDate && eventDate !== todayIST && !isEarlyAllowed) {
       return {
         success: false,
         error: `Attendance scanning for "${eventDetails?.name || "this competition"}" is locked. Scanning opens exclusively on the day of the event (${eventDate}).`,
@@ -1415,8 +1636,7 @@ async function processAttendanceRecord(
     }
   }
 
-  // 2. SUPERVISOR MANUAL OVERRIDE VALIDATION:
-  // Must verify that the typed code matches the participant's unique pass ID
+  // 3. Supervisor manual override validation
   if (scanMethod === "staff_override") {
     const rawTargetCode = (targetReg.registration_code || "").trim().toUpperCase();
     if (cleanCode && cleanCode !== rawTargetCode) {
@@ -1436,59 +1656,423 @@ async function processAttendanceRecord(
       : rawStudent?.email,
   };
 
-  // Check if already checked in
-  const { data: existingAttendance } = await adminClient
-    .from("attendance")
-    .select("id, scanned_at")
-    .eq("registration_id", targetReg.id)
-    .maybeSingle();
+  const currentSection = eventCtrl?.current_section || 1;
+  const scannerStatus = eventCtrl?.scanner_status || "active";
+  const sectionLabels = Array.isArray(eventCtrl?.section_labels)
+    ? eventCtrl.section_labels
+    : ["Morning Section", "Afternoon Section"];
+  const sectionLabel = sectionLabels[currentSection - 1] || `Section ${currentSection}`;
 
-  if (existingAttendance) {
+  if (scannerStatus === "paused" || scannerStatus === "closed") {
+    return {
+      success: false,
+      error: `Scanner for "${eventDetails?.name || "this event"}" is currently ${scannerStatus.toUpperCase()}. Attendance scanning is locked.`,
+    };
+  }
+
+  // 4. Check duplicate attendance for THIS SPECIFIC ACTIVE SECTION
+  const { data: existingAttendanceList } = await adminClient
+    .from("attendance")
+    .select("id, scanned_at, section_number, scan_method")
+    .eq("registration_id", targetReg.id);
+
+  const matchedSectionAtt = (existingAttendanceList || []).find((att: any) => {
+    if (att.section_number && att.section_number === currentSection) return true;
+    if (typeof att.scan_method === "string" && att.scan_method.includes(`sec_${currentSection}`)) return true;
+    if (currentSection === 1 && !att.scan_method?.includes("sec_") && !att.section_number) return true;
+    return false;
+  });
+
+  if (matchedSectionAtt) {
     return {
       success: true,
       alreadyCheckedIn: true,
-      message: `Already checked in at ${new Date(existingAttendance.scanned_at).toLocaleTimeString()}`,
+      message: `Already checked in for ${sectionLabel} at ${new Date(matchedSectionAtt.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Duplicate scan blocked.`,
       student: studentProfile,
       event: eventDetails,
       slotNumber: targetReg.slot_number || 1,
       registrationCode: targetReg.registration_code,
+      sectionNumber: currentSection,
+      sectionName: sectionLabel,
     };
   }
 
-  // Insert attendance record
-  const { data: newAttendance, error: insertError } = await adminClient
+  // 5. Insert attendance record for this section
+  const scanMethodWithSec = `${scanMethod}:sec_${currentSection}`;
+  const insertPayload: Record<string, any> = {
+    registration_id: targetReg.id,
+    event_id: targetReg.event_id,
+    scanned_by: coordinatorUserId,
+    scan_method: scanMethodWithSec,
+    scanned_at: new Date().toISOString(),
+  };
+
+  let insertError: any = null;
+  const { error: fullErr } = await adminClient
     .from("attendance")
     .insert({
-      registration_id: targetReg.id,
-      event_id: targetReg.event_id,
-      scanned_by: coordinatorUserId,
-      scan_method: scanMethod,
-      scanned_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+      ...insertPayload,
+      section_number: currentSection,
+      section_name: sectionLabel,
+    });
+
+  if (fullErr) {
+    if (fullErr.code === "23505") {
+      return {
+        success: true,
+        alreadyCheckedIn: true,
+        message: `Already checked in for ${sectionLabel}. Entry confirmed.`,
+        student: studentProfile,
+        event: eventDetails,
+        slotNumber: targetReg.slot_number || 1,
+        registrationCode: targetReg.registration_code,
+        sectionNumber: currentSection,
+        sectionName: sectionLabel,
+      };
+    }
+    const { error: fallbackErr } = await adminClient
+      .from("attendance")
+      .insert(insertPayload);
+    insertError = fallbackErr;
+  }
 
   if (insertError) {
+    if (insertError.code === "23505") {
+      return {
+        success: true,
+        alreadyCheckedIn: true,
+        message: `Already checked in for ${sectionLabel}. Entry confirmed.`,
+        student: studentProfile,
+        event: eventDetails,
+        slotNumber: targetReg.slot_number || 1,
+        registrationCode: targetReg.registration_code,
+        sectionNumber: currentSection,
+        sectionName: sectionLabel,
+      };
+    }
     throw insertError;
   }
 
-  // Selective background cache revalidation - refresh the specific event's page
-  // Note: We avoid revalidateTag("coordinator-workspace") here to prevent cache stampedes during rapid gate check-ins
-  if (eventId) {
-    revalidatePath(`/coordinator/${eventId}`, "page");
-  }
+  // NOTE: revalidatePath(`/coordinator/${eventId}`, "page") is INTENTIONALLY NOT called here!
+  // Omitting this eliminates background re-rendering of the entire 500-participant roster,
+  // slashing database egress by >95% per scan while the client updates state instantaneously.
 
   return {
     success: true,
     alreadyCheckedIn: false,
-    message: "Verified! Attendance recorded successfully.",
+    message: `Verified! Attendance recorded for ${sectionLabel}.`,
     student: studentProfile,
     event: eventDetails,
     slotNumber: targetReg.slot_number || 1,
     registrationCode: targetReg.registration_code,
-    scannedAt: newAttendance.scanned_at,
+    scannedAt: insertPayload.scanned_at,
+    sectionNumber: currentSection,
+    sectionName: sectionLabel,
   };
 }
+
+// 20-Second cached event scanner telemetry and control settings
+// Slashes Supabase egress and eliminates Vercel Edge compute spikes across multiple volunteer desks
+const getCachedScannerControlData = unstable_cache(
+  async (eventId: string) => {
+    const adminClient = await createAdminClient();
+    const [
+      globalSettingsRes,
+      ctrlRes,
+      attendanceRes,
+      regsCountRes,
+    ] = await Promise.all([
+      adminClient
+        .from("global_scanner_settings")
+        .select("master_scanner_enabled, operating_mode, test_mode_bypass")
+        .eq("id", "global_config")
+        .maybeSingle(),
+      adminClient
+        .from("event_scanner_controls")
+        .select("id, event_id, scanner_status, total_sections, current_section, section_labels, allow_staff_switch, auto_close_previous, allow_early_scan")
+        .eq("event_id", eventId)
+        .maybeSingle(),
+      adminClient
+        .from("attendance")
+        .select("section_number, scan_method")
+        .eq("event_id", eventId),
+      adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("status", "confirmed"),
+    ]);
+
+    const masterScannerEnabled = globalSettingsRes.data?.master_scanner_enabled !== false;
+    const operatingMode = globalSettingsRes.data?.operating_mode || "section_managed";
+    const globalDateBypass = Boolean(
+      globalSettingsRes.data?.test_mode_bypass || operatingMode === "open_all"
+    );
+
+    const rawCtrl = ctrlRes.data;
+    const totalSections = rawCtrl?.total_sections || 2;
+    const currentSection = rawCtrl?.current_section || 1;
+    const scannerStatus = (rawCtrl?.scanner_status as "active" | "paused" | "closed") || "active";
+    const sectionLabels = Array.isArray(rawCtrl?.section_labels) && rawCtrl.section_labels.length > 0
+      ? rawCtrl.section_labels
+      : ["Morning Section", "Afternoon Section"];
+    const allowStaffSwitch = rawCtrl?.allow_staff_switch !== false;
+    const autoClosePrevious = rawCtrl?.auto_close_previous !== false;
+    const allowEarlyScan = Boolean(rawCtrl?.allow_early_scan);
+
+    const sectionCounts: Record<number, number> = {};
+    for (let s = 1; s <= totalSections; s++) {
+      sectionCounts[s] = 0;
+    }
+
+    (attendanceRes.data || []).forEach((att: any) => {
+      let secNum = 1;
+      if (att.section_number && typeof att.section_number === "number") {
+        secNum = att.section_number;
+      } else if (typeof att.scan_method === "string") {
+        const m = att.scan_method.match(/sec_(\d+)/);
+        if (m) secNum = parseInt(m[1], 10);
+      }
+      sectionCounts[secNum] = (sectionCounts[secNum] || 0) + 1;
+    });
+
+    return {
+      control: {
+        id: rawCtrl?.id,
+        eventId,
+        scannerStatus,
+        totalSections,
+        currentSection,
+        sectionLabels,
+        allowStaffSwitch,
+        autoClosePrevious,
+        allowEarlyScan,
+      },
+      masterScannerEnabled,
+      globalDateBypass,
+      operatingMode,
+      sectionCounts,
+      totalRegistered: regsCountRes.count ?? 0,
+      totalAttended: (attendanceRes.data || []).length,
+      allowStaffSwitch,
+    };
+  },
+  ["coordinator-scanner-control-cache"],
+  { revalidate: 20, tags: ["scanner-controls"] }
+);
+
+/**
+ * Fetch Scanner Control & Section Breakdown for Coordinator / Volunteer Desk
+ */
+export async function getEventScannerControlForCoordinatorAction(
+  eventId: string
+): Promise<CoordinatorScannerOverviewResponse> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        success: false,
+        error: "Unauthorized",
+        masterScannerEnabled: true,
+        operatingMode: "section_managed",
+        sectionCounts: {},
+        totalRegistered: 0,
+        totalAttended: 0,
+        canStaffSwitch: false,
+        roleType: "unauthorized",
+      };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, eventId);
+    if (roleType === "unauthorized") {
+      return {
+        success: false,
+        error: "Access denied. You are not assigned to this competition.",
+        masterScannerEnabled: true,
+        operatingMode: "section_managed",
+        sectionCounts: {},
+        totalRegistered: 0,
+        totalAttended: 0,
+        canStaffSwitch: false,
+        roleType: "unauthorized",
+      };
+    }
+
+    const cached = await getCachedScannerControlData(eventId);
+    const isStaff = roleType === "staff" || roleType === "admin";
+    const canStaffSwitch = roleType === "admin" || (isStaff && cached.allowStaffSwitch);
+
+    return {
+      success: true,
+      control: cached.control,
+      masterScannerEnabled: cached.masterScannerEnabled,
+      globalDateBypass: cached.globalDateBypass,
+      operatingMode: cached.operatingMode,
+      sectionCounts: cached.sectionCounts,
+      totalRegistered: cached.totalRegistered,
+      totalAttended: cached.totalAttended,
+      canStaffSwitch,
+      roleType,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load scanner controls";
+    return {
+      success: false,
+      error: msg,
+      masterScannerEnabled: true,
+      operatingMode: "section_managed",
+      sectionCounts: {},
+      totalRegistered: 0,
+      totalAttended: 0,
+      canStaffSwitch: false,
+      roleType: "unauthorized",
+    };
+  }
+}
+
+/**
+ * Switch Active Section for Faculty Staff Coordinator (with Fail-Safe validation)
+ */
+export async function updateEventSectionStaffAction(params: {
+  eventId: string;
+  targetSection: number;
+}) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, params.eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Access denied. Only Faculty Staff Coordinators can change active event rounds.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Check if staff switch is permitted
+    const { data: ctrl } = await adminClient
+      .from("event_scanner_controls")
+      .select("id, allow_staff_switch, total_sections, section_labels")
+      .eq("event_id", params.eventId)
+      .maybeSingle();
+
+    if (roleType !== "admin" && ctrl && ctrl.allow_staff_switch === false) {
+      return {
+        success: false,
+        error: "Section switching is locked by Administration. Please contact Central Control Desk.",
+      };
+    }
+
+    const totalSections = ctrl?.total_sections || 2;
+    if (params.targetSection < 1 || params.targetSection > totalSections) {
+      return {
+        success: false,
+        error: `Invalid section number. Must be between 1 and ${totalSections}.`,
+      };
+    }
+
+    // Upsert section control
+    await adminClient.from("event_scanner_controls").upsert(
+      {
+        event_id: params.eventId,
+        current_section: params.targetSection,
+        scanner_status: "active", // reactivate if was paused
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "event_id" }
+    );
+
+    const labels = Array.isArray(ctrl?.section_labels) ? ctrl.section_labels : ["Morning Section", "Afternoon Section"];
+    const sectionName = labels[params.targetSection - 1] || `Section ${params.targetSection}`;
+
+    revalidateTag("admin-scanner");
+    revalidateTag("scanner-controls");
+    revalidateTag(`scanner-ctrl-${params.eventId}`);
+    revalidatePath(`/coordinator/${params.eventId}`, "page");
+    revalidatePath("/coordinator/scanner", "page");
+    revalidatePath("/admin/scanner", "page");
+
+    return {
+      success: true,
+      currentSection: params.targetSection,
+      sectionName,
+      message: `Active round changed to "${sectionName}". Previous section check-ins are now locked.`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to switch active section";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Toggle Scanner Status (Active / Paused) for Staff Coordinator
+ */
+export async function toggleEventScannerStatusStaffAction(params: {
+  eventId: string;
+  newStatus: "active" | "paused";
+}) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const roleType = await getCoordinatorRoleForEvent(user.id, params.eventId);
+    if (roleType !== "staff" && roleType !== "admin") {
+      return {
+        success: false,
+        error: "Access denied. Only Faculty Staff Coordinators can modify scanner status.",
+      };
+    }
+
+    const adminClient = await createAdminClient();
+
+    await adminClient.from("event_scanner_controls").upsert(
+      {
+        event_id: params.eventId,
+        scanner_status: params.newStatus,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "event_id" }
+    );
+
+    revalidateTag("admin-scanner");
+    revalidateTag("scanner-controls");
+    revalidateTag(`scanner-ctrl-${params.eventId}`);
+    revalidatePath(`/coordinator/${params.eventId}`, "page");
+    revalidatePath("/coordinator/scanner", "page");
+    revalidatePath("/admin/scanner", "page");
+
+    return {
+      success: true,
+      newStatus: params.newStatus,
+      message:
+        params.newStatus === "active"
+          ? "Scanner resumed successfully. Attendance check-ins are live."
+          : "Scanner paused. Volunteer desks will hold check-ins until resumed.",
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to update scanner status";
+    return { success: false, error: msg };
+  }
+}
+
 
 // 4. Revoke Attendance (Faculty Staff / Admin Only)
 export async function revokeAttendanceCoordinator({

@@ -26,6 +26,7 @@ import {
   Search,
   X,
   Banknote,
+  Radio,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 import { cn } from "@/lib/utils";
@@ -82,8 +83,15 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/admin/registrations",
         label: "Master Registrations",
         icon: QrCode,
-        badge: "Scanner",
-        badgeColor: "bg-amber-50 text-amber-800 border-amber-200",
+        badge: "Ledger",
+        badgeColor: "bg-slate-100 text-slate-700 border-slate-200",
+      },
+      {
+        href: "/admin/scanner",
+        label: "Scanner & Sections",
+        icon: Radio,
+        badge: "Active",
+        badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       },
       {
         href: "/admin/users",

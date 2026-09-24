@@ -14,6 +14,10 @@ import {
   getPaginatedEventAttendees,
   exportEventAttendeesCSVAction,
   CoordinatorAttendeeItem,
+  getEventScannerControlForCoordinatorAction,
+  EventScannerControlData,
+  updateEventSectionStaffAction,
+  toggleEventScannerStatusStaffAction,
 } from "@/actions/coordinator";
 import {
   Search,
@@ -56,6 +60,12 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Globe,
+  Sun,
+  Moon,
+  Layers,
+  Play,
+  Pause,
+  Radio,
 } from "lucide-react";
 import { formatDate, formatTime } from "@/lib/utils";
 import { CustomReportModal } from "@/components/coordinator/custom-report-modal";
@@ -98,6 +108,10 @@ export function EventRosterClient({
   initialTotalCount,
   initialAttendedCount,
   staffDetails,
+  initialScannerControl,
+  initialMasterScannerEnabled,
+  initialSectionCounts,
+  initialCanStaffSwitch,
 }: {
   eventId: string;
   eventName: string;
@@ -122,10 +136,15 @@ export function EventRosterClient({
     studentCoordinators: Array<StudentCoordinator>;
     allProfiles: Array<ProfileItem>;
   } | null;
+  initialScannerControl?: EventScannerControlData | null;
+  initialMasterScannerEnabled?: boolean;
+  initialSectionCounts?: Record<number, number>;
+  initialCanStaffSwitch?: boolean;
 }) {
   const isStaffOrAdmin = roleType === "staff" || roleType === "admin";
   const isAdmin = roleType === "admin";
   const isOverallCoordinator = roleType === "overall_coordinator";
+  const isStudentCoord = roleType === "student";
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"roster" | "controls">("roster");
 
@@ -168,8 +187,8 @@ export function EventRosterClient({
   const initialRulesFormatted = Array.isArray(eventRules)
     ? eventRules.join("\n")
     : typeof eventRules === "string"
-    ? eventRules
-    : "";
+      ? eventRules
+      : "";
   const [savedVenue, setSavedVenue] = useState(eventVenue || "");
   const [venueInput, setVenueInput] = useState(eventVenue || "");
   const [savedBrochureUrl, setSavedBrochureUrl] = useState(staffDetails?.brochureUrl || "");
@@ -268,6 +287,116 @@ export function EventRosterClient({
     }
   };
 
+  // Live Scanner & Round Control State (Pre-hydrated from SSR, zero delay)
+  const [scannerControl, setScannerControl] = useState<EventScannerControlData | null>(
+    initialScannerControl || null
+  );
+  const [masterScannerEnabled, setMasterScannerEnabled] = useState(
+    initialMasterScannerEnabled ?? true
+  );
+  const [sectionCounts, setSectionCounts] = useState<Record<number, number>>(
+    initialSectionCounts || {}
+  );
+  const [canStaffSwitch, setCanStaffSwitch] = useState(
+    initialCanStaffSwitch ?? false
+  );
+  const [isLoadingScannerCtrl, setIsLoadingScannerCtrl] = useState(false);
+  const [isConfirmSectionModalOpen, setIsConfirmSectionModalOpen] = useState(false);
+  const [pendingTargetSection, setPendingTargetSection] = useState<number | null>(null);
+  const [isSwitchingSection, setIsSwitchingSection] = useState(false);
+  const [sectionSwitchError, setSectionSwitchError] = useState<string | null>(null);
+  const [isTogglingScanner, setIsTogglingScanner] = useState(false);
+  const [isConfirmPauseModalOpen, setIsConfirmPauseModalOpen] = useState(false);
+
+  // Sync Scanner Controls & Section Statistics (Passive & Visibility-Aware to prevent Vercel / DB burn)
+  useEffect(() => {
+    let isMounted = true;
+    async function loadScannerData() {
+      if (typeof document !== "undefined" && document.hidden) return;
+      setIsLoadingScannerCtrl(true);
+      try {
+        const res = await getEventScannerControlForCoordinatorAction(eventId);
+        if (isMounted && res.success) {
+          if (res.control) setScannerControl(res.control);
+          setMasterScannerEnabled(res.masterScannerEnabled);
+          setSectionCounts(res.sectionCounts || {});
+          setCanStaffSwitch(res.canStaffSwitch);
+        }
+      } catch (err) {
+        console.error("Failed to load scanner control:", err);
+      } finally {
+        if (isMounted) setIsLoadingScannerCtrl(false);
+      }
+    }
+
+    // Only fetch on client if not already provided via SSR
+    if (!initialScannerControl) {
+      loadScannerData();
+    }
+
+    // Passive gentle 90s interval, strictly paused when tab is hidden
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadScannerData();
+      }
+    }, 90000);
+
+    // Refresh immediately once when the coordinator switches back to this tab
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadScannerData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [eventId, initialScannerControl]);
+
+  const handleExecuteSectionSwitch = async () => {
+    if (!pendingTargetSection) return;
+    setIsSwitchingSection(true);
+    setSectionSwitchError(null);
+    try {
+      const res = await updateEventSectionStaffAction({
+        eventId,
+        targetSection: pendingTargetSection,
+      });
+      if (res.success) {
+        setScannerControl((prev) => (prev ? { ...prev, currentSection: pendingTargetSection } : null));
+        setIsConfirmSectionModalOpen(false);
+        setPendingTargetSection(null);
+      } else {
+        setSectionSwitchError(res.error || "Failed to switch active section.");
+      }
+    } catch (err: any) {
+      setSectionSwitchError(err?.message || "Failed to switch active section.");
+    } finally {
+      setIsSwitchingSection(false);
+    }
+  };
+
+  const handleToggleScannerStatus = async (newStatus: "active" | "paused") => {
+    if (isTogglingScanner) return;
+    setIsTogglingScanner(true);
+    try {
+      const res = await toggleEventScannerStatusStaffAction({
+        eventId,
+        newStatus,
+      });
+      if (res.success) {
+        setScannerControl((prev) => (prev ? { ...prev, scannerStatus: newStatus } : null));
+      }
+    } catch (err) {
+      console.error("Failed to toggle scanner status:", err);
+    } finally {
+      setIsTogglingScanner(false);
+    }
+  };
+
   // Rules Line Counter & Starter Template
   const rulesCount = useMemo(() => {
     return rulesInput
@@ -340,6 +469,7 @@ export function EventRosterClient({
     status: "all" | "attended" | "pending",
     tier: "all" | "pro_pass" | "standard_pass"
   ) => {
+    if (isStudentCoord) return;
     const currentVersion = ++requestVersionRef.current;
     const cacheKey = `${targetPage}_${search.trim()}_${status}_${tier}`;
     if (pageCache.current[cacheKey]) {
@@ -384,6 +514,7 @@ export function EventRosterClient({
 
   // Debounce search and filter updates to trigger page 1 fetch
   useEffect(() => {
+    if (isStudentCoord) return;
     const isDefault = searchQuery === "" && filterTab === "all" && tierFilter === "all" && currentPage === 1;
     if (isDefault) return;
 
@@ -435,11 +566,11 @@ export function EventRosterClient({
         prev.map((a) =>
           a.id === confirmCheckInItem.id
             ? {
-                ...a,
-                isAttended: true,
-                scanned_at: new Date().toISOString(),
-                scan_method: "staff_override",
-              }
+              ...a,
+              isAttended: true,
+              scanned_at: new Date().toISOString(),
+              scan_method: "staff_override",
+            }
             : a
         )
       );
@@ -451,11 +582,11 @@ export function EventRosterClient({
           attendees: pageCache.current[key].attendees.map((a) =>
             a.id === confirmCheckInItem.id
               ? {
-                  ...a,
-                  isAttended: true,
-                  scanned_at: new Date().toISOString(),
-                  scan_method: "staff_override",
-                }
+                ...a,
+                isAttended: true,
+                scanned_at: new Date().toISOString(),
+                scan_method: "staff_override",
+              }
               : a
           ),
         };
@@ -483,11 +614,11 @@ export function EventRosterClient({
         prev.map((a) =>
           a.id === confirmRevokeItem.id
             ? {
-                ...a,
-                isAttended: false,
-                scanned_at: null,
-                scan_method: null,
-              }
+              ...a,
+              isAttended: false,
+              scanned_at: null,
+              scan_method: null,
+            }
             : a
         )
       );
@@ -499,11 +630,11 @@ export function EventRosterClient({
           attendees: pageCache.current[key].attendees.map((a) =>
             a.id === confirmRevokeItem.id
               ? {
-                  ...a,
-                  isAttended: false,
-                  scanned_at: null,
-                  scan_method: null,
-                }
+                ...a,
+                isAttended: false,
+                scanned_at: null,
+                scan_method: null,
+              }
               : a
           ),
         };
@@ -629,9 +760,8 @@ export function EventRosterClient({
       link.setAttribute(
         "download",
         res.filename ||
-          `official_roster_${eventName.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${
-            new Date().toISOString().split("T")[0]
-          }.csv`
+        `official_roster_${eventName.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]
+        }.csv`
       );
       document.body.appendChild(link);
       link.click();
@@ -658,10 +788,10 @@ export function EventRosterClient({
          ========================================== */}
       <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3.5 sm:p-4.5 shadow-xs space-y-3">
         {/* Row 1: Breadcrumb + Header Title & Badges (Left) + Actions & Tabs (Right) */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2.5 border-b border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-3 pb-2.5 border-b border-slate-100">
           {/* Left: Breadcrumb & Title */}
-          <div className="space-y-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="space-y-1 min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
               <Link
                 href="/coordinator"
                 onClick={(e) => {
@@ -676,82 +806,94 @@ export function EventRosterClient({
                 <span>Coordinator Hub</span>
               </Link>
               <span className="text-slate-300">/</span>
-              <span className="inline-flex items-center gap-1 text-slate-600 font-medium truncate max-w-[220px] sm:max-w-none">
+              <span className="inline-flex items-center gap-1 text-slate-600 font-medium truncate max-w-[200px] sm:max-w-none">
                 <Building className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <span>{schoolOrDept || "Event Workspace"}</span>
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-              <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                {eventName}
-              </h1>
+            <div className="flex items-start justify-between gap-2 sm:block">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h1 className="text-base sm:text-xl font-black text-slate-900 tracking-tight">
+                  {eventName}
+                </h1>
 
-              {isLiveToday && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Live Today</span>
-                </span>
-              )}
+                {isLiveToday && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Live Today</span>
+                  </span>
+                )}
 
-              {isProEvent && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 text-[11px] font-bold">
-                  <Sparkles className="h-3 w-3 text-amber-500" />
-                  <span>Flagship Pro</span>
-                </span>
-              )}
+                {isProEvent && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold">
+                    <Sparkles className="h-3 w-3 text-amber-500" />
+                    <span>Flagship Pro</span>
+                  </span>
+                )}
 
-              {roleType === "overall_coordinator" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 text-sky-900 border border-sky-300 px-2.5 py-0.5 text-[11px] font-bold shadow-2xs">
-                  <Globe className="h-3.5 w-3.5 text-sky-600" />
-                  <span>Overall Coordinator (Read-Only)</span>
-                </span>
-              ) : roleType === "admin" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 text-white px-2.5 py-0.5 text-[11px] font-bold shadow-2xs">
-                  <ShieldCheck className="h-3.5 w-3.5 text-slate-300" />
-                  <span>Super Admin</span>
-                </span>
-              ) : roleType === "staff" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-0.5 text-[11px] font-bold">
-                  <ShieldCheck className="h-3.5 w-3.5 text-slate-600" />
-                  <span>Faculty Coordinator</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold">
-                  <GraduationCap className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>Student Coordinator</span>
-                </span>
+                {roleType === "overall_coordinator" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-900 border border-sky-300 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold shadow-2xs">
+                    <Globe className="h-3 w-3 text-sky-600" />
+                    <span>Overall Coordinator</span>
+                  </span>
+                ) : roleType === "admin" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px] sm:text-[11px] font-bold shadow-2xs">
+                    <ShieldCheck className="h-3 w-3 text-slate-300" />
+                    <span>Super Admin</span>
+                  </span>
+                ) : roleType === "staff" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold">
+                    <ShieldCheck className="h-3 w-3 text-slate-600" />
+                    <span>Faculty Coordinator</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold">
+                    <GraduationCap className="h-3 w-3 text-emerald-600" />
+                    <span>Student Coordinator</span>
+                  </span>
+                )}
+              </div>
+
+              {/* On Mobile for student coordinator: Compact Scanner button pinned to top right */}
+              {isStudentCoord && (
+                <div className="sm:hidden shrink-0">
+                  <Link
+                    href={`/coordinator/scanner?event=${eventId}`}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-bold text-xs px-2.5 py-1.5 shadow-2xs border border-slate-200/90 transition-all cursor-pointer"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Scanner</span>
+                  </Link>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Right: Tab Switcher & Scanner CTA (Unified Single-Row Executive Strip) */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 w-full lg:w-auto">
+          {/* Right: Tab Switcher & Scanner CTA (Desktop & Staff Mobile) */}
+          <div className={`items-center gap-1.5 sm:gap-2.5 shrink-0 ${isStudentCoord ? "hidden sm:flex" : "flex w-full sm:w-auto"}`}>
             {/* FACULTY STAFF / ADMIN TOGGLE SWITCHER */}
             {isStaffOrAdmin && (
-              <div className="flex-1 lg:flex-initial grid grid-cols-2 sm:inline-flex items-center rounded-xl bg-slate-200/90 p-1 border border-slate-300 shadow-2xs">
+              <div className="flex-1 sm:flex-initial grid grid-cols-2 sm:inline-flex items-center rounded-xl bg-slate-200/90 p-1 border border-slate-300 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => handleGuardedNavigation(() => setActiveTab("roster"))}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === "roster"
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "roster"
                       ? "bg-white text-slate-950 shadow-xs border border-slate-300/90"
                       : "text-slate-800 hover:text-slate-950 hover:bg-slate-300/50"
-                  }`}
+                    }`}
                 >
                   <Users
-                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                      activeTab === "roster" ? "text-indigo-600" : "text-slate-600"
-                    }`}
+                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${activeTab === "roster" ? "text-indigo-600" : "text-slate-600"
+                      }`}
                   />
                   <span className="hidden sm:inline">Attendee Roster</span>
                   <span className="sm:hidden">Roster</span>
                   <span
-                    className={`ml-0.5 px-1.5 py-0.2 rounded-md text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
-                      activeTab === "roster"
+                    className={`ml-0.5 px-1.5 py-0.2 rounded-md text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${activeTab === "roster"
                         ? "bg-slate-900 text-white shadow-2xs"
                         : "bg-slate-300 text-slate-900 border border-slate-400/50"
-                    }`}
+                      }`}
                   >
                     {totalCount}
                   </span>
@@ -760,16 +902,14 @@ export function EventRosterClient({
                 <button
                   type="button"
                   onClick={() => setActiveTab("controls")}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === "controls"
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${activeTab === "controls"
                       ? "bg-white text-slate-950 shadow-xs border border-slate-300/90"
                       : "text-slate-800 hover:text-slate-950 hover:bg-slate-300/50"
-                  }`}
+                    }`}
                 >
                   <ShieldCheck
-                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                      activeTab === "controls" ? "text-indigo-600" : "text-slate-600"
-                    }`}
+                    className={`h-3.5 w-3.5 shrink-0 transition-colors ${activeTab === "controls" ? "text-indigo-600" : "text-slate-600"
+                      }`}
                   />
                   <span className="hidden sm:inline">Staff &amp; Controls</span>
                   <span className="sm:hidden">Controls</span>
@@ -780,19 +920,19 @@ export function EventRosterClient({
               </div>
             )}
 
-            {/* Direct Link to Camera Scanner or Read-Only Mode Badge */}
+            {/* Direct Link to Camera Scanner (Clean Light Theme) */}
             {!isOverallCoordinator ? (
               <Link
-                href={`/coordinator/scanner?eventId=${eventId}`}
+                href={`/coordinator/scanner?event=${eventId}`}
                 onClick={(e) => {
                   if (hasUnsavedChanges) {
                     e.preventDefault();
-                    handleGuardedNavigation(() => router.push(`/coordinator/scanner?eventId=${eventId}`));
+                    handleGuardedNavigation(() => router.push(`/coordinator/scanner?event=${eventId}`));
                   }
                 }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-bold text-xs px-3 sm:px-4 py-2 shadow-xs transition-all cursor-pointer shrink-0 border border-slate-800"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-bold text-xs px-3 sm:px-4 py-2 shadow-2xs transition-all cursor-pointer shrink-0 border border-slate-200/90 hover:border-slate-300"
               >
-                <Camera className="h-3.5 w-3.5 shrink-0 text-white" />
+                <Camera className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                 <span className="hidden sm:inline">Open Scanner</span>
                 <span className="sm:hidden">Scanner</span>
               </Link>
@@ -898,11 +1038,10 @@ export function EventRosterClient({
                     {attendedCount} Present
                   </span>
                   <span
-                    className={`px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-mono border ${
-                      attendedCount > 0
+                    className={`px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded text-[9px] sm:text-[11px] font-bold font-mono border ${attendedCount > 0
                         ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-2xs"
                         : "bg-emerald-100 text-emerald-800 border-emerald-200"
-                    }`}
+                      }`}
                   >
                     {attendancePct}%
                   </span>
@@ -917,6 +1056,267 @@ export function EventRosterClient({
               />
             </div>
           </div>
+        </div>
+
+        {/* Row 3: Mobile-First Executive Attendance & Scanner Command Hub */}
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/80 via-sky-50/30 to-white p-3 sm:p-4 shadow-xs">
+          {/* Subtle Decorative Ambient Glow */}
+          <div className="absolute -top-12 -right-12 h-36 w-36 rounded-full bg-gradient-to-br from-indigo-400/15 to-sky-400/15 blur-2xl pointer-events-none" />
+
+          {/* Top Status & Quick Action Bar (Mobile Responsive Stack) */}
+          <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 sm:pb-3 border-b border-indigo-100/80">
+            {/* Left: Master Scanner Status */}
+            <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-2.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-sky-600 text-white shadow-xs shadow-indigo-600/30 shrink-0">
+                  <Radio className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
+                </div>
+                <h3 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate">
+                  Attendance Window
+                </h3>
+              </div>
+
+              {/* Status Badge */}
+              <div className="shrink-0">
+                {!masterScannerEnabled ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 px-2 py-0.5 text-[9px] sm:text-[10px] font-extrabold shadow-2xs">
+                    <Lock className="h-2.5 w-2.5 text-rose-600 shrink-0" />
+                    <span>Admin Locked</span>
+                  </span>
+                ) : scannerControl?.scannerStatus === "paused" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-300 text-amber-900 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold shadow-2xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                    <span>Scanner Paused</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-extrabold shadow-2xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>Live Scanning</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Quick Action Buttons (Balanced 2-Button Grid on Mobile) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+              {/* Pause / Resume Scanner Toggle */}
+              {canStaffSwitch && masterScannerEnabled && (
+                <button
+                  type="button"
+                  disabled={isTogglingScanner}
+                  onClick={() => {
+                    if (scannerControl?.scannerStatus === "paused") {
+                      handleToggleScannerStatus("active");
+                    } else {
+                      setIsConfirmPauseModalOpen(true);
+                    }
+                  }}
+                  className={`flex-1 sm:flex-initial h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold transition-all cursor-pointer border shadow-2xs active:scale-95 disabled:opacity-50 ${scannerControl?.scannerStatus === "paused"
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-emerald-600/20"
+                      : "bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300/80"
+                    }`}
+                  title={scannerControl?.scannerStatus === "paused" ? "Resume scanner check-ins" : "Pause scanner check-ins"}
+                >
+                  {scannerControl?.scannerStatus === "paused" ? (
+                    <>
+                      <Play className="h-3.5 w-3.5" />
+                      <span>Resume Scanner</span>
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-3.5 w-3.5 text-amber-600" />
+                      <span>Pause Scanner</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Scanner Desk Link */}
+              {!isOverallCoordinator && (
+                <Link
+                  href={`/coordinator/scanner?event=${eventId}`}
+                  target="_blank"
+                  className="flex-1 sm:flex-initial h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-800 text-xs font-bold px-3 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                  title="Open camera pass scanner in new tab"
+                >
+                  <QrCode className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Scanner Desk</span>
+                  <ExternalLink className="h-3 w-3 text-slate-400" />
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Section Pipeline Cards (Mobile-Optimized 2-Column Grid) */}
+          {scannerControl && scannerControl.totalSections > 1 ? (
+            <div
+              className={`relative grid gap-2 sm:gap-3 pt-2.5 sm:pt-3 ${scannerControl.totalSections === 2
+                  ? "grid-cols-2"
+                  : scannerControl.totalSections === 3
+                    ? "grid-cols-3"
+                    : "grid-cols-2 sm:grid-cols-4"
+                }`}
+            >
+              {Array.from({ length: scannerControl.totalSections }, (_, idx) => idx + 1).map((secNum) => {
+                const isActive = scannerControl.currentSection === secNum;
+                const isPast = scannerControl.currentSection > secNum;
+                const label =
+                  scannerControl.sectionLabels[secNum - 1] ||
+                  (secNum === 1
+                    ? "Morning Section"
+                    : secNum === 2
+                      ? "Afternoon Section"
+                      : `Round ${secNum}`);
+                const count = sectionCounts[secNum] || 0;
+
+                return (
+                  <div
+                    key={secNum}
+                    className={`relative rounded-xl sm:rounded-2xl transition-all flex flex-col justify-between p-2.5 sm:p-3.5 border ${isActive
+                        ? "bg-gradient-to-br from-white via-indigo-50/50 to-indigo-100/30 border-2 border-indigo-500 shadow-xs ring-2 sm:ring-4 ring-indigo-500/10"
+                        : isPast
+                          ? "bg-slate-50/80 border-slate-200 opacity-85"
+                          : "bg-white/95 border-slate-200/90 hover:border-indigo-300 shadow-2xs hover:shadow-xs group"
+                      }`}
+                  >
+                    <div>
+                      {/* Card Top: Round # & Badge */}
+                      <div className="flex items-center justify-between gap-1 mb-1.5 sm:mb-2">
+                        <span
+                          className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-md ${isActive
+                              ? "text-indigo-700 bg-indigo-100/80 border border-indigo-200"
+                              : "text-slate-400 bg-slate-100"
+                            }`}
+                        >
+                          Round {secNum}
+                        </span>
+                        {isActive ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-900 text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 border border-emerald-300 shadow-2xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Active</span>
+                          </span>
+                        ) : isPast ? (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-200 text-slate-700 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5">
+                            <Check className="h-2.5 w-2.5 text-slate-600" />
+                            <span>Closed</span>
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 text-slate-500 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 border border-slate-200/80">
+                            Upcoming
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Card Middle: Icon & Name */}
+                      <div className="flex items-start gap-1.5 sm:gap-2.5 min-w-0">
+                        <div
+                          className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl shrink-0 shadow-2xs transition-all ${isActive
+                              ? secNum === 1
+                                ? "bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 text-white shadow-amber-500/30"
+                                : "bg-gradient-to-br from-indigo-500 via-indigo-600 to-sky-600 text-white shadow-indigo-500/30"
+                              : secNum === 1
+                                ? "bg-amber-50 border border-amber-200/80 text-amber-600"
+                                : "bg-indigo-50 border border-indigo-200/80 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white"
+                            }`}
+                        >
+                          {secNum === 1 ? (
+                            <Sun className="h-4 w-4 sm:h-5 sm:w-5" />
+                          ) : (
+                            <Moon className="h-4 w-4 sm:h-5 sm:w-5" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4
+                            className={`text-xs sm:text-sm font-black truncate tracking-tight transition-colors ${isActive ? "text-slate-900" : "text-slate-800 group-hover:text-indigo-950"
+                              }`}
+                            title={label}
+                          >
+                            {label}
+                          </h4>
+                          <div
+                            className={`mt-0.5 sm:mt-1 inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-mono font-bold ${isActive
+                                ? "bg-white border border-indigo-200/90 text-indigo-950 shadow-2xs font-extrabold"
+                                : "bg-slate-50 border border-slate-200 text-slate-600"
+                              }`}
+                          >
+                            <Users className="h-3 w-3 text-slate-400" />
+                            <span>{count} Attended</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Bottom: Perfectly Symmetrical Action Bar */}
+                    <div className="mt-2.5 sm:mt-3 pt-2 border-t border-slate-100/90">
+                      {isActive ? (
+                        <div className="h-8 sm:h-8.5 w-full rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 text-emerald-800 text-[10px] sm:text-[11px] font-extrabold inline-flex items-center justify-center gap-1.5 shadow-2xs">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>Live Check-ins</span>
+                        </div>
+                      ) : isPast ? (
+                        canStaffSwitch ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingTargetSection(secNum);
+                              setIsConfirmSectionModalOpen(true);
+                            }}
+                            className="w-full h-8 sm:h-8.5 inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer"
+                          >
+                            <span>Reactivate R{secNum}</span>
+                          </button>
+                        ) : (
+                          <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold inline-flex items-center justify-center">
+                            Closed
+                          </span>
+                        )
+                      ) : canStaffSwitch ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingTargetSection(secNum);
+                            setIsConfirmSectionModalOpen(true);
+                          }}
+                          className="w-full h-8 sm:h-8.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-slate-800 hover:to-indigo-900 active:bg-slate-950 text-white text-[10px] sm:text-xs font-bold px-2 shadow-xs hover:shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                          <span>Switch to R{secNum}</span>
+                          <ChevronRight className="h-3.5 w-3.5 text-indigo-300" />
+                        </button>
+                      ) : (
+                        <span className="h-8 sm:h-8.5 w-full rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold inline-flex items-center justify-center">
+                          Locked
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Single Section Event */
+            <div className="relative pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-sm shadow-amber-500/30 shrink-0">
+                  <Sun className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <span className="text-xs sm:text-sm font-black text-slate-900">
+                    Standard Single Session Check-ins
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    All delegate scans are recorded directly into the main attendee roster.
+                  </p>
+                </div>
+              </div>
+              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-xs font-mono font-black text-indigo-950 shadow-2xs shrink-0">
+                <Users className="h-3.5 w-3.5 text-indigo-600" />
+                <span>{sectionCounts[1] || 0} Attended</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -940,9 +1340,94 @@ export function EventRosterClient({
       )}
 
       {/* ==========================================
-          VIEW 1: ATTENDEE ROSTER & SEARCH
+          VIEW 1: STUDENT COORDINATOR SCANNER LAUNCHPAD (CLEAN LIGHT THEME)
+          (Lightweight, high-performance, clutter-free gate operations)
          ========================================== */}
-      {activeTab === "roster" && (
+      {isStudentCoord && (
+        <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
+          {/* Light-Theme Gate Pass Scanner Card */}
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1.5 max-w-xl">
+                <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/90 px-3 py-1 text-xs font-bold text-emerald-800">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Gate Verification Desk Active</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+                  Delegate Pass Scanner Desk
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  Fast camera check-in for <span className="font-bold text-slate-900">{eventName}</span>. Scan attendee QR passes or delegate badges.
+                </p>
+              </div>
+
+              {/* Direct Full-Screen Scanner Action */}
+              <div className="shrink-0 w-full sm:w-auto">
+                <Link
+                  href={`/coordinator/scanner?event=${eventId}`}
+                  className="h-12 sm:h-13 w-full sm:w-auto px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-extrabold text-sm sm:text-base inline-flex items-center justify-center gap-2.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Camera className="h-5 w-5 text-emerald-400" />
+                  <span>Launch Camera Scanner</span>
+                  <ExternalLink className="h-4 w-4 opacity-70" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Live Progress Bar Inside Banner */}
+            <div className="pt-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+              <div className="flex items-center gap-2 font-mono">
+                <span className="text-slate-500 font-medium">Total Check-ins:</span>
+                <span className="font-extrabold text-slate-900 text-sm">{attendedCount}</span>
+                <span className="text-slate-400">/ {totalCount} ({attendancePct}%)</span>
+              </div>
+              <div className="flex-1 max-w-md bg-slate-100 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-200/80">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, attendancePct)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Compact Faculty Support Note (Only if issues arise, without unwanted duty protocols or policies) */}
+          <div className="rounded-xl sm:rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 sm:p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-800 shrink-0 font-bold">
+                <AlertCircle className="h-4 w-4 text-amber-700" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-900">
+                  Unregistered pass or student dispute?
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Direct the participant to the Faculty Coordinator Desk for manual verification and badge lookup.
+                </p>
+              </div>
+            </div>
+
+            {staffDetails?.whatsappLink && (
+              <a
+                href={staffDetails.whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-8.5 px-3.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+              >
+                <span>Faculty Helpline</span>
+                <ExternalLink className="h-3 w-3 text-slate-400" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          VIEW 2: ATTENDEE ROSTER & SEARCH (FACULTY STAFF & ADMIN ONLY)
+         ========================================== */}
+      {!isStudentCoord && activeTab === "roster" && (
         <div className="space-y-4">
           {/* Single-Row Search & Filter Toolbar */}
           <div className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-2.5 sm:p-3 shadow-xs">
@@ -976,13 +1461,12 @@ export function EventRosterClient({
                   <select
                     value={filterTab}
                     onChange={(e) => setFilterTab(e.target.value as any)}
-                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${
-                      filterTab === "attended"
+                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${filterTab === "attended"
                         ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                         : filterTab === "pending"
-                        ? "border-amber-300 bg-amber-50 text-amber-900"
-                        : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
-                    } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                          ? "border-amber-300 bg-amber-50 text-amber-900"
+                          : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
+                      } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
                   >
                     <option value="all">All ({totalFilteredCount})</option>
                     <option value="attended">✅ Present ({attendedCount})</option>
@@ -993,11 +1477,10 @@ export function EventRosterClient({
                   <select
                     value={tierFilter}
                     onChange={(e) => setTierFilter(e.target.value as any)}
-                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${
-                      tierFilter !== "all"
+                    className={`h-9 sm:h-10 rounded-xl border px-2.5 sm:px-3 text-xs font-bold transition-all cursor-pointer truncate ${tierFilter !== "all"
                         ? "border-primary/40 bg-primary/5 text-primary"
                         : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
-                    } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
+                      } focus:border-primary focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-primary/20`}
                   >
                     <option value="all">All Pass Tiers</option>
                     <option value="pro_pass">⭐ Pro Pass</option>
@@ -1056,23 +1539,22 @@ export function EventRosterClient({
                 const isPro = item.pass?.pass_tier === "pro_pass";
                 const initials = item.user.full_name
                   ? item.user.full_name
-                      .trim()
-                      .split(" ")
-                      .filter(Boolean)
-                      .map((n: string) => n[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase()
+                    .trim()
+                    .split(" ")
+                    .filter(Boolean)
+                    .map((n: string) => n[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()
                   : "DE";
 
                 return (
                   <div
                     key={item.id}
-                    className={`rounded-2xl border bg-white p-3.5 shadow-xs space-y-3 transition-all ${
-                      item.isAttended
+                    className={`rounded-2xl border bg-white p-3.5 shadow-xs space-y-3 transition-all ${item.isAttended
                         ? "border-emerald-300/80 bg-gradient-to-br from-emerald-500/[0.03] to-white"
                         : "border-slate-200/90"
-                    }`}
+                      }`}
                   >
                     {/* Top Row: Ticket Code & Badges + Status Pill */}
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -1114,11 +1596,10 @@ export function EventRosterClient({
                     <div className="flex items-start gap-3">
                       {/* Initials Avatar */}
                       <div
-                        className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs ${
-                          item.isAttended
+                        className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs ${item.isAttended
                             ? "bg-gradient-to-br from-emerald-600 to-teal-700 text-white"
                             : "bg-gradient-to-br from-slate-800 to-indigo-900 text-white"
-                        }`}
+                          }`}
                       >
                         {initials}
                       </div>
@@ -1130,11 +1611,10 @@ export function EventRosterClient({
                             {item.user.full_name}
                           </h4>
                           <span
-                            className={`inline-block rounded-md px-1.5 py-0.5 text-[9px] font-extrabold border uppercase tracking-wider shrink-0 ${
-                              item.isInternal || item.user.participant_type === "internal"
+                            className={`inline-block rounded-md px-1.5 py-0.5 text-[9px] font-extrabold border uppercase tracking-wider shrink-0 ${item.isInternal || item.user.participant_type === "internal"
                                 ? "bg-emerald-50 text-emerald-800 border-emerald-300/80"
                                 : "bg-purple-50 text-purple-800 border-purple-300/80"
-                            }`}
+                              }`}
                           >
                             {item.isInternal || item.user.participant_type === "internal"
                               ? "KLU Student"
@@ -1272,11 +1752,10 @@ export function EventRosterClient({
                           <td className="px-4 py-3">
                             <div className="space-y-0.5 max-w-[220px]">
                               <span
-                                className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-black border uppercase tracking-wider ${
-                                  item.isInternal || item.user.participant_type === "internal"
+                                className={`inline-block rounded px-1.5 py-0.2 text-[9px] font-black border uppercase tracking-wider ${item.isInternal || item.user.participant_type === "internal"
                                     ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                                     : "bg-purple-50 text-purple-800 border-purple-300"
-                                }`}
+                                  }`}
                               >
                                 {item.isInternal || item.user.participant_type === "internal"
                                   ? "KLU Student"
@@ -1296,11 +1775,46 @@ export function EventRosterClient({
                           {/* Attendance Status */}
                           <td className="px-4 py-3">
                             {item.isAttended ? (
-                              <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
-                                  <Check className="h-3 w-3 text-emerald-700" />
-                                  <span>Verified Present</span>
-                                </span>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {scannerControl && scannerControl.totalSections > 1 ? (
+                                    Array.from({ length: scannerControl.totalSections }, (_, idx) => idx + 1).map((secNum) => {
+                                      const isSecAttended = (item.attendedSections || []).includes(secNum);
+                                      const secShort =
+                                        secNum === 1
+                                          ? "Morning"
+                                          : secNum === 2
+                                            ? "Afternoon"
+                                            : `Round ${secNum}`;
+                                      return (
+                                        <span
+                                          key={secNum}
+                                          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.2 text-[9px] font-extrabold border ${isSecAttended
+                                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                              : "bg-slate-50 text-slate-400 border-slate-200"
+                                            }`}
+                                          title={
+                                            isSecAttended
+                                              ? `${secShort} Verified Present`
+                                              : `${secShort} Not Checked In`
+                                          }
+                                        >
+                                          {isSecAttended ? (
+                                            <Check className="h-2.5 w-2.5 text-emerald-600" />
+                                          ) : (
+                                            <span className="text-[8px] leading-none">•</span>
+                                          )}
+                                          <span>{secShort}</span>
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
+                                      <Check className="h-3 w-3 text-emerald-700" />
+                                      <span>Verified Present</span>
+                                    </span>
+                                  )}
+                                </div>
                                 {item.scanned_at && (
                                   <div className="text-[10px] text-slate-400 font-mono">
                                     {formatTime(item.scanned_at.split("T")[1] || "")}
@@ -1411,11 +1925,10 @@ export function EventRosterClient({
                       type="button"
                       onClick={() => handlePageChange(pageNum)}
                       disabled={isLoadingPage}
-                      className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isActive
+                      className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
                           ? "bg-primary text-white shadow-xs scale-105"
                           : "border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700"
-                      }`}
+                        }`}
                     >
                       {pageNum}
                     </button>
@@ -1461,6 +1974,8 @@ export function EventRosterClient({
               )}
             </div>
           )}
+
+
 
           {/* Symmetrical 2-Column Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
@@ -1596,11 +2111,10 @@ export function EventRosterClient({
                         type="button"
                         onClick={() => handleOpenConfirmLinks()}
                         disabled={!isWhatsappDirty || isSavingLinks}
-                        className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold px-4 transition-all w-full sm:w-auto shrink-0 ${
-                          isWhatsappDirty && !isSavingLinks
+                        className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold px-4 transition-all w-full sm:w-auto shrink-0 ${isWhatsappDirty && !isSavingLinks
                             ? "bg-slate-900 hover:bg-slate-800 text-white cursor-pointer shadow-2xs"
                             : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
-                        }`}
+                          }`}
                       >
                         <Save className={`h-3.5 w-3.5 ${isWhatsappDirty ? "text-emerald-400" : "text-slate-400"}`} />
                         <span>{isSavingLinks ? "Saving..." : isWhatsappDirty ? "Save Link" : "Saved"}</span>
@@ -1810,11 +2324,10 @@ export function EventRosterClient({
           </div>
 
           {/* Integrated Save Action Strip */}
-          <div className={`rounded-2xl border p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-            isOpsDirty
+          <div className={`rounded-2xl border p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${isOpsDirty
               ? "border-amber-300 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 shadow-amber-500/5 ring-2 ring-amber-400/20"
               : "border-slate-200/90 bg-white"
-          }`}>
+            }`}>
             <div className="text-xs flex items-center gap-2">
               {isOpsDirty ? (
                 <>
@@ -1853,11 +2366,10 @@ export function EventRosterClient({
                 type="button"
                 onClick={() => handleSaveEventSettings()}
                 disabled={!isOpsDirty || isSavingOps}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl text-xs font-extrabold px-5 py-2.5 shadow-sm transition-all flex-1 sm:flex-initial shrink-0 ${
-                  isOpsDirty && !isSavingOps
+                className={`inline-flex items-center justify-center gap-2 rounded-xl text-xs font-extrabold px-5 py-2.5 shadow-sm transition-all flex-1 sm:flex-initial shrink-0 ${isOpsDirty && !isSavingOps
                     ? "bg-slate-900 hover:bg-slate-800 text-white cursor-pointer ring-2 ring-indigo-500/30"
                     : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
-                }`}
+                  }`}
               >
                 {isSavingOps ? (
                   <>
@@ -1867,9 +2379,8 @@ export function EventRosterClient({
                 ) : (
                   <>
                     <Save
-                      className={`h-4 w-4 ${
-                        isOpsDirty ? "text-emerald-400" : "text-slate-400"
-                      }`}
+                      className={`h-4 w-4 ${isOpsDirty ? "text-emerald-400" : "text-slate-400"
+                        }`}
                     />
                     <span>
                       {isOpsDirty ? "Save Configuration" : "Saved"}
@@ -1936,13 +2447,12 @@ export function EventRosterClient({
                     setOverrideError(null);
                   }}
                   placeholder={`e.g. ${confirmCheckInItem.registration_code}`}
-                  className={`w-full rounded-xl border px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-colors focus:outline-none ${
-                    typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase()
+                  className={`w-full rounded-xl border px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider transition-colors focus:outline-none ${typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase()
                       ? "border-emerald-500 bg-emerald-50/40 text-emerald-950 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500"
                       : typedOverrideCode.trim().length > 0
-                      ? "border-amber-400 bg-amber-50/30 text-slate-900 focus:border-amber-500"
-                      : "border-slate-300 bg-slate-50/50 text-slate-900 focus:border-slate-900 focus:bg-white"
-                  }`}
+                        ? "border-amber-400 bg-amber-50/30 text-slate-900 focus:border-amber-500"
+                        : "border-slate-300 bg-slate-50/50 text-slate-900 focus:border-slate-900 focus:bg-white"
+                    }`}
                   autoFocus
                 />
                 {typedOverrideCode.trim().toUpperCase() === confirmCheckInItem.registration_code.trim().toUpperCase() && (
@@ -2470,6 +2980,143 @@ export function EventRosterClient({
                   <>
                     <Download className="h-4 w-4" />
                     <span>Confirm Download</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FAIL-SAFE SECTION SWITCH MODAL */}
+      {isConfirmSectionModalOpen && pendingTargetSection !== null && scannerControl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700 shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">Confirm Round Switch</h3>
+                <p className="text-xs text-slate-500">Live attendance check-in window</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-amber-50/80 border border-amber-200 p-3 text-xs text-amber-950 space-y-2">
+              <p>
+                You are about to switch the live attendance scan window to:
+              </p>
+              <div className="rounded-lg bg-white p-2.5 font-black text-slate-900 border border-amber-300 flex items-center justify-between">
+                <span>
+                  Round {pendingTargetSection}:{" "}
+                  {scannerControl.sectionLabels[pendingTargetSection - 1] || `Section ${pendingTargetSection}`}
+                </span>
+                <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
+                  Upcoming
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                ⚠️ <strong>Fail-Safe Notice:</strong> Once switched, previous section check-ins will be locked. Any newly arriving or re-attending participants will be recorded exclusively under this round.
+              </p>
+            </div>
+
+            {sectionSwitchError && (
+              <p className="text-xs font-semibold text-rose-600">{sectionSwitchError}</p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isSwitchingSection}
+                onClick={() => {
+                  setIsConfirmSectionModalOpen(false);
+                  setPendingTargetSection(null);
+                  setSectionSwitchError(null);
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSwitchingSection}
+                onClick={handleExecuteSectionSwitch}
+                className="rounded-xl bg-primary hover:bg-primary-hover px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isSwitchingSection ? "Activating..." : "Confirm & Activate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FAIL-SAFE SCANNER PAUSE CONFIRMATION MODAL */}
+      {isConfirmPauseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 border border-amber-200 shrink-0">
+                <Pause className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Pause Scanner Check-ins?</h3>
+                <p className="text-xs text-slate-500">Temporary hold on attendee check-ins</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-amber-50/80 border border-amber-200 p-3.5 text-xs text-amber-950 space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  Pausing will immediately suspend check-ins across <strong>all scanner desks</strong> for <span className="font-bold underline">{eventName}</span>.
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-white/90 p-2.5 border border-amber-300/80 text-[11px] text-amber-900 space-y-1">
+                <div className="flex items-center justify-between font-bold">
+                  <span>Current Active Session:</span>
+                  <span className="text-indigo-900 font-extrabold">
+                    {scannerControl?.sectionLabels[(scannerControl?.currentSection || 1) - 1] || `Section ${scannerControl?.currentSection || 1}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Current Check-ins:</span>
+                  <span className="font-mono font-bold text-slate-800">{attendedCount}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                Volunteers scanning tickets will see a <strong>&quot;Scanner Paused by Staff&quot;</strong> screen. You can unpause and resume scanning at any time without data loss.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isTogglingScanner}
+                onClick={() => setIsConfirmPauseModalOpen(false)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isTogglingScanner}
+                onClick={async () => {
+                  await handleToggleScannerStatus("paused");
+                  setIsConfirmPauseModalOpen(false);
+                }}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isTogglingScanner ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Pausing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-3.5 w-3.5" />
+                    <span>Confirm &amp; Pause Scanner</span>
                   </>
                 )}
               </button>
