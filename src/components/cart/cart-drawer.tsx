@@ -24,6 +24,7 @@ import {
   CreditCard,
   Lock,
   Printer,
+  ExternalLink,
 } from "lucide-react";
 import { useCart } from "@/context/cart-context";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
@@ -61,6 +62,7 @@ export function CartDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hostedPaymentUrl, setHostedPaymentUrl] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{
     masterCode: string;
     totalRegistered: number;
@@ -69,6 +71,12 @@ export function CartDrawer({
   } | null>(null);
 
   const pricing = calculatePricing(user?.participantType);
+
+  const isEventFull = (e: any) =>
+    Boolean(
+      e.is_total_full ||
+      ((e.total_registered ?? (e.registrations || []).length) >= (e.participant_limit || 100))
+    );
 
   // Dynamically load Easebuzz Checkout SDK Script
   useEffect(() => {
@@ -136,13 +144,12 @@ export function CartDrawer({
     setIsSubmitting(true);
     setErrorMessage(null);
     setSuccessResult(null);
+    setHostedPaymentUrl(null);
 
     const eventIds = selectedEvents.map((e) => e.id);
 
     // Client-side pre-flight: Drop payment immediately if any event in cart has reached full capacity
-    const fullEvent = selectedEvents.find(
-      (e) => (e.registrations || []).length >= (e.participant_limit || 100)
-    );
+    const fullEvent = selectedEvents.find(isEventFull);
     if (fullEvent) {
       setErrorMessage(
         `Payment Dropped: "${fullEvent.name}" has reached maximum participant capacity. Please remove this event from your cart to proceed.`
@@ -165,8 +172,21 @@ export function CartDrawer({
     }
 
     const { accessKey, key, env = "test", amount = pricing.totalAmount, txnid = "" } = orderRes;
+    const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
+    setHostedPaymentUrl(hostedUrl);
 
-    // 2. Launch Easebuzz Checkout iFrame Modal if SDK loaded
+    // Check if on mobile device (Mobile browsers block UPI intent URLs inside iframes)
+    const isMobileDevice =
+      typeof navigator !== "undefined" &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobileDevice) {
+      // Direct redirect on mobile gives the fastest native UPI app experience (GPay, PhonePe, Paytm, CRED)
+      window.location.href = hostedUrl;
+      return;
+    }
+
+    // 2. Desktop: Launch Easebuzz Checkout iFrame Modal if SDK loaded, or direct redirect to hosted checkout
     if (typeof window !== "undefined" && (window as any).EasebuzzCheckout) {
       try {
         const easebuzz = new (window as any).EasebuzzCheckout(key, env);
@@ -174,6 +194,7 @@ export function CartDrawer({
         const options = {
           access_key: accessKey,
           onResponse: async (response: any) => {
+            setHostedPaymentUrl(null);
             if (response.status === "success") {
               await processPaymentVerification({
                 easepayid: response.easepayid || response.txnid || `ebz_${Date.now()}`,
@@ -203,12 +224,10 @@ export function CartDrawer({
         easebuzz.initiatePayment(options);
       } catch (err) {
         console.warn("Easebuzz modal launch issue, redirecting to hosted checkout:", err);
-        const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
         window.location.href = hostedUrl;
       }
     } else {
-      // Hosted redirect fallback if iFrame script is blocked
-      const hostedUrl = `https://${env === "prod" ? "pay" : "testpay"}.easebuzz.in/pay/${accessKey}`;
+      // Hosted redirect fallback if iFrame script is blocked or not loaded
       window.location.href = hostedUrl;
     }
   };
@@ -441,10 +460,10 @@ export function CartDrawer({
                       </div>
 
                       {/* Full Capacity Warning Badge */}
-                      {((evt.registrations || []).length >= (evt.participant_limit || 100)) && (
+                      {isEventFull(evt) && (
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
                           <Lock className="h-3 w-3 text-rose-500 shrink-0" />
-                          <span>Slot Full ({(evt.registrations || []).length}/{evt.participant_limit || 100}) — Remove to proceed</span>
+                          <span>Slot Full ({evt.total_registered ?? (evt.registrations || []).length}/{evt.participant_limit || 100}) — Remove to proceed</span>
                         </div>
                       )}
                     </div>
@@ -517,6 +536,26 @@ export function CartDrawer({
                   <span>{errorMessage}</span>
                 </div>
               )}
+
+              {/* Gateway Connecting / Fallback Banner */}
+              {hostedPaymentUrl && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/90 p-3 text-xs text-indigo-900 flex flex-col gap-2">
+                  <div className="flex items-center gap-2 font-bold">
+                    <div className="h-2 w-2 rounded-full bg-indigo-600 animate-ping" />
+                    <span>Connecting to Easebuzz Payment Gateway...</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-700 leading-snug">
+                    If the checkout window does not open automatically, click below to open the official Easebuzz payment page:
+                  </p>
+                  <a
+                    href={hostedPaymentUrl}
+                    className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-colors text-center cursor-pointer"
+                  >
+                    <span>Open Easebuzz Payment Gateway</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -571,9 +610,7 @@ export function CartDrawer({
               /* Regular New Pass Purchase Buttons */
               (() => {
                 const isInternalUser = user?.participantType === "internal" || (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"));
-                const hasFullEventInCart = selectedEvents.some(
-                  (e) => (e.registrations || []).length >= (e.participant_limit || 100) || e.is_total_full
-                );
+                const hasFullEventInCart = selectedEvents.some(isEventFull);
                 const hasKluBlockedEventInCart = Boolean(
                   isInternalUser && selectedEvents.some((e) => e.is_klu_blocked || e.allow_internal === false)
                 );
@@ -821,10 +858,10 @@ export function CartDrawer({
                   setIsConfirmModalOpen(false);
                   handleEasebuzzCheckout();
                 }}
-                disabled={isSubmitting || selectedEvents.some((e) => (e.registrations || []).length >= (e.participant_limit || 100))}
+                disabled={isSubmitting || selectedEvents.some(isEventFull)}
                 className="flex-1 py-3 px-4 rounded-xl text-white text-xs font-bold shadow-md bg-primary hover:bg-primary-hover shadow-primary/20 transition-all cursor-pointer text-center disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
               >
-                {selectedEvents.some((e) => (e.registrations || []).length >= (e.participant_limit || 100)) ? (
+                {selectedEvents.some(isEventFull) ? (
                   <span>Slot Full — Cannot Pay</span>
                 ) : (
                   <>

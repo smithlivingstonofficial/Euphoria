@@ -246,12 +246,12 @@ export async function POST(req: NextRequest) {
         }
 
         revalidateTag("public-events");
+        revalidatePath("/dashboard", "layout");
         revalidatePath("/dashboard", "page");
         revalidatePath("/events", "page");
-        revalidatePath("/dashboard/passes", "page");
 
         return NextResponse.redirect(
-          new URL(`/dashboard/passes?payment=success&code=${generatedPassCode}`, baseUrl),
+          new URL(`/dashboard?payment=success&code=${generatedPassCode}`, baseUrl),
           { status: 303 }
         );
       }
@@ -295,18 +295,19 @@ export async function POST(req: NextRequest) {
     }
 
     revalidateTag("public-events");
+    revalidatePath("/dashboard", "layout");
     revalidatePath("/dashboard", "page");
     revalidatePath("/events", "page");
-    revalidatePath("/dashboard/passes", "page");
 
     return NextResponse.redirect(
-      new URL(`/dashboard/passes?payment=success&code=${checkoutData.pass_code || "CONFIRMED"}`, baseUrl),
+      new URL(`/dashboard?payment=success&code=${checkoutData.pass_code || "CONFIRMED"}`, baseUrl),
       { status: 303 }
     );
   } catch (err) {
     console.error("Easebuzz callback fatal error:", err);
+    const fallbackBase = process.env.NEXT_PUBLIC_SITE_URL || "https://euphoria.kalasalingam.ac.in";
     return NextResponse.redirect(
-      new URL(`/events?payment=error`, "http://localhost:3000"),
+      new URL(`/events?payment=error`, fallbackBase),
       { status: 303 }
     );
   }

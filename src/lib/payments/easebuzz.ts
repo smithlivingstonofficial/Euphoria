@@ -1,5 +1,12 @@
+import dns from "node:dns";
 import crypto from "crypto";
 import { EasebuzzInitiateParams, EasebuzzInitiateResponse, EasebuzzResponseData } from "./types";
+
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // Ignore in environments where setDefaultResultOrder is not supported
+}
 
 /**
  * Retrieves Easebuzz configuration credentials from environment variables

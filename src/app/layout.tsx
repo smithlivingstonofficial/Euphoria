@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Plus_Jakarta_Sans, Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
@@ -63,6 +64,10 @@ export default async function RootLayout({
         >
           {children}
         </AppProviders>
+        <Script
+          src="https://ebz-static.s3.ap-south-1.amazonaws.com/easecheckout/v2.0.0/easebuzz-checkout-v2.min.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
