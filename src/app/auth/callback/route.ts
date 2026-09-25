@@ -8,10 +8,10 @@ import { isProfileComplete } from "@/lib/profile";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "/events";
+  const rawNext = searchParams.get("next") || searchParams.get("redirect") || "/dashboard";
 
   // Sanitize next path
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/events";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
 
   if (code) {
     const cookieStore = cookies();
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
             .eq("id", user.id);
         }
 
-        return NextResponse.redirect(`${origin}${next !== "/events" ? next : "/events"}`);
+        return NextResponse.redirect(`${origin}${next}`);
       }
 
       return NextResponse.redirect(`${origin}${next}`);

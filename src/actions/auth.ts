@@ -82,18 +82,11 @@ const getCachedUser = cache(async () => {
     const isStaff = roles.includes("staff_coordinator") || finalHasStaffAssignment;
     const isCoordinator = roles.includes("student_coordinator") || isStaff || hasStudentAssignment;
 
-    // Verify profile completeness - if any fields are empty/null, rectify is_profile_completed to false
-    // Staff/faculty coordinators and admins are exempt from student fields
+    // Verify profile completeness - staff/faculty coordinators and admins are exempt from student fields
     const isExemptStaffOrAdmin = isStaff || isAdmin;
     const actuallyComplete = isExemptStaffOrAdmin || isProfileComplete(profile);
     if (profile) {
-      if (profile.is_profile_completed && !actuallyComplete) {
-        profile.is_profile_completed = false;
-        adminClient.from("profiles").update({ is_profile_completed: false }).eq("id", user.id).then();
-      } else if (!profile.is_profile_completed && actuallyComplete) {
-        profile.is_profile_completed = true;
-        adminClient.from("profiles").update({ is_profile_completed: true }).eq("id", user.id).then();
-      }
+      profile.is_profile_completed = Boolean(actuallyComplete);
     }
 
     return {

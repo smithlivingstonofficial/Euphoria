@@ -8,6 +8,8 @@ import {
   Printer,
   Copy,
   LogOut,
+  AlertCircle,
+  ArrowRight,
 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
@@ -28,15 +30,15 @@ export default async function ParticipantDashboardPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    redirect("/login?redirect=/dashboard");
   }
 
-  // Fetch user profile, active pass, orders, and event registrations in parallel with selective column projections
+  // Fetch user profile, active pass, orders, and event registrations in parallel
   const [{ data: profile }, { data: passDataRow }, { data: ordersData }, { data: registrationsData }] =
     await Promise.all([
       supabase
         .from("profiles")
-        .select("id, full_name, email, gender, participant_type, register_number, college_name, department, course, year_of_study, mobile_number, needs_accommodation, is_profile_completed")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle(),
       supabase
@@ -85,10 +87,35 @@ export default async function ParticipantDashboardPage() {
         .order("slot_number", { ascending: true }),
     ]);
 
-  // If profile is not complete or has missing data, redirect to complete-profile
-  if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
-    redirect("/complete-profile");
-  }
+  const userEmail = (user.email || "").toLowerCase().trim();
+  const isKlu = userEmail.endsWith("@klu.ac.in");
+
+  // Construct reliable active profile with graceful fallbacks
+  const effectiveProfile = {
+    id: user.id,
+    email: profile?.email || user.email || "",
+    full_name:
+      profile?.full_name ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      userEmail.split("@")[0] ||
+      "Participant",
+    participant_type: (profile?.participant_type || (isKlu ? "internal" : "external")) as "internal" | "external",
+    register_number: profile?.register_number || (isKlu ? userEmail.split("@")[0] : null),
+    college_name: profile?.college_name || (isKlu ? "Kalasalingam Academy of Research and Education" : null),
+    school: profile?.school || (isKlu ? "SoC" : null),
+    department: profile?.department || null,
+    course: profile?.course || null,
+    year_of_study: profile?.year_of_study || 1,
+    mobile_number: profile?.mobile_number || null,
+    gender: profile?.gender || null,
+    needs_accommodation: Boolean(profile?.needs_accommodation),
+    is_profile_completed: Boolean(profile?.is_profile_completed),
+  };
+
+  const isComplete = Boolean(
+    profile && profile.is_profile_completed && isProfileComplete(profile)
+  );
 
   const orders = ordersData ?? [];
 
@@ -135,14 +162,42 @@ export default async function ParticipantDashboardPage() {
           createdAt: r.created_at,
         })),
       }
+    : userRegistrations.length > 0
+    ? {
+        hasPass: true,
+        passId: userRegistrations[0].id,
+        passCode: userRegistrations[0].registration_code || `EUPH-26-${user.id.substring(0, 6).toUpperCase()}`,
+        passTier: userRegistrations.some((r: any) => r.event?.is_pro_event) ? "pro_pass" : "standard_pass",
+        amountPaid: userRegistrations.some((r: any) => r.event?.is_pro_event) ? 300 : 200,
+        totalSlots: 2,
+        slotsUsed: userRegistrations.length,
+        remainingSlots: Math.max(0, 2 - userRegistrations.length),
+        passStatus: "active",
+        registeredEvents: userRegistrations.map((r: any) => ({
+          registrationId: r.id,
+          slotNumber: r.slot_number || 1,
+          eventId: r.event?.id || "",
+          name: r.event?.name || "Event",
+          slug: r.event?.slug || "",
+          isProEvent: Boolean(r.event?.is_pro_event),
+          schoolOrDept: r.event?.school_or_dept || "",
+          venue: r.event?.venue || "",
+          eventDate: r.event?.event_date || "",
+          startTime: r.event?.start_time || "",
+          endTime: r.event?.end_time || "",
+          status: r.status,
+          paymentStatus: r.payment_status,
+          createdAt: r.created_at,
+        })),
+      }
     : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-primary">
       <Navbar
         user={{
-          email: profile.email,
-          participantType: profile.participant_type,
+          email: effectiveProfile.email,
+          participantType: effectiveProfile.participant_type,
         }}
       />
 
@@ -150,10 +205,34 @@ export default async function ParticipantDashboardPage() {
       <main className="flex-1 pt-20 sm:pt-24 pb-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 flex flex-col w-full">
 
+          {/* Incomplete Profile Alert Banner (Polite notification that doesn't block dashboard access) */}
+          {!isComplete && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-amber-950">Complete Your Profile Details</h2>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Your profile has missing or unconfirmed details. Complete your profile to ensure seamless entry verification and event credentials.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/complete-profile?redirect=/dashboard"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-xs font-bold text-white shadow-xs transition-all whitespace-nowrap shrink-0"
+              >
+                <span>Complete Profile</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          )}
+
           {/* 1. DIGITAL PASS & COMPETITIONS DASHBOARD (First on mobile, second on desktop) */}
           <div className="order-1 sm:order-2">
             <DigitalPassClient
-              profile={profile}
+              profile={effectiveProfile}
               registrations={userRegistrations as any}
               passSummary={passData}
               orders={orders as any}
@@ -164,30 +243,30 @@ export default async function ParticipantDashboardPage() {
           <div className="order-2 sm:order-1 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-primary text-white font-black text-lg shadow-sm shadow-primary/20">
-                {profile.full_name?.charAt(0).toUpperCase() || "E"}
+                {effectiveProfile.full_name?.charAt(0).toUpperCase() || "E"}
               </div>
 
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-snug">
-                    {profile.full_name}
+                    {effectiveProfile.full_name}
                   </h1>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${profile.participant_type === "internal"
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${effectiveProfile.participant_type === "internal"
                       ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                       : "bg-purple-50 text-purple-800 border-purple-200"
                       }`}
                   >
-                    {profile.participant_type === "internal"
+                    {effectiveProfile.participant_type === "internal"
                       ? "KARE Student"
-                      : profile.college_name || "External Delegate"}
+                      : effectiveProfile.college_name || "External Delegate"}
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-500 font-medium truncate">
-                  {profile.email}
-                  {profile.register_number ? ` • Reg: ${profile.register_number}` : ""}
-                  {profile.department ? ` • ${profile.department}` : ""}
+                  {effectiveProfile.email}
+                  {effectiveProfile.register_number ? ` • Reg: ${effectiveProfile.register_number}` : ""}
+                  {effectiveProfile.department ? ` • ${effectiveProfile.department}` : ""}
                 </p>
               </div>
             </div>

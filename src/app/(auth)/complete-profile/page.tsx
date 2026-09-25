@@ -5,7 +5,11 @@ import { isProfileComplete } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
-export default async function CompleteProfilePage() {
+export default async function CompleteProfilePage({
+  searchParams,
+}: {
+  searchParams?: { redirect?: string };
+}) {
   const supabase = await createClient();
 
   const {
@@ -24,14 +28,14 @@ export default async function CompleteProfilePage() {
     .maybeSingle();
 
   const actuallyComplete = isProfileComplete(profile);
+  const targetRedirect =
+    searchParams?.redirect && searchParams.redirect.startsWith("/") && !searchParams.redirect.startsWith("//")
+      ? searchParams.redirect
+      : "/dashboard";
 
-  // If already genuinely complete with all required fields, redirect directly to events
+  // If already genuinely complete with all required fields, redirect directly to dashboard or target
   if (profile && profile.is_profile_completed && actuallyComplete) {
-    redirect("/events");
-  } else if (profile && profile.is_profile_completed && !actuallyComplete) {
-    // If DB erroneously had true but data is empty, rectify DB state to false
-    const adminClient = await createAdminClient();
-    await adminClient.from("profiles").update({ is_profile_completed: false }).eq("id", user.id);
+    redirect(targetRedirect);
   }
 
   const userEmail = user.email || "";

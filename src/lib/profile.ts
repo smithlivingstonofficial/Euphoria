@@ -14,8 +14,14 @@ export function isProfileComplete(
   const fullName = typeof profile.full_name === "string" ? profile.full_name.trim() : "";
   if (fullName.length < 2) return false;
 
-  // 2. Mobile Number: exactly 10 digits
-  const rawMobile = typeof profile.mobile_number === "string" ? profile.mobile_number.replace(/\D/g, "") : "";
+  // 2. Mobile Number: exactly 10 digits (supporting +91 or leading 0)
+  const rawDigits = typeof profile.mobile_number === "string" ? profile.mobile_number.replace(/\D/g, "") : "";
+  const rawMobile =
+    rawDigits.length === 12 && rawDigits.startsWith("91")
+      ? rawDigits.slice(2)
+      : rawDigits.length === 11 && rawDigits.startsWith("0")
+      ? rawDigits.slice(1)
+      : rawDigits;
   if (rawMobile.length !== 10) return false;
 
   // 3. Gender (mandatory when requireGender is true, or when gender is specified)
@@ -52,7 +58,8 @@ export function isProfileComplete(
     if (regNo.length < 4) return false;
 
     const school = typeof profile.school === "string" ? profile.school.trim() : "";
-    if (!school) return false;
+    // If school is empty in DB but user has valid department or course, allow graceful acceptance
+    if (!school && !department && !course) return false;
 
     return true;
   } else {

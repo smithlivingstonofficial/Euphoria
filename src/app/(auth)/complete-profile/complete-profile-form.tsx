@@ -1177,8 +1177,10 @@ export function CompleteProfileForm({
     try {
       const result = await saveParticipantProfile(payload);
 
+      const targetUrl = new URLSearchParams(window.location.search).get("redirect") || "/dashboard";
+
       if (result?.success) {
-        window.location.href = "/events";
+        window.location.href = targetUrl;
         return;
       }
 
@@ -1190,7 +1192,7 @@ export function CompleteProfileForm({
       });
 
       if (apiRes.ok) {
-        window.location.href = "/events";
+        window.location.href = targetUrl;
         return;
       }
 
@@ -1205,7 +1207,8 @@ export function CompleteProfileForm({
         });
 
         if (fallbackRes.ok) {
-          window.location.href = "/dashboard";
+          const targetUrl = new URLSearchParams(window.location.search).get("redirect") || "/dashboard";
+          window.location.href = targetUrl;
           return;
         }
       } catch {

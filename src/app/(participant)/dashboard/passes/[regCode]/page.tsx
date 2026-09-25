@@ -26,13 +26,34 @@ export default async function DynamicPassPage({
   // Fetch user profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, participant_type, is_profile_completed, full_name, mobile_number, college_name, department, course, year_of_study, register_number, gender, school, state")
+    .select("*")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
-    redirect("/complete-profile");
-  }
+  const userEmail = (user.email || "").toLowerCase().trim();
+  const isKlu = userEmail.endsWith("@klu.ac.in");
+
+  const effectiveProfile = {
+    id: user.id,
+    email: profile?.email || user.email || "",
+    full_name:
+      profile?.full_name ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      userEmail.split("@")[0] ||
+      "Participant",
+    participant_type: (profile?.participant_type || (isKlu ? "internal" : "external")) as "internal" | "external",
+    register_number: profile?.register_number || (isKlu ? userEmail.split("@")[0] : null),
+    college_name: profile?.college_name || (isKlu ? "Kalasalingam Academy of Research and Education" : null),
+    school: profile?.school || (isKlu ? "SoC" : null),
+    department: profile?.department || null,
+    course: profile?.course || null,
+    year_of_study: profile?.year_of_study || 1,
+    mobile_number: profile?.mobile_number || null,
+    gender: profile?.gender || null,
+    needs_accommodation: Boolean(profile?.needs_accommodation),
+    is_profile_completed: Boolean(profile?.is_profile_completed),
+  };
 
   // Fetch registrations matching this registration code or user
   const { data: registrations } = await supabase
@@ -80,8 +101,8 @@ export default async function DynamicPassPage({
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <Navbar
         user={{
-          email: profile.email,
-          participantType: profile.participant_type,
+          email: effectiveProfile.email,
+          participantType: effectiveProfile.participant_type,
         }}
       />
 
@@ -113,7 +134,7 @@ export default async function DynamicPassPage({
 
         {/* Pass Client */}
         <DigitalPassClient
-          profile={profile}
+          profile={effectiveProfile}
           registrations={userRegistrations as any}
         />
       </main>

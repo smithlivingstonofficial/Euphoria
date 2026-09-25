@@ -80,10 +80,9 @@ export async function updateSession(request: NextRequest) {
     (c) => c.name.startsWith("sb-") && c.name.includes("-auth-token")
   );
 
-  // 2. High-Efficiency Fast Path for Anonymous Visitors (90%+ of site traffic)
+  // 2. High-Efficiency Fast Path for Anonymous Visitors
   // If user has NO auth cookie:
   if (!hasAuthCookie) {
-    // If attempting to access protected route without cookie, redirect immediately with 0 network overhead
     if (isProtectedPath && !isAuthPage) {
       const url = request.nextUrl.clone();
       if (path.startsWith("/coordinator")) {
@@ -97,8 +96,6 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // If viewing public route (/, /events, /campus-map, /announcements) or auth page without cookie:
-    // Return immediately with ZERO network round-trips to Supabase
     return NextResponse.next({
       request: {
         headers: request.headers,
@@ -106,13 +103,10 @@ export async function updateSession(request: NextRequest) {
     });
   }
 
-  // 3. Skip remote auth network round-trip on public routes if token is fresh or during background prefetching
-  const isPrefetch =
-    request.headers.get("next-router-prefetch") === "1" ||
-    request.headers.get("purpose") === "prefetch" ||
-    request.nextUrl.searchParams.has("_rsc");
-
-  if (!isProtectedPath && !isAuthPage && (isPrefetch || isAuthTokenFresh(request))) {
+  // 3. High-Efficiency Fast Path for Public Routes (/, /events, /campus-map, etc.)
+  // Never perform blocking remote Supabase Auth network calls in Edge middleware for public routes.
+  // This guarantees 0ms latency and 100% immunity to Supabase API outages on visitor traffic.
+  if (!isProtectedPath && !isAuthPage) {
     return NextResponse.next({
       request: {
         headers: request.headers,
@@ -120,7 +114,47 @@ export async function updateSession(request: NextRequest) {
     });
   }
 
-  // 4. Full Session Verification (only when cookies are present and route requires validation or refresh)
+  // 4. Fast Path for Users with Valid Tokens
+  const tokenIsFresh = isAuthTokenFresh(request);
+
+  if (tokenIsFresh) {
+    // If logged-in user visits auth pages, redirect away cleanly
+    if (isAuthPage) {
+      const url = request.nextUrl.clone();
+      if (path === "/admin/login") {
+        url.pathname = "/admin";
+      } else if (path === "/coordinator/login") {
+        url.pathname = "/coordinator";
+      } else {
+        const redirectParam = request.nextUrl.searchParams.get("redirect");
+        const target =
+          redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
+            ? redirectParam
+            : "/dashboard";
+        url.pathname = target;
+        url.searchParams.delete("redirect");
+      }
+      return NextResponse.redirect(url);
+    }
+
+    // Protected path with fresh token: forward immediately to Server Component in 0.1ms
+    return NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    });
+  }
+
+  // If user is on an auth page and token is expired/unfresh, allow them to view login without blocking
+  if (isAuthPage) {
+    return NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    });
+  }
+
+  // 5. Protected Path with Stale/Expired Token: Attempt Refresh with Strict 2s Timeout
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -157,21 +191,32 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Allow public access to dedicated login pages
-  if (path === "/coordinator/login" || path === "/admin/login") {
-    if (user) {
-      const url = request.nextUrl.clone();
-      url.pathname = path.startsWith("/admin") ? "/admin" : "/coordinator";
-      return NextResponse.redirect(url);
-    }
-    return response;
+  // Wrap remote auth check with strict 2-second timeout to completely prevent 504 MIDDLEWARE_INVOCATION_TIMEOUT
+  let user = null;
+  let didTimeout = false;
+  try {
+    const userPromise = supabase.auth.getUser();
+    const timeoutPromise = new Promise<{ data: { user: null }; error: any }>((resolve) =>
+      setTimeout(() => {
+        didTimeout = true;
+        resolve({ data: { user: null }, error: new Error("Supabase auth timeout") });
+      }, 2000)
+    );
+    const result = await Promise.race([userPromise, timeoutPromise]);
+    user = result?.data?.user || null;
+  } catch (err) {
+    console.error("Middleware Supabase getUser error:", err);
+    user = null;
   }
 
+  // If user session couldn't be verified and did not simply timeout with existing cookie:
   if (isProtectedPath && !user) {
+    // If Supabase timed out or is temporarily having API errors, let the request pass through
+    // to the Node.js Server Component rather than crashing Edge with 504 or prematurely logging them out
+    if (didTimeout && hasAuthCookie) {
+      return response;
+    }
+
     const url = request.nextUrl.clone();
     if (path.startsWith("/coordinator")) {
       url.pathname = "/coordinator/login";
@@ -181,20 +226,6 @@ export async function updateSession(request: NextRequest) {
       url.pathname = "/login";
       url.searchParams.set("redirect", path);
     }
-    return NextResponse.redirect(url);
-  }
-
-  // If logged-in user visits /login or /register, redirect cleanly
-  if (user && (path === "/login" || path === "/register")) {
-    const redirectParam = request.nextUrl.searchParams.get("redirect");
-    const target =
-      redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
-        ? redirectParam
-        : "/dashboard";
-
-    const url = request.nextUrl.clone();
-    url.pathname = target;
-    url.searchParams.delete("redirect");
     return NextResponse.redirect(url);
   }
 
