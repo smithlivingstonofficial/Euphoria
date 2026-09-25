@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -11,7 +10,7 @@ interface GoogleSignInButtonProps {
 }
 
 export function GoogleSignInButton({
-  redirectUrl = "/complete-profile",
+  redirectUrl = "/dashboard",
   label = "Sign In with Google",
   className = "",
 }: GoogleSignInButtonProps) {
@@ -19,11 +18,21 @@ export function GoogleSignInButton({
 
   const authUrl = `/api/auth/google?redirect=${encodeURIComponent(redirectUrl)}`;
 
+  const handleSignIn = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isClicked) {
+      e.preventDefault();
+      return;
+    }
+    setIsClicked(true);
+    // Let native browser navigation execute cleanly without client-side SPA interception
+  };
+
   return (
     <div className="w-full">
-      <Link
+      <a
         href={authUrl}
-        onClick={() => setIsClicked(true)}
+        onClick={handleSignIn}
+        rel="nofollow"
         className={`w-full inline-flex items-center justify-center gap-3 rounded-2xl border-2 border-slate-200/90 bg-white py-3.5 px-5 text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-300 hover:shadow-md active:scale-[0.99] transition-all cursor-pointer min-h-[52px] ${className}`}
       >
         {isClicked ? (
@@ -50,7 +59,7 @@ export function GoogleSignInButton({
           </svg>
         )}
         <span>{isClicked ? "Connecting to Google..." : label}</span>
-      </Link>
+      </a>
     </div>
   );
 }
