@@ -10,6 +10,11 @@ import {
   exportAdminUsersCsvAction,
   updateUserProfileAdmin,
   updateUserRoleAdmin,
+  getAdminEventsListSimpleAction,
+  adminChangeEventForUserAction,
+  adminAssignEventForUserAction,
+  adminRemoveRegistrationAction,
+  AdminEventSimpleItem,
   CallerAuthInfo,
 } from "@/actions/admin";
 import {
@@ -47,6 +52,11 @@ import {
   ChevronsRight,
   Loader2,
   Zap,
+  ArrowLeftRight,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Info,
 } from "lucide-react";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 
@@ -98,6 +108,25 @@ export function UsersAdminClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Event Change & Slot Allocation State
+  const [availableEvents, setAvailableEvents] = useState<AdminEventSimpleItem[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState<boolean>(false);
+  const [activeEventAction, setActiveEventAction] = useState<{
+    mode: "change" | "assign";
+    registrationId?: string;
+    slotNumber?: number;
+    currentEventId?: string;
+    currentEventName?: string;
+    isAttended?: boolean;
+  } | null>(null);
+  const [selectedNewEventId, setSelectedNewEventId] = useState<string>("");
+  const [overrideCapacity, setOverrideCapacity] = useState<boolean>(false);
+  const [resetAttendance, setResetAttendance] = useState<boolean>(true);
+  const [changeReason, setChangeReason] = useState<string>("");
+  const [eventSearchTerm, setEventSearchTerm] = useState<string>("");
+  const [eventCategoryFilter, setEventCategoryFilter] = useState<string>("all");
+  const [isSubmittingEventAction, setIsSubmittingEventAction] = useState<boolean>(false);
 
   const isInitialMount = useRef(true);
 
@@ -188,6 +217,8 @@ export function UsersAdminClient({
   const handleOpenUserModal = async (user: AdminUserListItem) => {
     setSelectedUser(user);
     setIsEditMode(false);
+    setActiveEventAction(null);
+    setSelectedNewEventId("");
     setEditFormData({
       fullName: user.fullName,
       mobileNumber: user.mobileNumber || "",
@@ -307,6 +338,286 @@ export function UsersAdminClient({
     }
     setIsSubmitting(false);
   };
+
+  // Event Change / Swap Handlers
+  const loadAvailableEvents = async () => {
+    if (availableEvents.length > 0) return;
+    setLoadingEvents(true);
+    try {
+      const res = await getAdminEventsListSimpleAction();
+      if (res.success) {
+        setAvailableEvents(res.events);
+      }
+    } catch (err) {
+      console.error("Failed to load events for admin swap:", err);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  const handleStartChangeEvent = (reg: AdminUserListItem["registrations"][number]) => {
+    setActiveEventAction({
+      mode: "change",
+      registrationId: reg.id,
+      slotNumber: reg.slotNumber,
+      currentEventId: reg.event.id,
+      currentEventName: reg.event.name,
+      isAttended: reg.isAttended,
+    });
+    setSelectedNewEventId("");
+    setOverrideCapacity(false);
+    setResetAttendance(true);
+    setChangeReason("");
+    setEventSearchTerm("");
+    setEventCategoryFilter("all");
+    setActionSuccess(null);
+    setActionError(null);
+    loadAvailableEvents();
+  };
+
+  const handleStartAssignEvent = () => {
+    const existingSlots = new Set((selectedUser?.registrations || []).map((r) => r.slotNumber));
+    const nextSlot = !existingSlots.has(1) ? 1 : 2;
+    setActiveEventAction({
+      mode: "assign",
+      slotNumber: nextSlot,
+    });
+    setSelectedNewEventId("");
+    setOverrideCapacity(false);
+    setChangeReason("");
+    setEventSearchTerm("");
+    setEventCategoryFilter("all");
+    setActionSuccess(null);
+    setActionError(null);
+    loadAvailableEvents();
+  };
+
+  const handleConfirmChangeEvent = async () => {
+    if (!selectedUser || !activeEventAction || !selectedNewEventId) return;
+
+    setIsSubmittingEventAction(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      if (activeEventAction.mode === "change" && activeEventAction.registrationId) {
+        const res = await adminChangeEventForUserAction({
+          registrationId: activeEventAction.registrationId,
+          userId: selectedUser.id,
+          newEventId: selectedNewEventId,
+          overrideCapacity,
+          resetAttendance,
+          reason: changeReason || "Admin User Inspector Swap",
+        });
+
+        if (!res.success || !res.updatedRegistration) {
+          setActionError(res.error || "Failed to change event");
+          setIsSubmittingEventAction(false);
+          return;
+        }
+
+        const updatedReg = res.updatedRegistration;
+
+        // Update selectedUser locally
+        setSelectedUser((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            registrations: prev.registrations.map((r) =>
+              r.id === updatedReg.id ? updatedReg : r
+            ),
+          };
+        });
+
+        // Update users list table locally
+        setUsers((prev) =>
+          prev.map((u) => {
+            if (u.id !== selectedUser.id) return u;
+            return {
+              ...u,
+              registrations: u.registrations.map((r) =>
+                r.id === updatedReg.id ? updatedReg : r
+              ),
+            };
+          })
+        );
+
+        setActionSuccess(res.message || "Event changed successfully!");
+        setActiveEventAction(null);
+      } else if (activeEventAction.mode === "assign") {
+        const res = await adminAssignEventForUserAction({
+          userId: selectedUser.id,
+          newEventId: selectedNewEventId,
+          overrideCapacity,
+        });
+
+        if (!res.success || !res.newRegistration) {
+          setActionError(res.error || "Failed to assign event");
+          setIsSubmittingEventAction(false);
+          return;
+        }
+
+        const newReg = res.newRegistration;
+
+        // Update selectedUser locally
+        setSelectedUser((prev) => {
+          if (!prev) return null;
+          const updatedRegs = [...prev.registrations, newReg].sort(
+            (a, b) => a.slotNumber - b.slotNumber
+          );
+          const updatedPass = prev.pass
+            ? { ...prev.pass, slotsUsed: Math.min(2, prev.pass.slotsUsed + 1) }
+            : prev.pass;
+          return {
+            ...prev,
+            registrations: updatedRegs,
+            pass: updatedPass,
+          };
+        });
+
+        // Update users list table locally
+        setUsers((prev) =>
+          prev.map((u) => {
+            if (u.id !== selectedUser.id) return u;
+            const updatedRegs = [...u.registrations, newReg].sort(
+              (a, b) => a.slotNumber - b.slotNumber
+            );
+            const updatedPass = u.pass
+              ? { ...u.pass, slotsUsed: Math.min(2, u.pass.slotsUsed + 1) }
+              : u.pass;
+            return {
+              ...u,
+              registrations: updatedRegs,
+              pass: updatedPass,
+            };
+          })
+        );
+
+        setActionSuccess(res.message || "Event assigned successfully!");
+        setActiveEventAction(null);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to execute event action";
+      setActionError(msg);
+    } finally {
+      setIsSubmittingEventAction(false);
+    }
+  };
+
+  const handleRemoveRegistration = async (regId: string, slotNum: number) => {
+    if (!selectedUser) return;
+    if (
+      !confirm(
+        `Are you sure you want to remove Slot #${slotNum}? This will free up the slot for this participant.`
+      )
+    ) {
+      return;
+    }
+
+    setIsSubmittingEventAction(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const res = await adminRemoveRegistrationAction({
+        registrationId: regId,
+        userId: selectedUser.id,
+      });
+
+      if (!res.success) {
+        setActionError(res.error || "Failed to remove event registration");
+        setIsSubmittingEventAction(false);
+        return;
+      }
+
+      // Update selectedUser locally
+      setSelectedUser((prev) => {
+        if (!prev) return null;
+        const updatedRegs = prev.registrations.filter((r) => r.id !== regId);
+        const updatedPass = prev.pass
+          ? { ...prev.pass, slotsUsed: Math.max(0, prev.pass.slotsUsed - 1) }
+          : prev.pass;
+        return {
+          ...prev,
+          registrations: updatedRegs,
+          pass: updatedPass,
+        };
+      });
+
+      // Update users list table locally
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id !== selectedUser.id) return u;
+          const updatedRegs = u.registrations.filter((r) => r.id !== regId);
+          const updatedPass = u.pass
+            ? { ...u.pass, slotsUsed: Math.max(0, u.pass.slotsUsed - 1) }
+            : u.pass;
+          return {
+            ...u,
+            registrations: updatedRegs,
+            pass: updatedPass,
+          };
+        })
+      );
+
+      setActionSuccess(`Slot #${slotNum} registration removed successfully.`);
+      if (activeEventAction?.registrationId === regId) {
+        setActiveEventAction(null);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to remove registration";
+      setActionError(msg);
+    } finally {
+      setIsSubmittingEventAction(false);
+    }
+  };
+
+  // Extract distinct categories for quick filtering in event changer
+  const eventCategories = useMemo(() => {
+    const cats = new Set<string>();
+    availableEvents.forEach((e) => {
+      if (e.categoryName) cats.add(e.categoryName);
+    });
+    return Array.from(cats).sort();
+  }, [availableEvents]);
+
+  // Filter available events for swap/assign
+  const filteredAvailableEvents = useMemo(() => {
+    let list = availableEvents;
+
+    // Filter out the other slot's event so user can't register same event in both slots!
+    const otherSlotEventId = selectedUser?.registrations.find(
+      (r) => r.id !== activeEventAction?.registrationId
+    )?.event.id;
+
+    if (otherSlotEventId) {
+      list = list.filter((e) => e.id !== otherSlotEventId);
+    }
+
+    // Filter category
+    if (eventCategoryFilter !== "all") {
+      list = list.filter((e) => e.categoryName === eventCategoryFilter);
+    }
+
+    // Filter search
+    if (eventSearchTerm.trim()) {
+      const q = eventSearchTerm.toLowerCase().trim();
+      list = list.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          e.schoolOrDept?.toLowerCase().includes(q) ||
+          e.venue?.toLowerCase().includes(q) ||
+          e.categoryName?.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [availableEvents, eventCategoryFilter, eventSearchTerm, selectedUser, activeEventAction]);
+
+  const selectedTargetEvent = useMemo(() => {
+    if (!selectedNewEventId) return null;
+    return availableEvents.find((e) => e.id === selectedNewEventId) || null;
+  }, [availableEvents, selectedNewEventId]);
 
   // Dedicated full CSV export
   const handleExportCSV = async () => {
@@ -1446,18 +1757,311 @@ export function UsersAdminClient({
                 )}
               </div>
 
-              {/* Registered Competitions */}
+              {/* Registered Competitions with Change Event Option */}
               <div className="space-y-3">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
-                  Event Registrations ({selectedUser.registrations.length}/2)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
+                    Event Registrations ({selectedUser.registrations.length}/2)
+                  </span>
 
+                  {(currentUserRole?.roleLevel ?? 0) >= 3 && selectedUser.registrations.length < 2 && !activeEventAction && (
+                    <button
+                      type="button"
+                      onClick={handleStartAssignEvent}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Assign Event Slot</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Inline Change / Assign Event Panel */}
+                {activeEventAction && (
+                  <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/70 via-white to-slate-50/50 p-4 space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-2xs">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900">
+                            {activeEventAction.mode === "change"
+                              ? `Change Event for Slot #${activeEventAction.slotNumber}`
+                              : `Assign Event to Slot #${activeEventAction.slotNumber}`}
+                          </h4>
+                          {activeEventAction.currentEventName && (
+                            <p className="text-[10px] text-slate-500">
+                              Current: <span className="font-semibold text-slate-700">{activeEventAction.currentEventName}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveEventAction(null)}
+                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* Filter and Search Bar */}
+                    <div className="space-y-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                          <input
+                            type="text"
+                            value={eventSearchTerm}
+                            onChange={(e) => setEventSearchTerm(e.target.value)}
+                            placeholder="Search competition, department, venue..."
+                            className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs"
+                          />
+                        </div>
+
+                        {eventCategories.length > 0 && (
+                          <select
+                            value={eventCategoryFilter}
+                            onChange={(e) => setEventCategoryFilter(e.target.value)}
+                            className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs sm:w-44"
+                          >
+                            <option value="all">All Categories ({availableEvents.length})</option>
+                            {eventCategories.map((cat) => (
+                              <option key={cat} value={cat}>
+                                {cat}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Event Picker List */}
+                      {loadingEvents ? (
+                        <div className="flex items-center justify-center p-6 rounded-xl bg-white border border-slate-200 text-slate-400 gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                          <span>Loading competition catalog...</span>
+                        </div>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                          {filteredAvailableEvents.length === 0 ? (
+                            <div className="p-4 text-center text-slate-400 text-xs italic">
+                              No competitions match your search.
+                            </div>
+                          ) : (
+                            filteredAvailableEvents.map((evt) => {
+                              const isSelected = selectedNewEventId === evt.id;
+                              const isCurrentEvent = activeEventAction.currentEventId === evt.id;
+                              const isInternal = selectedUser.participantType === "internal";
+                              const isFull = evt.isTotalFull;
+                              const isKluBlocked = isInternal && evt.isKluBlocked;
+                              const isProRestricted = evt.isProEvent && selectedUser.pass?.passTier !== "pro_pass";
+
+                              return (
+                                <div
+                                  key={evt.id}
+                                  onClick={() => {
+                                    if (!isCurrentEvent) setSelectedNewEventId(evt.id);
+                                  }}
+                                  className={`p-2.5 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-indigo-50/80 border-l-4 border-indigo-600"
+                                      : isCurrentEvent
+                                      ? "bg-slate-50 opacity-50 cursor-not-allowed"
+                                      : "hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div className="space-y-0.5 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-bold text-slate-900 truncate">
+                                        {evt.name}
+                                      </span>
+                                      {evt.isProEvent && (
+                                        <span className="rounded bg-amber-500 text-white px-1.5 py-0.2 text-[8px] font-black uppercase">
+                                          PRO
+                                        </span>
+                                      )}
+                                      <span className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.2 text-[9px] font-medium">
+                                        {evt.categoryName}
+                                      </span>
+                                      {isCurrentEvent && (
+                                        <span className="text-[9px] font-bold text-slate-400 italic">
+                                          (Currently Registered)
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                      <span>{evt.venue}</span>
+                                      <span>•</span>
+                                      <span>{evt.eventDate ? formatDate(evt.eventDate) : "TBD"}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {isFull ? (
+                                      <span className="rounded bg-rose-100 text-rose-800 border border-rose-200 px-1.5 py-0.5 text-[9px] font-bold">
+                                        Full ({evt.totalRegistered}/{evt.participantLimit})
+                                      </span>
+                                    ) : isKluBlocked ? (
+                                      <span className="rounded bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold">
+                                        KLU Quota Full
+                                      </span>
+                                    ) : (
+                                      <span className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.5 text-[9px] font-mono">
+                                        {Math.max(0, evt.participantLimit - evt.totalRegistered)} seats left
+                                      </span>
+                                    )}
+
+                                    {isSelected && (
+                                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white">
+                                        <Check className="h-3 w-3" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Target Event Analysis & Warnings */}
+                    {selectedTargetEvent && (
+                      <div className="space-y-2 p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Selected Replacement Event</span>
+                            <span className="font-extrabold text-slate-900">{selectedTargetEvent.name}</span>
+                          </div>
+                          <span className="font-mono text-[11px] text-slate-500">
+                            {selectedTargetEvent.venue} • {selectedTargetEvent.eventDate ? formatDate(selectedTargetEvent.eventDate) : ""}
+                          </span>
+                        </div>
+
+                        {/* Capacity or Policy Restriction Banner */}
+                        {(selectedTargetEvent.isTotalFull ||
+                          (selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked) ||
+                          (selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass")) && (
+                          <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
+                            <div className="flex items-start gap-1.5">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                {selectedTargetEvent.isTotalFull && (
+                                  <p className="font-semibold text-[11px]">
+                                    ⚠️ Competition has reached full participant capacity ({selectedTargetEvent.totalRegistered}/{selectedTargetEvent.participantLimit}).
+                                  </p>
+                                )}
+                                {selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked && (
+                                  <p className="font-semibold text-[11px]">
+                                    ⚠️ Kalasalingam University quota is full or closed for this competition.
+                                  </p>
+                                )}
+                                {selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass" && (
+                                  <p className="font-semibold text-[11px]">
+                                    ⚠️ PRO Event: Participant holds a Standard Festival Pass.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <label className="flex items-center gap-2 pt-1 font-bold text-amber-950 text-[11px] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={overrideCapacity}
+                                onChange={(e) => setOverrideCapacity(e.target.checked)}
+                                className="rounded text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span>Force Override (Bypass capacity &amp; pass restrictions as Administrator)</span>
+                            </label>
+                          </div>
+                        )}
+
+                        {/* Attendance Reset Notice if changing attended slot */}
+                        {activeEventAction.isAttended && (
+                          <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Info className="h-4 w-4 text-sky-600 shrink-0" />
+                              <span className="text-[11px]">
+                                User is marked as <strong>Attended</strong>. Attendance record will be reset for the new event.
+                              </span>
+                            </div>
+                            <label className="flex items-center gap-1.5 font-bold text-[10px] text-sky-950 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={resetAttendance}
+                                onChange={(e) => setResetAttendance(e.target.checked)}
+                                className="rounded text-indigo-600"
+                              />
+                              <span>Reset Attendance</span>
+                            </label>
+                          </div>
+                        )}
+
+                        {/* Optional Reason / Note */}
+                        <div>
+                          <input
+                            type="text"
+                            value={changeReason}
+                            onChange={(e) => setChangeReason(e.target.value)}
+                            placeholder="Reason for change (e.g. Schedule clash, Desk request, Coordinator change)..."
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Panel Action Buttons */}
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setActiveEventAction(null)}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer text-xs"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !selectedNewEventId ||
+                          isSubmittingEventAction ||
+                          (Boolean(selectedTargetEvent?.isTotalFull ||
+                            (selectedUser.participantType === "internal" && selectedTargetEvent?.isKluBlocked) ||
+                            (selectedTargetEvent?.isProEvent && selectedUser.pass?.passTier !== "pro_pass")) &&
+                            !overrideCapacity)
+                        }
+                        onClick={handleConfirmChangeEvent}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 font-bold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs shadow-2xs transition-colors"
+                      >
+                        {isSubmittingEventAction ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Updating Event...</span>
+                          </>
+                        ) : activeEventAction.mode === "change" ? (
+                          <>
+                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                            <span>Confirm Event Change</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>Confirm Assignment</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* List of Registered Competitions */}
                 {selectedUser.registrations.length > 0 ? (
                   <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden">
                     {selectedUser.registrations.map((reg) => (
                       <div
                         key={reg.id}
-                        className="p-3.5 flex items-center justify-between gap-3 bg-white"
+                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
@@ -1481,7 +2085,7 @@ export function UsersAdminClient({
                           </div>
                         </div>
 
-                        <div>
+                        <div className="flex items-center gap-2 self-end sm:self-center">
                           {reg.isAttended ? (
                             <span className="inline-flex items-center gap-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
                               <Check className="h-3 w-3 text-emerald-600" />
@@ -1493,13 +2097,48 @@ export function UsersAdminClient({
                               <span>Pending Check-in</span>
                             </span>
                           )}
+
+                          {/* Change Event Button (Admins Level 3+) */}
+                          {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartChangeEvent(reg)}
+                                className="inline-flex items-center gap-1 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 px-2.5 py-1 text-[11px] font-bold text-indigo-700 transition-colors cursor-pointer shadow-2xs"
+                                title="Change or swap this registered event"
+                              >
+                                <ArrowLeftRight className="h-3 w-3" />
+                                <span>Change Event</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isSubmittingEventAction}
+                                onClick={() => handleRemoveRegistration(reg.id, reg.slotNumber)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Remove this event slot"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="p-3 rounded-xl bg-slate-50 text-slate-400 italic text-center">
-                    No event slots registered.
+                  <div className="p-4 rounded-2xl border border-dashed border-slate-200 text-center space-y-2 bg-slate-50/50">
+                    <p className="text-slate-400 italic text-xs">No event slots registered.</p>
+                    {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                      <button
+                        type="button"
+                        onClick={handleStartAssignEvent}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Assign Event to Slot #1</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

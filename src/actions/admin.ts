@@ -5689,3 +5689,727 @@ export async function getEventSectionRosterAction(eventId: string) {
     return { success: false, error: msg };
   }
 }
+
+// 26. Admin Simple Events List for Swapping / Modifying User Registrations
+export interface AdminEventSimpleItem {
+  id: string;
+  name: string;
+  slug: string;
+  schoolOrDept?: string;
+  venue: string;
+  eventDate: string;
+  startTime: string;
+  endTime?: string;
+  participantLimit: number;
+  internalLimit: number | null;
+  allowInternal: boolean;
+  allowExternal: boolean;
+  isProEvent: boolean;
+  categoryName: string;
+  totalRegistered: number;
+  internalRegistered: number;
+  isTotalFull: boolean;
+  isInternalFull: boolean;
+  isKluBlocked: boolean;
+  status: string;
+}
+
+export async function getAdminEventsListSimpleAction(): Promise<{
+  success: boolean;
+  events: AdminEventSimpleItem[];
+  error?: string;
+}> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 1) {
+      return { success: false, error: "Unauthorized access", events: [] };
+    }
+
+    const adminClient = await createAdminClient();
+
+    let allEventsList: any[] = [];
+    const { data: eventsWithCol, error: colErr } = await adminClient
+      .from("events")
+      .select(`
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        participant_limit,
+        internal_limit,
+        allow_internal,
+        allow_external,
+        is_pro_event,
+        status,
+        category:event_categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .neq("status", "draft")
+      .order("event_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (colErr) {
+      const { data: fallbackEvents, error: fbErr } = await adminClient
+        .from("events")
+        .select(`
+          id,
+          name,
+          slug,
+          school_or_dept,
+          venue,
+          event_date,
+          start_time,
+          end_time,
+          participant_limit,
+          allow_internal,
+          allow_external,
+          is_pro_event,
+          status,
+          category:event_categories (
+            id,
+            name,
+            slug
+          )
+        `)
+        .neq("status", "draft")
+        .order("name", { ascending: true });
+
+      if (fbErr) throw fbErr;
+      allEventsList = fallbackEvents || [];
+    } else {
+      allEventsList = eventsWithCol || [];
+    }
+
+    const eventIds = allEventsList.map((e) => e.id);
+
+    // Fetch stats view or count
+    const { data: statsList } = await adminClient
+      .from("vw_public_events_stats")
+      .select("event_id, total_registered, internal_registered")
+      .in("event_id", eventIds);
+
+    const internalCounts: Record<string, number> = {};
+    const totalCounts: Record<string, number> = {};
+
+    (statsList || []).forEach((s: any) => {
+      totalCounts[s.event_id] = Number(s.total_registered || 0);
+      internalCounts[s.event_id] = Number(s.internal_registered || 0);
+    });
+
+    const formattedEvents: AdminEventSimpleItem[] = allEventsList.map((evt) => {
+      const totalReg = totalCounts[evt.id] || 0;
+      const internalReg = internalCounts[evt.id] || 0;
+      const partLimit = Number(evt.participant_limit || 100);
+      const intLimit = evt.internal_limit !== null && evt.internal_limit !== undefined ? Number(evt.internal_limit) : null;
+      const allowInt = evt.allow_internal !== false;
+      const allowExt = evt.allow_external !== false;
+
+      const isTotalFull = totalReg >= partLimit;
+      const isIntFull = intLimit !== null ? internalReg >= intLimit : false;
+      const isKluBlocked = !allowInt || isIntFull;
+
+      const catObj = Array.isArray(evt.category) ? evt.category[0] : evt.category;
+
+      return {
+        id: evt.id,
+        name: evt.name,
+        slug: evt.slug,
+        schoolOrDept: evt.school_or_dept || "",
+        venue: evt.venue || "Campus Venue",
+        eventDate: evt.event_date || "",
+        startTime: evt.start_time || "",
+        endTime: evt.end_time || "",
+        participantLimit: partLimit,
+        internalLimit: intLimit,
+        allowInternal: allowInt,
+        allowExternal: allowExt,
+        isProEvent: Boolean(evt.is_pro_event),
+        categoryName: catObj?.name || "General",
+        totalRegistered: totalReg,
+        internalRegistered: internalReg,
+        isTotalFull,
+        isInternalFull: isIntFull,
+        isKluBlocked,
+        status: evt.status || "active",
+      };
+    });
+
+    return { success: true, events: formattedEvents };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to load events";
+    return { success: false, error: msg, events: [] };
+  }
+}
+
+// 27. Change / Swap Event for a User's Registration (Admin & Super Admin)
+export async function adminChangeEventForUserAction({
+  registrationId,
+  userId,
+  newEventId,
+  overrideCapacity = false,
+  resetAttendance = true,
+  reason,
+}: {
+  registrationId: string;
+  userId: string;
+  newEventId: string;
+  overrideCapacity?: boolean;
+  resetAttendance?: boolean;
+  reason?: string;
+}): Promise<{
+  success: boolean;
+  updatedRegistration?: any;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 3) {
+      return { success: false, error: "Unauthorized: Level 3+ Admin privileges required to swap events." };
+    }
+
+    if (!registrationId || !userId || !newEventId) {
+      return { success: false, error: "Missing required parameters for event swap." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // 1. Fetch current registration
+    const { data: reg, error: regErr } = await adminClient
+      .from("event_registrations")
+      .select(`
+        id,
+        user_id,
+        event_id,
+        slot_number,
+        registration_code,
+        status,
+        payment_status,
+        event:events (
+          id,
+          name
+        )
+      `)
+      .eq("id", registrationId)
+      .single();
+
+    if (regErr || !reg) {
+      return { success: false, error: "Registration record not found." };
+    }
+
+    if (reg.user_id !== userId) {
+      return { success: false, error: "Registration does not belong to the target user." };
+    }
+
+    if (reg.event_id === newEventId) {
+      return { success: false, error: "The user is already registered for this event in this slot." };
+    }
+
+    // 2. Check if user is registered for target event in another slot
+    const { data: otherSlot } = await adminClient
+      .from("event_registrations")
+      .select("id, slot_number")
+      .eq("user_id", userId)
+      .eq("event_id", newEventId)
+      .neq("id", registrationId)
+      .eq("status", "confirmed")
+      .maybeSingle();
+
+    if (otherSlot) {
+      return {
+        success: false,
+        error: `User is already registered for this competition in Slot #${otherSlot.slot_number}. A participant cannot register for the same competition twice.`,
+      };
+    }
+
+    // 3. Fetch target new event details
+    const { data: newEvent, error: newEvtErr } = await adminClient
+      .from("events")
+      .select(`
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        participant_limit,
+        internal_limit,
+        allow_internal,
+        allow_external,
+        is_pro_event,
+        status,
+        category:event_categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .eq("id", newEventId)
+      .single();
+
+    if (newEvtErr || !newEvent) {
+      return { success: false, error: "Target event not found in database." };
+    }
+
+    // 4. Fetch User Profile and Pass details for policy validation
+    const [{ data: userProfile }, { data: userPass }] = await Promise.all([
+      adminClient.from("profiles").select("participant_type, email").eq("id", userId).maybeSingle(),
+      adminClient.from("delegate_passes").select("id, pass_tier").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    const isInternal = userProfile?.participant_type === "internal" || (userProfile?.email || "").toLowerCase().endsWith("@klu.ac.in");
+
+    // 5. Policy & Capacity Validation (Bypassable with overrideCapacity)
+    if (!overrideCapacity) {
+      // Pro Pass check
+      if (newEvent.is_pro_event && userPass?.pass_tier !== "pro_pass") {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is a PRO event, but the user holds a Standard Pass. Enable Force Override if you wish to bypass.`,
+        };
+      }
+
+      // University domain restriction
+      if (isInternal && newEvent.allow_internal === false) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is restricted and closed for Kalasalingam University students. Enable Force Override if you wish to bypass.`,
+        };
+      }
+      if (!isInternal && newEvent.allow_external === false) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is restricted to Kalasalingam students only. Enable Force Override if you wish to bypass.`,
+        };
+      }
+
+      // Total capacity check
+      const { count: totalRegs } = await adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", newEventId)
+        .eq("status", "confirmed");
+
+      const limit = Number(newEvent.participant_limit || 100);
+      if ((totalRegs || 0) >= limit) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" has reached full capacity (${totalRegs}/${limit} seats). Enable Force Override if you wish to bypass.`,
+        };
+      }
+
+      // Internal student limit check
+      if (isInternal && newEvent.internal_limit !== null && newEvent.internal_limit !== undefined) {
+        const { data: intRegs } = await adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            user:profiles!event_registrations_user_id_fkey (
+              email,
+              participant_type
+            )
+          `)
+          .eq("event_id", newEventId)
+          .eq("status", "confirmed");
+
+        let intCount = 0;
+        (intRegs || []).forEach((r: any) => {
+          const u = Array.isArray(r.user) ? r.user[0] : r.user;
+          if (u?.participant_type === "internal" || (u?.email || "").toLowerCase().endsWith("@klu.ac.in")) {
+            intCount++;
+          }
+        });
+
+        if (intCount >= Number(newEvent.internal_limit)) {
+          return {
+            success: false,
+            error: `"${newEvent.name}" internal student quota is full (${intCount}/${newEvent.internal_limit} seats). Enable Force Override if you wish to bypass.`,
+          };
+        }
+      }
+    }
+
+    // 6. Update registration record with new event
+    const { error: updateErr } = await adminClient
+      .from("event_registrations")
+      .update({
+        event_id: newEventId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", registrationId);
+
+    if (updateErr) throw updateErr;
+
+    // 7. Reset attendance if requested
+    if (resetAttendance) {
+      await adminClient
+        .from("attendance")
+        .delete()
+        .eq("registration_id", registrationId);
+    }
+
+    // 8. Log audit record
+    try {
+      const oldEventName = (reg.event as any)?.name || "Previous Event";
+      await adminClient.from("payment_audit_logs").insert({
+        issue_id: null,
+        admin_id: authInfo.user.id,
+        action_taken: "event_changed",
+        previous_status: reg.event_id,
+        new_status: newEventId,
+        notes: `Admin ${authInfo.user.email} changed Slot #${reg.slot_number} from "${oldEventName}" to "${newEvent.name}" for user ${userId}. Override: ${overrideCapacity}. Reason: ${reason || "Admin user inspect change"}`,
+      });
+    } catch {
+      // Non-fatal if table not present
+    }
+
+    // 9. Revalidate cache tags and pages
+    revalidateTag("admin-users");
+    revalidateTag("public-events");
+    revalidateTag("admin-events");
+    revalidateTag("admin-slot-controls");
+    revalidatePath("/admin/users", "page");
+    revalidatePath("/dashboard", "page");
+    revalidatePath("/dashboard/passes", "page");
+    revalidatePath("/events", "page");
+
+    const categoryName = Array.isArray(newEvent.category)
+      ? newEvent.category[0]?.name
+      : (newEvent.category as any)?.name;
+
+    return {
+      success: true,
+      message: `Successfully changed Slot #${reg.slot_number} to "${newEvent.name}".`,
+      updatedRegistration: {
+        id: reg.id,
+        slotNumber: reg.slot_number,
+        registrationCode: reg.registration_code,
+        status: reg.status,
+        paymentStatus: reg.payment_status,
+        isAttended: false,
+        scannedAt: null,
+        event: {
+          id: newEvent.id,
+          name: newEvent.name,
+          slug: newEvent.slug,
+          schoolOrDept: newEvent.school_or_dept,
+          isProEvent: Boolean(newEvent.is_pro_event),
+          venue: newEvent.venue,
+          eventDate: newEvent.event_date,
+          startTime: newEvent.start_time,
+          category: categoryName,
+        },
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to change event";
+    return { success: false, error: msg };
+  }
+}
+
+// 28. Assign New Event to an Open Slot (Admin & Super Admin)
+export async function adminAssignEventForUserAction({
+  userId,
+  newEventId,
+  overrideCapacity = false,
+}: {
+  userId: string;
+  newEventId: string;
+  overrideCapacity?: boolean;
+}): Promise<{
+  success: boolean;
+  newRegistration?: any;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 3) {
+      return { success: false, error: "Unauthorized: Level 3+ Admin privileges required to assign events." };
+    }
+
+    if (!userId || !newEventId) {
+      return { success: false, error: "Missing required parameters for event assignment." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // 1. Fetch user pass & existing registrations
+    const [{ data: userPass }, { data: existingRegs }] = await Promise.all([
+      adminClient.from("delegate_passes").select("id, pass_code, pass_tier, slots_used, total_slots, status").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      adminClient.from("event_registrations").select("id, slot_number, event_id").eq("user_id", userId).eq("status", "confirmed"),
+    ]);
+
+    const activeRegs = existingRegs || [];
+    if (activeRegs.length >= 2) {
+      return { success: false, error: "User already has both 2 event slots allocated. Use 'Change Event' to replace an existing event." };
+    }
+
+    if (activeRegs.some((r) => r.event_id === newEventId)) {
+      return { success: false, error: "User is already registered for this competition." };
+    }
+
+    // 2. Fetch new event details
+    const { data: newEvent, error: newEvtErr } = await adminClient
+      .from("events")
+      .select(`
+        id,
+        name,
+        slug,
+        school_or_dept,
+        venue,
+        event_date,
+        start_time,
+        end_time,
+        participant_limit,
+        internal_limit,
+        allow_internal,
+        allow_external,
+        is_pro_event,
+        status,
+        category:event_categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .eq("id", newEventId)
+      .single();
+
+    if (newEvtErr || !newEvent) {
+      return { success: false, error: "Target event not found in database." };
+    }
+
+    // 3. User profile check
+    const { data: userProfile } = await adminClient
+      .from("profiles")
+      .select("participant_type, email")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const isInternal = userProfile?.participant_type === "internal" || (userProfile?.email || "").toLowerCase().endsWith("@klu.ac.in");
+
+    // 4. Policy checks
+    if (!overrideCapacity) {
+      if (newEvent.is_pro_event && userPass?.pass_tier !== "pro_pass") {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is a PRO event, but the user holds a Standard Pass. Enable Force Override to proceed.`,
+        };
+      }
+
+      if (isInternal && newEvent.allow_internal === false) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is closed for Kalasalingam University students. Enable Force Override to proceed.`,
+        };
+      }
+      if (!isInternal && newEvent.allow_external === false) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" is restricted to Kalasalingam students only. Enable Force Override to proceed.`,
+        };
+      }
+
+      const { count: totalRegs } = await adminClient
+        .from("event_registrations")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", newEventId)
+        .eq("status", "confirmed");
+
+      const limit = Number(newEvent.participant_limit || 100);
+      if ((totalRegs || 0) >= limit) {
+        return {
+          success: false,
+          error: `"${newEvent.name}" has reached full capacity (${totalRegs}/${limit} seats). Enable Force Override to proceed.`,
+        };
+      }
+
+      if (isInternal && newEvent.internal_limit !== null && newEvent.internal_limit !== undefined) {
+        const { data: intRegs } = await adminClient
+          .from("event_registrations")
+          .select(`
+            id,
+            user:profiles!event_registrations_user_id_fkey (
+              email,
+              participant_type
+            )
+          `)
+          .eq("event_id", newEventId)
+          .eq("status", "confirmed");
+
+        let intCount = 0;
+        (intRegs || []).forEach((r: any) => {
+          const u = Array.isArray(r.user) ? r.user[0] : r.user;
+          if (u?.participant_type === "internal" || (u?.email || "").toLowerCase().endsWith("@klu.ac.in")) {
+            intCount++;
+          }
+        });
+
+        if (intCount >= Number(newEvent.internal_limit)) {
+          return {
+            success: false,
+            error: `"${newEvent.name}" internal student quota is full (${intCount}/${newEvent.internal_limit} seats). Enable Force Override to proceed.`,
+          };
+        }
+      }
+    }
+
+    // 5. Determine slot number
+    const usedSlotNumbers = new Set(activeRegs.map((r) => r.slot_number));
+    const nextSlot = !usedSlotNumbers.has(1) ? 1 : 2;
+    const passCode = userPass?.pass_code || "EUPH";
+    const regCode = `${passCode}-S${nextSlot}`;
+
+    // 6. Insert new registration
+    const { data: newReg, error: insErr } = await adminClient
+      .from("event_registrations")
+      .insert({
+        pass_id: userPass?.id || null,
+        user_id: userId,
+        event_id: newEventId,
+        slot_number: nextSlot,
+        registration_code: regCode,
+        status: "confirmed",
+        payment_status: "paid",
+        qr_secret_nonce: Math.random().toString(36).substring(2),
+      })
+      .select("id, slot_number, registration_code, status, payment_status")
+      .single();
+
+    if (insErr || !newReg) throw insErr || new Error("Failed to insert registration");
+
+    // 7. Update delegate pass slots_used if present
+    if (userPass) {
+      await adminClient
+        .from("delegate_passes")
+        .update({
+          slots_used: Math.min(2, activeRegs.length + 1),
+        })
+        .eq("id", userPass.id);
+    }
+
+    // 8. Revalidate caches
+    revalidateTag("admin-users");
+    revalidateTag("public-events");
+    revalidateTag("admin-events");
+    revalidateTag("admin-slot-controls");
+    revalidatePath("/admin/users", "page");
+    revalidatePath("/dashboard", "page");
+    revalidatePath("/dashboard/passes", "page");
+    revalidatePath("/events", "page");
+
+    const categoryName = Array.isArray(newEvent.category)
+      ? newEvent.category[0]?.name
+      : (newEvent.category as any)?.name;
+
+    return {
+      success: true,
+      message: `Successfully assigned "${newEvent.name}" to Slot #${nextSlot}.`,
+      newRegistration: {
+        id: newReg.id,
+        slotNumber: newReg.slot_number,
+        registrationCode: newReg.registration_code,
+        status: newReg.status,
+        paymentStatus: newReg.payment_status,
+        isAttended: false,
+        scannedAt: null,
+        event: {
+          id: newEvent.id,
+          name: newEvent.name,
+          slug: newEvent.slug,
+          schoolOrDept: newEvent.school_or_dept,
+          isProEvent: Boolean(newEvent.is_pro_event),
+          venue: newEvent.venue,
+          eventDate: newEvent.event_date,
+          startTime: newEvent.start_time,
+          category: categoryName,
+        },
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to assign event";
+    return { success: false, error: msg };
+  }
+}
+
+// 29. Remove Registration Slot for User (Admin & Super Admin)
+export async function adminRemoveRegistrationAction({
+  registrationId,
+  userId,
+}: {
+  registrationId: string;
+  userId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const authInfo = await getCallerAuthInfo();
+    if (!authInfo || authInfo.roleLevel < 3) {
+      return { success: false, error: "Unauthorized: Level 3+ Admin privileges required." };
+    }
+
+    const adminClient = await createAdminClient();
+
+    // Verify registration belongs to target user
+    const { data: reg, error: regErr } = await adminClient
+      .from("event_registrations")
+      .select("id, user_id, pass_id")
+      .eq("id", registrationId)
+      .single();
+
+    if (regErr || !reg || reg.user_id !== userId) {
+      return { success: false, error: "Registration not found or unauthorized." };
+    }
+
+    // Delete attendance records
+    await adminClient.from("attendance").delete().eq("registration_id", registrationId);
+
+    // Delete event registration
+    const { error: delErr } = await adminClient
+      .from("event_registrations")
+      .delete()
+      .eq("id", registrationId);
+
+    if (delErr) throw delErr;
+
+    // Decrement slots_used if pass exists
+    if (reg.pass_id) {
+      const { data: pass } = await adminClient
+        .from("delegate_passes")
+        .select("id, slots_used")
+        .eq("id", reg.pass_id)
+        .single();
+
+      if (pass && pass.slots_used > 0) {
+        await adminClient
+          .from("delegate_passes")
+          .update({ slots_used: Math.max(0, pass.slots_used - 1) })
+          .eq("id", pass.id);
+      }
+    }
+
+    revalidateTag("admin-users");
+    revalidateTag("public-events");
+    revalidateTag("admin-events");
+    revalidateTag("admin-slot-controls");
+    revalidatePath("/admin/users", "page");
+    revalidatePath("/dashboard", "page");
+    revalidatePath("/dashboard/passes", "page");
+    revalidatePath("/events", "page");
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to remove registration";
+    return { success: false, error: msg };
+  }
+}
+
