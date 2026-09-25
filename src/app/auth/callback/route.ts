@@ -108,11 +108,9 @@ export async function GET(request: NextRequest) {
       }
 
       // 4. Standard Participant Flow: Strictly verify that all profile fields are filled
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
+      const profile =
+        staffRes.profile ||
+        (await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()).data;
 
       const profileActuallyComplete = isProfileComplete(profile);
 

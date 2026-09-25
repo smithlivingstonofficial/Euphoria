@@ -40,7 +40,7 @@ const getCachedUser = cache(async () => {
     // Uses targeted PostgREST filter with .limit(1) and .select("id") to prevent downloading all 61 event descriptions (2 bytes vs 215 KB)
     let isEventEmailStaff = false;
     let matchedEventId: string | null = null;
-    if (!isStaffAlready && userEmail) {
+    if (!isStaffAlready && userEmail && userEmail.endsWith("@klu.ac.in")) {
       const { data: matchedEvents } = await adminClient
         .from("events")
         .select("id")
@@ -299,7 +299,7 @@ export async function ensureStaffAccountAndRole(user: any) {
     // Uses targeted PostgREST filter with .limit(1) and .select("id") to prevent downloading all 61 event descriptions (2 bytes vs 215 KB)
     let isEventEmailStaff = false;
     let matchedEventId: string | null = null;
-    if (!isStaffAlready && userEmail) {
+    if (!isStaffAlready && userEmail && userEmail.endsWith("@klu.ac.in")) {
       const { data: matchedEvents } = await adminClient
         .from("events")
         .select("id")
@@ -387,9 +387,9 @@ export async function ensureStaffAccountAndRole(user: any) {
       }
     }
 
-    return { isStaff, isAdmin, isCoordinator };
+    return { isStaff, isAdmin, isCoordinator, profile: existingProfile };
   } catch (err) {
     console.error("ensureStaffAccountAndRole error:", err);
-    return { isStaff: false, isAdmin: false, isCoordinator: false };
+    return { isStaff: false, isAdmin: false, isCoordinator: false, profile: null };
   }
 }

@@ -23,9 +23,19 @@ export function HeroParticleCanvas() {
     if (!ctx) return;
 
     let animationFrameId: number;
+    let isVisible = true;
     const parent = canvas.parentElement;
     let width = (canvas.width = parent?.clientWidth || window.innerWidth);
     let height = (canvas.height = parent?.clientHeight || 600);
+
+    const observer = new IntersectionObserver(([entry]) => {
+      isVisible = entry.isIntersecting;
+      if (isVisible) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(render);
+      }
+    }, { threshold: 0.05 });
+    observer.observe(canvas);
 
     // Refined palette: softer on light bg
     const colors = ["#6366F1", "#4F46E5", "#06B6D4", "#3B82F6", "#7C3AED", "#0891B2"];
@@ -185,12 +195,15 @@ export function HeroParticleCanvas() {
       }
 
       ctx.globalAlpha = 1.0;
-      animationFrameId = requestAnimationFrame(render);
+      if (isVisible) {
+        animationFrameId = requestAnimationFrame(render);
+      }
     };
 
     render();
 
     return () => {
+      observer.disconnect();
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", handleResize);
       parent?.removeEventListener("mousemove", handleMouseMove);

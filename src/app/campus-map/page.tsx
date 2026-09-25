@@ -8,6 +8,8 @@ export const metadata: Metadata = {
     "Interactive full-screen Satellite campus map of Kalasalingam Academy of Research and Education (KARE) with pinned campus buildings and directions.",
 };
 
+export const revalidate = 86400;
+
 export default function CampusMapPage() {
   const campusPins: PinItem[] = [
     {
