@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 interface GoogleSignInButtonProps {
   redirectUrl?: string;
@@ -18,13 +19,42 @@ export function GoogleSignInButton({
 
   const authUrl = `/api/auth/google?redirect=${encodeURIComponent(redirectUrl)}`;
 
-  const handleSignIn = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (isClicked) {
-      e.preventDefault();
-      return;
-    }
+  const handleSignIn = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (isClicked) return;
     setIsClicked(true);
-    // Let native browser navigation execute cleanly without client-side SPA interception
+
+    try {
+      const supabase = createClient();
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const callbackUrl = `${origin}/auth/callback?redirect=${encodeURIComponent(redirectUrl)}`;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: callbackUrl,
+          queryParams: {
+            access_type: "offline",
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (error) {
+        console.warn("[OAuth] Browser signInWithOAuth failed, falling back to server route:", error.message);
+        window.location.href = authUrl;
+        return;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        window.location.href = authUrl;
+      }
+    } catch (err) {
+      console.warn("[OAuth] Exception during client OAuth initialization, falling back to server route:", err);
+      window.location.href = authUrl;
+    }
   };
 
   return (

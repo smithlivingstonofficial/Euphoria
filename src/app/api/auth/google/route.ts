@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +8,38 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const next = searchParams.get("redirect") || "/dashboard";
-  const origin = request.nextUrl.origin;
 
-  const supabase = await createClient();
+  // Host awareness for Vercel behind custom domains
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  const origin = forwardedHost ? `${proto}://${forwardedHost}` : request.nextUrl.origin;
+
+  const cookieStore = cookies();
+  const cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }> = [];
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch {}
+          cookiesToSet.push({ name, value, options });
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: "", ...options });
+          } catch {}
+          cookiesToSet.push({ name, value: "", options });
+        },
+      },
+    }
+  );
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -22,19 +52,18 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  if (error) {
+  if (error || !data?.url) {
     return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url),
+      `${origin}/login?error=${encodeURIComponent(error?.message || "oauth_init_failed")}`,
       { status: 302 }
     );
   }
 
-  if (data?.url) {
-    return NextResponse.redirect(data.url, { status: 302 });
-  }
+  // Explicitly attach PKCE code_verifier cookies to the redirect response
+  const response = NextResponse.redirect(data.url, { status: 302 });
+  cookiesToSet.forEach(({ name, value, options }) => {
+    response.cookies.set({ name, value, ...options });
+  });
 
-  return NextResponse.redirect(
-    new URL("/login?error=oauth_init_failed", request.url),
-    { status: 302 }
-  );
+  return response;
 }
