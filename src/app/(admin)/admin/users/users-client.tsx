@@ -92,6 +92,7 @@ export function UsersAdminClient({
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
+  const [modalActiveTab, setModalActiveTab] = useState<"events" | "profile" | "roles" | "orders">("events");
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState<boolean>(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -216,6 +217,7 @@ export function UsersAdminClient({
 
   const handleOpenUserModal = async (user: AdminUserListItem) => {
     setSelectedUser(user);
+    setModalActiveTab("events");
     setIsEditMode(false);
     setActiveEventAction(null);
     setSelectedNewEventId("");
@@ -1358,836 +1360,1119 @@ export function UsersAdminClient({
 
       {/* User Details & Management Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-2xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-white font-black text-sm">
-                  {selectedUser.fullName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
-                    {selectedUser.fullName}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">{selectedUser.email}</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedUser(null)}
-                className="p-1.5 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-              {/* Alert Feedback */}
-              {actionSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
-                  {actionSuccess}
-                </div>
-              )}
-              {actionError && (
-                <div className="p-3 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 font-medium">
-                  {actionError}
-                </div>
-              )}
-
-              {/* Personal Details (View or Edit) */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
-                    Personal &amp; Academic Profile
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditMode(!isEditMode)}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline cursor-pointer"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                    <span>{isEditMode ? "Cancel Edit" : "Edit Profile"}</span>
-                  </button>
-                </div>
-
-                {isEditMode ? (
-                  <form onSubmit={handleSaveProfile} className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        Full Name
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.fullName}
-                        onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })}
-                        required
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        Mobile Number
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.mobileNumber}
-                        onChange={(e) => setEditFormData({ ...editFormData, mobileNumber: e.target.value })}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        Register Number
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.registerNumber}
-                        onChange={(e) => setEditFormData({ ...editFormData, registerNumber: e.target.value })}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        Delegate Type
-                      </label>
-                      <select
-                        value={editFormData.participantType}
-                        onChange={(e) => setEditFormData({ ...editFormData, participantType: e.target.value as any })}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none"
-                      >
-                        <option value="internal">KARE Internal</option>
-                        <option value="external">External Delegate</option>
-                      </select>
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                        College / Institution
-                      </label>
-                      <input
-                        type="text"
-                        value={editFormData.collegeName}
-                        onChange={(e) => setEditFormData({ ...editFormData, collegeName: e.target.value })}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="col-span-2 flex justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsEditMode(false)}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="rounded-xl bg-slate-900 px-4 py-1.5 font-bold text-white hover:bg-primary disabled:opacity-50 cursor-pointer"
-                      >
-                        {isSubmitting ? "Saving..." : "Save Changes"}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        Participant Type
-                      </span>
-                      <span className="font-bold text-slate-900 capitalize">
-                        {selectedUser.participantType === "internal" ? "KARE Internal" : "External Delegate"}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        Register Number
-                      </span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        {selectedUser.registerNumber || "Not Provided"}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        Mobile Contact
-                      </span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        {selectedUser.mobileNumber || "Not Provided"}
-                      </span>
-                    </div>
-
-                    <div className="col-span-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        College / Institution
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        {selectedUser.collegeName || selectedUser.department || "Kalasalingam Academy"}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        Course &amp; Year
-                      </span>
-                      <span className="font-bold text-slate-900">
-                        {selectedUser.course || "General"} {selectedUser.yearOfStudy ? `(Yr ${selectedUser.yearOfStudy})` : ""}
-                      </span>
-                    </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-4 sm:my-6 max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header & User Summary Banner */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/70 shrink-0">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-primary to-purple-600 text-white font-black text-base sm:text-lg shadow-sm ring-2 ring-white">
+                    {selectedUser.fullName.charAt(0).toUpperCase()}
                   </div>
-                )}
-              </div>
-
-              {/* Hierarchical RBAC Role Management */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Shield className="h-3.5 w-3.5 text-primary" />
-                    <span>RBAC Governance &amp; Role Assignments</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    Your Authority: {currentUserRole?.isSuperAdmin ? "👑 Super Admin (L4)" : currentUserRole?.roleLevel === 3 ? "🛡️ Admin (L3)" : "Staff / Coordinator"}
-                  </span>
-                </div>
-
-                {selectedUser.email.toLowerCase().trim() === "smithlivingston2005@gmail.com" || selectedUser.roles.includes("super_admin") ? (
-                  <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-amber-50/30 p-4 space-y-1.5 shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-700 text-white">
-                        <Crown className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-black text-purple-900 tracking-tight">
-                          Root Super Administrator (Developer)
-                        </span>
-                        <span className="block text-[10px] text-purple-700 font-medium">
-                          Permanent developer account with full site control &amp; admin delegation authority
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-slate-600 pl-9 pt-0.5">
-                      This root account holds immutable governance over Euphoria 2026. Roles cannot be modified or revoked.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                    {/* 1. Platform Admin Role */}
-                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("admin") ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <ShieldCheck className={`h-4 w-4 ${selectedUser.roles.includes("admin") ? "text-indigo-600" : "text-slate-400"}`} />
-                          <span className="text-xs font-bold text-slate-900">Admin</span>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 3</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mb-3">
-                        Event control, finances, pass verification, coordinator delegation.
-                      </p>
-                      {currentUserRole?.isSuperAdmin ? (
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleToggleRole("admin", selectedUser.roles.includes("admin") ? "revoke" : "assign")}
-                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
-                            selectedUser.roles.includes("admin")
-                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                              : "bg-indigo-600 text-white hover:bg-indigo-700"
-                          }`}
-                        >
-                          {selectedUser.roles.includes("admin") ? "Revoke Admin" : "Grant Admin"}
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
-                          <Lock className="h-3 w-3" />
-                          <span>Super Admin Only</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 2. Overall Coordinator (Read-Only) */}
-                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("overall_coordinator") ? "border-sky-300 bg-sky-50/50" : "border-slate-200 bg-white"}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <Globe className={`h-4 w-4 ${selectedUser.roles.includes("overall_coordinator") ? "text-sky-600" : "text-slate-400"}`} />
-                          <span className="text-xs font-bold text-slate-900">Overall Coord</span>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mb-3">
-                        Global read-only oversight across all 61 competitions. Custom reports &amp; telemetry.
-                      </p>
-                      {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleToggleRole("overall_coordinator", selectedUser.roles.includes("overall_coordinator") ? "revoke" : "assign")}
-                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
-                            selectedUser.roles.includes("overall_coordinator")
-                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                              : "bg-sky-600 text-white hover:bg-sky-700"
-                          }`}
-                        >
-                          {selectedUser.roles.includes("overall_coordinator") ? "Revoke Overall" : "Grant Overall"}
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
-                          <Lock className="h-3 w-3" />
-                          <span>Admin Required</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 3. Staff Coordinator Role */}
-                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("staff_coordinator") ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <Building className={`h-4 w-4 ${selectedUser.roles.includes("staff_coordinator") ? "text-amber-600" : "text-slate-400"}`} />
-                          <span className="text-xs font-bold text-slate-900">Staff Coord</span>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mb-3">
-                        Faculty overseer. Can assign event student coordinators.
-                      </p>
-                      {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleToggleRole("staff_coordinator", selectedUser.roles.includes("staff_coordinator") ? "revoke" : "assign")}
-                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
-                            selectedUser.roles.includes("staff_coordinator")
-                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                              : "bg-amber-600 text-white hover:bg-amber-700"
-                          }`}
-                        >
-                          {selectedUser.roles.includes("staff_coordinator") ? "Revoke Staff" : "Grant Staff"}
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
-                          <Lock className="h-3 w-3" />
-                          <span>Admin Required</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 4. Student Coordinator Role */}
-                    <div className={`p-3 rounded-2xl border transition-all ${selectedUser.roles.includes("student_coordinator") ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 bg-white"}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <GraduationCap className={`h-4 w-4 ${selectedUser.roles.includes("student_coordinator") ? "text-emerald-600" : "text-slate-400"}`} />
-                          <span className="text-xs font-bold text-slate-900">Student Coord</span>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold text-slate-400">Level 1</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mb-3">
-                        Field lead. Manages check-ins, attendance scans, &amp; participant assistance.
-                      </p>
-                      {(currentUserRole?.roleLevel ?? 0) >= 2 ? (
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleToggleRole("student_coordinator", selectedUser.roles.includes("student_coordinator") ? "revoke" : "assign")}
-                          className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
-                            selectedUser.roles.includes("student_coordinator")
-                              ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                              : "bg-emerald-600 text-white hover:bg-emerald-700"
-                          }`}
-                        >
-                          {selectedUser.roles.includes("student_coordinator") ? "Revoke Student" : "Grant Student"}
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
-                          <Lock className="h-3 w-3" />
-                          <span>Staff Required</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Festival Pass & Slot Status */}
-              <div className="space-y-3">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
-                  Festival Pass Allocation
-                </span>
-
-                {selectedUser.pass ? (
-                  <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50/60 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-slate-900 text-sm">
-                          {selectedUser.pass.passCode}
-                        </span>
-                        {selectedUser.pass.passTier === "pro_pass" ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-amber-500 text-white px-2 py-0.5 text-[10px] font-black uppercase">
-                            <Star className="h-3 w-3 fill-current" />
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-extrabold text-slate-900">
+                        {selectedUser.fullName}
+                      </h3>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[9px] font-bold border ${
+                          selectedUser.participantType === "internal"
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            : "bg-purple-50 text-purple-800 border-purple-200"
+                        }`}
+                      >
+                        {selectedUser.participantType === "internal" ? "🎓 KARE Internal" : "🌐 External Delegate"}
+                      </span>
+                      {selectedUser.pass ? (
+                        selectedUser.pass.passTier === "pro_pass" ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                            <Star className="h-2.5 w-2.5 fill-current" />
                             <span>PRO PASS</span>
                           </span>
                         ) : (
-                          <span className="rounded bg-indigo-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase">
-                            STANDARD PASS
+                          <span className="rounded-md bg-indigo-600 text-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                            STD PASS
                           </span>
-                        )}
-                      </div>
-
-                      <span className="font-mono font-bold text-slate-900">
-                        Fee Paid: {formatCurrency(selectedUser.pass.amountPaid)}
-                      </span>
+                        )
+                      ) : (
+                        <span className="rounded-md bg-slate-200 text-slate-600 px-2 py-0.5 text-[9px] font-medium">
+                          No Pass
+                        </span>
+                      )}
                     </div>
-
-                    <div className="text-xs text-slate-500">
-                      Slots Used: <strong className="text-slate-900">{selectedUser.pass.slotsUsed} / 2</strong>{" "}
-                      {selectedUser.pass.slotsUsed < 2 && (
-                        <span className="text-emerald-700 font-semibold">(Eligible to claim 1 more event for ₹0)</span>
+                    <div className="flex items-center gap-2.5 text-xs text-slate-500 flex-wrap">
+                      <span className="font-mono text-slate-600">{selectedUser.email}</span>
+                      {selectedUser.mobileNumber && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="font-mono text-slate-600">{selectedUser.mobileNumber}</span>
+                        </>
+                      )}
+                      {selectedUser.collegeName && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="truncate max-w-[220px] text-slate-600">{selectedUser.collegeName}</span>
+                        </>
                       )}
                     </div>
                   </div>
-                ) : (
-                  <div className="p-4 rounded-2xl border border-dashed border-slate-200 text-center text-slate-500">
-                    No active Festival Pass found for this participant.
-                  </div>
-                )}
-              </div>
-
-              {/* Registered Competitions with Change Event Option */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
-                    Event Registrations ({selectedUser.registrations.length}/2)
-                  </span>
-
-                  {(currentUserRole?.roleLevel ?? 0) >= 3 && selectedUser.registrations.length < 2 && !activeEventAction && (
-                    <button
-                      type="button"
-                      onClick={handleStartAssignEvent}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Assign Event Slot</span>
-                    </button>
-                  )}
                 </div>
 
-                {/* Inline Change / Assign Event Panel */}
-                {activeEventAction && (
-                  <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-b from-indigo-50/70 via-white to-slate-50/50 p-4 space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-2xs">
-                          <ArrowLeftRight className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-900">
-                            {activeEventAction.mode === "change"
-                              ? `Change Event for Slot #${activeEventAction.slotNumber}`
-                              : `Assign Event to Slot #${activeEventAction.slotNumber}`}
-                          </h4>
-                          {activeEventAction.currentEventName && (
-                            <p className="text-[10px] text-slate-500">
-                              Current: <span className="font-semibold text-slate-700">{activeEventAction.currentEventName}</span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setActiveEventAction(null)}
-                        className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    {/* Filter and Search Bar */}
-                    <div className="space-y-2">
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <div className="relative flex-1">
-                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                          <input
-                            type="text"
-                            value={eventSearchTerm}
-                            onChange={(e) => setEventSearchTerm(e.target.value)}
-                            placeholder="Search competition, department, venue..."
-                            className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs"
-                          />
-                        </div>
-
-                        {eventCategories.length > 0 && (
-                          <select
-                            value={eventCategoryFilter}
-                            onChange={(e) => setEventCategoryFilter(e.target.value)}
-                            className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs sm:w-44"
-                          >
-                            <option value="all">All Categories ({availableEvents.length})</option>
-                            {eventCategories.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-
-                      {/* Event Picker List */}
-                      {loadingEvents ? (
-                        <div className="flex items-center justify-center p-6 rounded-xl bg-white border border-slate-200 text-slate-400 gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-                          <span>Loading competition catalog...</span>
-                        </div>
-                      ) : (
-                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-                          {filteredAvailableEvents.length === 0 ? (
-                            <div className="p-4 text-center text-slate-400 text-xs italic">
-                              No competitions match your search.
-                            </div>
-                          ) : (
-                            filteredAvailableEvents.map((evt) => {
-                              const isSelected = selectedNewEventId === evt.id;
-                              const isCurrentEvent = activeEventAction.currentEventId === evt.id;
-                              const isInternal = selectedUser.participantType === "internal";
-                              const isFull = evt.isTotalFull;
-                              const isKluBlocked = isInternal && evt.isKluBlocked;
-                              const isProRestricted = evt.isProEvent && selectedUser.pass?.passTier !== "pro_pass";
-
-                              return (
-                                <div
-                                  key={evt.id}
-                                  onClick={() => {
-                                    if (!isCurrentEvent) setSelectedNewEventId(evt.id);
-                                  }}
-                                  className={`p-2.5 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer ${
-                                    isSelected
-                                      ? "bg-indigo-50/80 border-l-4 border-indigo-600"
-                                      : isCurrentEvent
-                                      ? "bg-slate-50 opacity-50 cursor-not-allowed"
-                                      : "hover:bg-slate-50"
-                                  }`}
-                                >
-                                  <div className="space-y-0.5 min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="font-bold text-slate-900 truncate">
-                                        {evt.name}
-                                      </span>
-                                      {evt.isProEvent && (
-                                        <span className="rounded bg-amber-500 text-white px-1.5 py-0.2 text-[8px] font-black uppercase">
-                                          PRO
-                                        </span>
-                                      )}
-                                      <span className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.2 text-[9px] font-medium">
-                                        {evt.categoryName}
-                                      </span>
-                                      {isCurrentEvent && (
-                                        <span className="text-[9px] font-bold text-slate-400 italic">
-                                          (Currently Registered)
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                                      <span>{evt.venue}</span>
-                                      <span>•</span>
-                                      <span>{evt.eventDate ? formatDate(evt.eventDate) : "TBD"}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {isFull ? (
-                                      <span className="rounded bg-rose-100 text-rose-800 border border-rose-200 px-1.5 py-0.5 text-[9px] font-bold">
-                                        Full ({evt.totalRegistered}/{evt.participantLimit})
-                                      </span>
-                                    ) : isKluBlocked ? (
-                                      <span className="rounded bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold">
-                                        KLU Quota Full
-                                      </span>
-                                    ) : (
-                                      <span className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.5 text-[9px] font-mono">
-                                        {Math.max(0, evt.participantLimit - evt.totalRegistered)} seats left
-                                      </span>
-                                    )}
-
-                                    {isSelected && (
-                                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white">
-                                        <Check className="h-3 w-3" />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Target Event Analysis & Warnings */}
-                    {selectedTargetEvent && (
-                      <div className="space-y-2 p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                        <div className="flex items-center justify-between text-xs">
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Selected Replacement Event</span>
-                            <span className="font-extrabold text-slate-900">{selectedTargetEvent.name}</span>
-                          </div>
-                          <span className="font-mono text-[11px] text-slate-500">
-                            {selectedTargetEvent.venue} • {selectedTargetEvent.eventDate ? formatDate(selectedTargetEvent.eventDate) : ""}
-                          </span>
-                        </div>
-
-                        {/* Capacity or Policy Restriction Banner */}
-                        {(selectedTargetEvent.isTotalFull ||
-                          (selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked) ||
-                          (selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass")) && (
-                          <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
-                            <div className="flex items-start gap-1.5">
-                              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                              <div className="space-y-0.5">
-                                {selectedTargetEvent.isTotalFull && (
-                                  <p className="font-semibold text-[11px]">
-                                    ⚠️ Competition has reached full participant capacity ({selectedTargetEvent.totalRegistered}/{selectedTargetEvent.participantLimit}).
-                                  </p>
-                                )}
-                                {selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked && (
-                                  <p className="font-semibold text-[11px]">
-                                    ⚠️ Kalasalingam University quota is full or closed for this competition.
-                                  </p>
-                                )}
-                                {selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass" && (
-                                  <p className="font-semibold text-[11px]">
-                                    ⚠️ PRO Event: Participant holds a Standard Festival Pass.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <label className="flex items-center gap-2 pt-1 font-bold text-amber-950 text-[11px] cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={overrideCapacity}
-                                onChange={(e) => setOverrideCapacity(e.target.checked)}
-                                className="rounded text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span>Force Override (Bypass capacity &amp; pass restrictions as Administrator)</span>
-                            </label>
-                          </div>
-                        )}
-
-                        {/* Attendance Reset Notice if changing attended slot */}
-                        {activeEventAction.isAttended && (
-                          <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Info className="h-4 w-4 text-sky-600 shrink-0" />
-                              <span className="text-[11px]">
-                                User is marked as <strong>Attended</strong>. Attendance record will be reset for the new event.
-                              </span>
-                            </div>
-                            <label className="flex items-center gap-1.5 font-bold text-[10px] text-sky-950 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={resetAttendance}
-                                onChange={(e) => setResetAttendance(e.target.checked)}
-                                className="rounded text-indigo-600"
-                              />
-                              <span>Reset Attendance</span>
-                            </label>
-                          </div>
-                        )}
-
-                        {/* Optional Reason / Note */}
-                        <div>
-                          <input
-                            type="text"
-                            value={changeReason}
-                            onChange={(e) => setChangeReason(e.target.value)}
-                            placeholder="Reason for change (e.g. Schedule clash, Desk request, Coordinator change)..."
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Panel Action Buttons */}
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setActiveEventAction(null)}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer text-xs"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={
-                          !selectedNewEventId ||
-                          isSubmittingEventAction ||
-                          (Boolean(selectedTargetEvent?.isTotalFull ||
-                            (selectedUser.participantType === "internal" && selectedTargetEvent?.isKluBlocked) ||
-                            (selectedTargetEvent?.isProEvent && selectedUser.pass?.passTier !== "pro_pass")) &&
-                            !overrideCapacity)
-                        }
-                        onClick={handleConfirmChangeEvent}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 font-bold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs shadow-2xs transition-colors"
-                      >
-                        {isSubmittingEventAction ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span>Updating Event...</span>
-                          </>
-                        ) : activeEventAction.mode === "change" ? (
-                          <>
-                            <ArrowLeftRight className="h-3.5 w-3.5" />
-                            <span>Confirm Event Change</span>
-                          </>
-                        ) : (
-                          <>
-                            <Plus className="h-3.5 w-3.5" />
-                            <span>Confirm Assignment</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* List of Registered Competitions */}
-                {selectedUser.registrations.length > 0 ? (
-                  <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden">
-                    {selectedUser.registrations.map((reg) => (
-                      <div
-                        key={reg.id}
-                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-bold text-slate-600">
-                              Slot #{reg.slotNumber}
-                            </span>
-                            {reg.event.isProEvent && (
-                              <span className="rounded bg-amber-500 text-white px-1.5 py-0.2 text-[9px] font-black uppercase">
-                                PRO
-                              </span>
-                            )}
-                            <h4 className="font-bold text-slate-900 text-xs">
-                              {reg.event.name}
-                            </h4>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                            <span>{reg.event.eventDate ? formatDate(reg.event.eventDate) : ""}</span>
-                            <span>•</span>
-                            <span>{reg.event.venue}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 self-end sm:self-center">
-                          {reg.isAttended ? (
-                            <span className="inline-flex items-center gap-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
-                              <Check className="h-3 w-3 text-emerald-600" />
-                              <span>Attended</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-medium">
-                              <Clock className="h-3 w-3 text-slate-400" />
-                              <span>Pending Check-in</span>
-                            </span>
-                          )}
-
-                          {/* Change Event Button (Admins Level 3+) */}
-                          {(currentUserRole?.roleLevel ?? 0) >= 3 && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleStartChangeEvent(reg)}
-                                className="inline-flex items-center gap-1 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 px-2.5 py-1 text-[11px] font-bold text-indigo-700 transition-colors cursor-pointer shadow-2xs"
-                                title="Change or swap this registered event"
-                              >
-                                <ArrowLeftRight className="h-3 w-3" />
-                                <span>Change Event</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={isSubmittingEventAction}
-                                onClick={() => handleRemoveRegistration(reg.id, reg.slotNumber)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Remove this event slot"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-2xl border border-dashed border-slate-200 text-center space-y-2 bg-slate-50/50">
-                    <p className="text-slate-400 italic text-xs">No event slots registered.</p>
-                    {(currentUserRole?.roleLevel ?? 0) >= 3 && (
-                      <button
-                        type="button"
-                        onClick={handleStartAssignEvent}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        <span>Assign Event to Slot #1</span>
-                      </button>
-                    )}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedUser(null)}
+                  className="p-1.5 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
+                  title="Close Inspector"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              {/* Payment & Order History (Loaded On-Demand) */}
-              <div className="space-y-3">
-                <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
-                  Payment &amp; Order Transactions
-                </span>
+              {/* Navigation Tabs Bar */}
+              <div className="flex items-center gap-1.5 pt-3.5 mt-3 border-t border-slate-200/60 overflow-x-auto scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalActiveTab("events");
+                    setActiveEventAction(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                    modalActiveTab === "events"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80"
+                  }`}
+                >
+                  <Zap className={`h-3.5 w-3.5 ${modalActiveTab === "events" ? "text-amber-400" : "text-slate-400"}`} />
+                  <span>Competitions &amp; Pass</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold ${
+                      modalActiveTab === "events" ? "bg-slate-800 text-amber-300" : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {selectedUser.registrations.length}/2
+                  </span>
+                </button>
 
-                {loadingOrders ? (
-                  <div className="flex items-center justify-center p-6 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    <span>Loading transaction history...</span>
-                  </div>
-                ) : userOrders.length > 0 ? (
-                  <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden bg-white">
-                    {userOrders.map((ord) => (
-                      <div key={ord.id} className="p-3 flex items-center justify-between text-xs">
-                        <div>
-                          <span className="font-mono font-bold text-slate-900">{ord.orderNumber}</span>
-                          <span className="text-[10px] text-slate-400 block">{formatDate(ord.createdAt)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-extrabold text-slate-900">{formatCurrency(ord.amount)}</span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            ord.status === "paid" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
-                          }`}>
-                            {ord.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-xl bg-slate-50 text-slate-400 italic text-center">
-                    No payment orders on file for this user.
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalActiveTab("profile");
+                    setActiveEventAction(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                    modalActiveTab === "profile"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80"
+                  }`}
+                >
+                  <Users className={`h-3.5 w-3.5 ${modalActiveTab === "profile" ? "text-indigo-400" : "text-slate-400"}`} />
+                  <span>Personal Profile</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalActiveTab("roles");
+                    setActiveEventAction(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                    modalActiveTab === "roles"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80"
+                  }`}
+                >
+                  <ShieldCheck className={`h-3.5 w-3.5 ${modalActiveTab === "roles" ? "text-indigo-400" : "text-slate-400"}`} />
+                  <span>Roles &amp; RBAC</span>
+                  {selectedUser.roles.length > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold ${
+                        modalActiveTab === "roles" ? "bg-slate-800 text-indigo-300" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {selectedUser.roles.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalActiveTab("orders");
+                    setActiveEventAction(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                    modalActiveTab === "orders"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80"
+                  }`}
+                >
+                  <CreditCard className={`h-3.5 w-3.5 ${modalActiveTab === "orders" ? "text-indigo-400" : "text-slate-400"}`} />
+                  <span>Payment Orders</span>
+                  {userOrders.length > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold ${
+                        modalActiveTab === "orders" ? "bg-slate-800 text-emerald-300" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {userOrders.length}
+                    </span>
+                  )}
+                </button>
               </div>
-
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+            {/* Modal Body with Active Tab View */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+              {/* Alert Feedback Notifications */}
+              {actionSuccess && (
+                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>{actionSuccess}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActionSuccess(null)}
+                    className="p-1 text-emerald-600 hover:text-emerald-900 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              {actionError && (
+                <div className="p-3 rounded-2xl bg-rose-50 text-rose-800 border border-rose-200 font-medium flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                    <span>{actionError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActionError(null)}
+                    className="p-1 text-rose-600 hover:text-rose-900 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 1: COMPETITIONS & FESTIVAL PASS */}
+              {/* ========================================================================= */}
+              {modalActiveTab === "events" && (
+                <div className="space-y-5">
+                  {/* Festival Pass Status Banner */}
+                  <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-purple-50/20 p-4 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shadow-2xs">
+                          <CreditCard className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-slate-900 text-sm">
+                              {selectedUser.pass?.passCode || "No Active Pass"}
+                            </span>
+                            {selectedUser.pass?.passTier === "pro_pass" ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-500 text-white px-2 py-0.5 text-[9px] font-black uppercase">
+                                <Star className="h-2.5 w-2.5 fill-current" />
+                                <span>PRO PASS</span>
+                              </span>
+                            ) : selectedUser.pass ? (
+                              <span className="rounded bg-indigo-600 text-white px-2 py-0.5 text-[9px] font-bold uppercase">
+                                STANDARD PASS
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="text-[11px] text-slate-500 block">
+                            Fee Paid:{" "}
+                            <strong className="text-slate-800 font-mono">
+                              {selectedUser.pass ? formatCurrency(selectedUser.pass.amountPaid) : "₹0"}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Slot Utilization Status */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Slots Allocated</span>
+                          <span className="font-mono font-extrabold text-slate-900 text-xs">
+                            {selectedUser.registrations.length} of 2 Slots
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 pl-2">
+                          <div
+                            className={`h-3 w-3 rounded-full ${
+                              selectedUser.registrations.length >= 1 ? "bg-emerald-500 ring-2 ring-emerald-100" : "bg-slate-200"
+                            }`}
+                            title="Slot #1"
+                          />
+                          <div
+                            className={`h-3 w-3 rounded-full ${
+                              selectedUser.registrations.length >= 2 ? "bg-emerald-500 ring-2 ring-emerald-100" : "bg-slate-200"
+                            }`}
+                            title="Slot #2"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Inline Change / Assign Event Drawer */}
+                  {activeEventAction && (
+                    <div className="rounded-3xl border-2 border-indigo-400/80 bg-gradient-to-b from-indigo-50/80 via-white to-slate-50 p-4 sm:p-5 space-y-4 shadow-lg ring-4 ring-indigo-100/60 animate-in fade-in slide-in-from-top-3 duration-200">
+                      <div className="flex items-center justify-between pb-3 border-b border-indigo-100">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                            <ArrowLeftRight className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                              {activeEventAction.mode === "change"
+                                ? `Change Event for Slot #${activeEventAction.slotNumber}`
+                                : `Assign Event to Slot #${activeEventAction.slotNumber}`}
+                            </h4>
+                            {activeEventAction.currentEventName && (
+                              <p className="text-[11px] text-slate-500">
+                                Currently: <strong className="text-slate-800">{activeEventAction.currentEventName}</strong>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveEventAction(null)}
+                          className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 cursor-pointer"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {/* Search Bar & Category Filter */}
+                      <div className="space-y-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <div className="relative flex-1">
+                            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                            <input
+                              type="text"
+                              value={eventSearchTerm}
+                              onChange={(e) => setEventSearchTerm(e.target.value)}
+                              placeholder="Search competition name, department, venue..."
+                              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs"
+                            />
+                          </div>
+
+                          {eventCategories.length > 0 && (
+                            <select
+                              value={eventCategoryFilter}
+                              onChange={(e) => setEventCategoryFilter(e.target.value)}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 shadow-2xs sm:w-48 font-medium"
+                            >
+                              <option value="all">All Categories ({availableEvents.length})</option>
+                              {eventCategories.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Competition Catalog Picker */}
+                        {loadingEvents ? (
+                          <div className="flex items-center justify-center p-8 rounded-2xl bg-white border border-slate-200 text-slate-400 gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                            <span>Loading Euphoria event catalog...</span>
+                          </div>
+                        ) : (
+                          <div className="max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-inner">
+                            {filteredAvailableEvents.length === 0 ? (
+                              <div className="p-6 text-center text-slate-400 text-xs italic">
+                                No competitions match your search query.
+                              </div>
+                            ) : (
+                              filteredAvailableEvents.map((evt) => {
+                                const isSelected = selectedNewEventId === evt.id;
+                                const isCurrentEvent = activeEventAction.currentEventId === evt.id;
+                                const isInternal = selectedUser.participantType === "internal";
+                                const isFull = evt.isTotalFull;
+                                const isKluBlocked = isInternal && evt.isKluBlocked;
+
+                                return (
+                                  <div
+                                    key={evt.id}
+                                    onClick={() => {
+                                      if (!isCurrentEvent) setSelectedNewEventId(evt.id);
+                                    }}
+                                    className={`p-3 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "bg-indigo-50/90 border-l-4 border-indigo-600"
+                                        : isCurrentEvent
+                                        ? "bg-slate-50 opacity-40 cursor-not-allowed"
+                                        : "hover:bg-slate-50/80"
+                                    }`}
+                                  >
+                                    <div className="space-y-0.5 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-extrabold text-slate-900 truncate">
+                                          {evt.name}
+                                        </span>
+                                        {evt.isProEvent && (
+                                          <span className="rounded bg-amber-500 text-white px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider">
+                                            PRO
+                                          </span>
+                                        )}
+                                        <span className="rounded bg-slate-100 text-slate-600 px-1.5 py-0.2 text-[9px] font-semibold">
+                                          {evt.categoryName}
+                                        </span>
+                                        {isCurrentEvent && (
+                                          <span className="text-[9px] font-bold text-slate-400 italic">
+                                            (Current Event)
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                        <span>{evt.venue}</span>
+                                        <span>•</span>
+                                        <span>{evt.eventDate ? formatDate(evt.eventDate) : "Schedule TBD"}</span>
+                                        {evt.startTime && <span>({evt.startTime})</span>}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {isFull ? (
+                                        <span className="rounded-lg bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 text-[9px] font-bold">
+                                          Full ({evt.totalRegistered}/{evt.participantLimit})
+                                        </span>
+                                      ) : isKluBlocked ? (
+                                        <span className="rounded-lg bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 text-[9px] font-bold">
+                                          KLU Full
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold font-mono">
+                                          {Math.max(0, evt.participantLimit - evt.totalRegistered)} left
+                                        </span>
+                                      )}
+
+                                      {isSelected && (
+                                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xs">
+                                          <Check className="h-3 w-3" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selected Target Preview & Options */}
+                      {selectedTargetEvent && (
+                        <div className="space-y-2.5 p-3.5 rounded-2xl bg-white border border-indigo-200 shadow-2xs">
+                          <div className="flex items-center justify-between text-xs">
+                            <div>
+                              <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider block">
+                                Selected Replacement Competition
+                              </span>
+                              <span className="text-sm font-extrabold text-slate-900">{selectedTargetEvent.name}</span>
+                            </div>
+                            <span className="font-mono text-[11px] text-slate-500">
+                              {selectedTargetEvent.venue} • {selectedTargetEvent.eventDate ? formatDate(selectedTargetEvent.eventDate) : ""}
+                            </span>
+                          </div>
+
+                          {/* Capacity / Restriction Banner */}
+                          {(selectedTargetEvent.isTotalFull ||
+                            (selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked) ||
+                            (selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass")) && (
+                            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  {selectedTargetEvent.isTotalFull && (
+                                    <p className="font-bold text-[11px]">
+                                      ⚠️ Event is at capacity ({selectedTargetEvent.totalRegistered}/{selectedTargetEvent.participantLimit} seats taken).
+                                    </p>
+                                  )}
+                                  {selectedUser.participantType === "internal" && selectedTargetEvent.isKluBlocked && (
+                                    <p className="font-bold text-[11px]">
+                                      ⚠️ Kalasalingam University quota is full or restricted for this competition.
+                                    </p>
+                                  )}
+                                  {selectedTargetEvent.isProEvent && selectedUser.pass?.passTier !== "pro_pass" && (
+                                    <p className="font-bold text-[11px]">
+                                      ⚠️ PRO Competition: Participant holds a Standard Festival Pass.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <label className="flex items-center gap-2 pt-1 font-bold text-amber-950 text-[11px] cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={overrideCapacity}
+                                  onChange={(e) => setOverrideCapacity(e.target.checked)}
+                                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span>Force Override (Bypass capacity &amp; pass restrictions as Administrator)</span>
+                              </label>
+                            </div>
+                          )}
+
+                          {/* Attendance Reset Notice if changing attended slot */}
+                          {activeEventAction.isAttended && (
+                            <div className="p-2.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Info className="h-4 w-4 text-sky-600 shrink-0" />
+                                <span className="text-[11px]">
+                                  User is currently marked <strong>Attended</strong>. Changing the event will reset attendance status.
+                                </span>
+                              </div>
+                              <label className="flex items-center gap-1.5 font-bold text-[10px] text-sky-950 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={resetAttendance}
+                                  onChange={(e) => setResetAttendance(e.target.checked)}
+                                  className="rounded text-indigo-600"
+                                />
+                                <span>Reset Attendance</span>
+                              </label>
+                            </div>
+                          )}
+
+                          {/* Reason Input */}
+                          <div>
+                            <input
+                              type="text"
+                              value={changeReason}
+                              onChange={(e) => setChangeReason(e.target.value)}
+                              placeholder="Reason for change (e.g. Schedule clash, Desk request, Coordinator change)..."
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-600"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setActiveEventAction(null)}
+                          className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer text-xs"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            !selectedNewEventId ||
+                            isSubmittingEventAction ||
+                            (Boolean(
+                              selectedTargetEvent?.isTotalFull ||
+                                (selectedUser.participantType === "internal" && selectedTargetEvent?.isKluBlocked) ||
+                                (selectedTargetEvent?.isProEvent && selectedUser.pass?.passTier !== "pro_pass")
+                            ) &&
+                              !overrideCapacity)
+                          }
+                          onClick={handleConfirmChangeEvent}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs shadow-md transition-colors"
+                        >
+                          {isSubmittingEventAction ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Updating Event...</span>
+                            </>
+                          ) : activeEventAction.mode === "change" ? (
+                            <>
+                              <ArrowLeftRight className="h-3.5 w-3.5" />
+                              <span>Confirm Event Change</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Confirm Slot Assignment</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2 Event Slots Grid (Slot #1 and Slot #2) */}
+                  <div className="space-y-2">
+                    <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
+                      Assigned Event Slots
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {/* SLOT #1 CARD */}
+                      {(() => {
+                        const slot1Reg = selectedUser.registrations.find((r) => r.slotNumber === 1);
+                        if (slot1Reg) {
+                          return (
+                            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-sm transition-all space-y-3 flex flex-col justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-black uppercase">
+                                      SLOT #1
+                                    </span>
+                                    {slot1Reg.event.isProEvent && (
+                                      <span className="rounded-lg bg-amber-500 text-white px-2 py-0.5 text-[9px] font-black uppercase">
+                                        PRO
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {slot1Reg.isAttended ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
+                                      <Check className="h-3 w-3 text-emerald-600" />
+                                      <span>Attended</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-medium">
+                                      <Clock className="h-3 w-3 text-slate-400" />
+                                      <span>Pending Check-in</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <h4 className="text-sm font-extrabold text-slate-900 leading-snug">
+                                    {slot1Reg.event.name}
+                                  </h4>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-1">
+                                    <span>{slot1Reg.event.venue || "Campus Venue"}</span>
+                                    <span>•</span>
+                                    <span>{slot1Reg.event.eventDate ? formatDate(slot1Reg.event.eventDate) : "Date TBD"}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartChangeEvent(slot1Reg)}
+                                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-3 py-1.5 text-xs font-bold text-indigo-700 transition-all cursor-pointer shadow-2xs group"
+                                  >
+                                    <ArrowLeftRight className="h-3.5 w-3.5 text-indigo-600 group-hover:text-white" />
+                                    <span>Change Event</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={isSubmittingEventAction}
+                                    onClick={() => handleRemoveRegistration(slot1Reg.id, 1)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title="Remove this slot registration"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center justify-center text-center space-y-2.5">
+                              <span className="rounded-lg bg-slate-200 text-slate-600 px-2 py-0.5 text-[10px] font-bold uppercase">
+                                SLOT #1 EMPTY
+                              </span>
+                              <p className="text-xs text-slate-500">No competition assigned to Slot #1.</p>
+                              {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                                <button
+                                  type="button"
+                                  onClick={handleStartAssignEvent}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  <span>Assign Event to Slot #1</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+                      })()}
+
+                      {/* SLOT #2 CARD */}
+                      {(() => {
+                        const slot2Reg = selectedUser.registrations.find((r) => r.slotNumber === 2);
+                        if (slot2Reg) {
+                          return (
+                            <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-sm transition-all space-y-3 flex flex-col justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-black uppercase">
+                                      SLOT #2
+                                    </span>
+                                    {slot2Reg.event.isProEvent && (
+                                      <span className="rounded-lg bg-amber-500 text-white px-2 py-0.5 text-[9px] font-black uppercase">
+                                        PRO
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {slot2Reg.isAttended ? (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-extrabold">
+                                      <Check className="h-3 w-3 text-emerald-600" />
+                                      <span>Attended</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-medium">
+                                      <Clock className="h-3 w-3 text-slate-400" />
+                                      <span>Pending Check-in</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <h4 className="text-sm font-extrabold text-slate-900 leading-snug">
+                                    {slot2Reg.event.name}
+                                  </h4>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-1">
+                                    <span>{slot2Reg.event.venue || "Campus Venue"}</span>
+                                    <span>•</span>
+                                    <span>{slot2Reg.event.eventDate ? formatDate(slot2Reg.event.eventDate) : "Date TBD"}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartChangeEvent(slot2Reg)}
+                                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-3 py-1.5 text-xs font-bold text-indigo-700 transition-all cursor-pointer shadow-2xs group"
+                                  >
+                                    <ArrowLeftRight className="h-3.5 w-3.5 text-indigo-600 group-hover:text-white" />
+                                    <span>Change Event</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={isSubmittingEventAction}
+                                    onClick={() => handleRemoveRegistration(slot2Reg.id, 2)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title="Remove this slot registration"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="p-5 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/20 flex flex-col items-center justify-center text-center space-y-2.5">
+                              <span className="rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold uppercase">
+                                SLOT #2 AVAILABLE (₹0)
+                              </span>
+                              <p className="text-xs text-slate-500 max-w-[220px]">
+                                Participant is eligible to select a 2nd competition under their festival pass.
+                              </p>
+                              {(currentUserRole?.roleLevel ?? 0) >= 3 && (
+                                <button
+                                  type="button"
+                                  onClick={handleStartAssignEvent}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  <span>Assign Event to Slot #2</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 2: PERSONAL & ACADEMIC PROFILE */}
+              {/* ========================================================================= */}
+              {modalActiveTab === "profile" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
+                      Participant Demographics &amp; Academic Records
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditMode(!isEditMode)}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>{isEditMode ? "Cancel Edit" : "Edit Profile"}</span>
+                    </button>
+                  </div>
+
+                  {isEditMode ? (
+                    <form onSubmit={handleSaveProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          Full Name
+                        </label>
+                        <input
+                          type="text"
+                          value={editFormData.fullName}
+                          onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })}
+                          required
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          Mobile Number
+                        </label>
+                        <input
+                          type="text"
+                          value={editFormData.mobileNumber}
+                          onChange={(e) => setEditFormData({ ...editFormData, mobileNumber: e.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          Register Number
+                        </label>
+                        <input
+                          type="text"
+                          value={editFormData.registerNumber}
+                          onChange={(e) => setEditFormData({ ...editFormData, registerNumber: e.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          Delegate Type
+                        </label>
+                        <select
+                          value={editFormData.participantType}
+                          onChange={(e) => setEditFormData({ ...editFormData, participantType: e.target.value as any })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                        >
+                          <option value="internal">KARE Internal</option>
+                          <option value="external">External Delegate</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          College / Institution
+                        </label>
+                        <input
+                          type="text"
+                          value={editFormData.collegeName}
+                          onChange={(e) => setEditFormData({ ...editFormData, collegeName: e.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2 flex justify-end gap-2 pt-2 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditMode(false)}
+                          className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="rounded-xl bg-slate-900 px-5 py-1.5 font-bold text-white hover:bg-indigo-600 disabled:opacity-50 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          {isSubmitting ? "Saving..." : "Save Profile"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                          Participant Type
+                        </span>
+                        <span className="font-bold text-slate-900 capitalize text-xs">
+                          {selectedUser.participantType === "internal" ? "🎓 KARE Internal" : "🌐 External Delegate"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                          Register Number
+                        </span>
+                        <span className="font-bold text-slate-900 font-mono text-xs">
+                          {selectedUser.registerNumber || "Not Provided"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                          Mobile Contact
+                        </span>
+                        <span className="font-bold text-slate-900 font-mono text-xs">
+                          {selectedUser.mobileNumber || "Not Provided"}
+                        </span>
+                      </div>
+
+                      <div className="col-span-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                          College / Institution
+                        </span>
+                        <span className="font-bold text-slate-900 text-xs">
+                          {selectedUser.collegeName || selectedUser.department || "Kalasalingam Academy"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                          Course &amp; Year
+                        </span>
+                        <span className="font-bold text-slate-900 text-xs">
+                          {selectedUser.course || "General"} {selectedUser.yearOfStudy ? `(Yr ${selectedUser.yearOfStudy})` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 3: ROLES & RBAC GOVERNANCE */}
+              {/* ========================================================================= */}
+              {modalActiveTab === "roles" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>RBAC Governance &amp; Role Assignments</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Your Authority: {currentUserRole?.isSuperAdmin ? "👑 Super Admin (L4)" : currentUserRole?.roleLevel === 3 ? "🛡️ Admin (L3)" : "Staff / Coordinator"}
+                    </span>
+                  </div>
+
+                  {selectedUser.email.toLowerCase().trim() === "smithlivingston2005@gmail.com" || selectedUser.roles.includes("super_admin") ? (
+                    <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-amber-50/30 p-4 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-700 text-white">
+                          <Crown className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-purple-900 tracking-tight">
+                            Root Super Administrator (Developer)
+                          </span>
+                          <span className="block text-[10px] text-purple-700 font-medium">
+                            Permanent developer account with full site control &amp; admin delegation authority
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-600 pl-9 pt-0.5">
+                        This root account holds immutable governance over Euphoria 2026. Roles cannot be modified or revoked.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {/* 1. Admin */}
+                      <div className={`p-3.5 rounded-2xl border transition-all ${selectedUser.roles.includes("admin") ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldCheck className={`h-4 w-4 ${selectedUser.roles.includes("admin") ? "text-indigo-600" : "text-slate-400"}`} />
+                            <span className="text-xs font-bold text-slate-900">Admin</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-slate-400">Level 3</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-3 min-h-[30px]">
+                          Event control, finances, pass verification, coordinator delegation.
+                        </p>
+                        {currentUserRole?.isSuperAdmin ? (
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => handleToggleRole("admin", selectedUser.roles.includes("admin") ? "revoke" : "assign")}
+                            className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                              selectedUser.roles.includes("admin")
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                                : "bg-indigo-600 text-white hover:bg-indigo-700"
+                            }`}
+                          >
+                            {selectedUser.roles.includes("admin") ? "Revoke Admin" : "Grant Admin"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                            <Lock className="h-3 w-3" />
+                            <span>Super Admin Only</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. Overall Coordinator */}
+                      <div className={`p-3.5 rounded-2xl border transition-all ${selectedUser.roles.includes("overall_coordinator") ? "border-sky-300 bg-sky-50/50" : "border-slate-200 bg-white"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Globe className={`h-4 w-4 ${selectedUser.roles.includes("overall_coordinator") ? "text-sky-600" : "text-slate-400"}`} />
+                            <span className="text-xs font-bold text-slate-900">Overall Coord</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-3 min-h-[30px]">
+                          Global read-only oversight across all 61 competitions. Custom reports.
+                        </p>
+                        {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => handleToggleRole("overall_coordinator", selectedUser.roles.includes("overall_coordinator") ? "revoke" : "assign")}
+                            className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                              selectedUser.roles.includes("overall_coordinator")
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                                : "bg-sky-600 text-white hover:bg-sky-700"
+                            }`}
+                          >
+                            {selectedUser.roles.includes("overall_coordinator") ? "Revoke Overall" : "Grant Overall"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                            <Lock className="h-3 w-3" />
+                            <span>Admin Required</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 3. Staff Coordinator */}
+                      <div className={`p-3.5 rounded-2xl border transition-all ${selectedUser.roles.includes("staff_coordinator") ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Building className={`h-4 w-4 ${selectedUser.roles.includes("staff_coordinator") ? "text-amber-600" : "text-slate-400"}`} />
+                            <span className="text-xs font-bold text-slate-900">Staff Coord</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-slate-400">Level 2</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-3 min-h-[30px]">
+                          Faculty overseer. Can assign event student coordinators.
+                        </p>
+                        {(currentUserRole?.roleLevel ?? 0) >= 3 ? (
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => handleToggleRole("staff_coordinator", selectedUser.roles.includes("staff_coordinator") ? "revoke" : "assign")}
+                            className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                              selectedUser.roles.includes("staff_coordinator")
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                                : "bg-amber-600 text-white hover:bg-amber-700"
+                            }`}
+                          >
+                            {selectedUser.roles.includes("staff_coordinator") ? "Revoke Staff" : "Grant Staff"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                            <Lock className="h-3 w-3" />
+                            <span>Admin Required</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 4. Student Coordinator */}
+                      <div className={`p-3.5 rounded-2xl border transition-all ${selectedUser.roles.includes("student_coordinator") ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 bg-white"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <GraduationCap className={`h-4 w-4 ${selectedUser.roles.includes("student_coordinator") ? "text-emerald-600" : "text-slate-400"}`} />
+                            <span className="text-xs font-bold text-slate-900">Student Coord</span>
+                          </div>
+                          <span className="text-[9px] font-mono font-bold text-slate-400">Level 1</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-3 min-h-[30px]">
+                          Field lead. Check-ins, attendance scans, &amp; participant assistance.
+                        </p>
+                        {(currentUserRole?.roleLevel ?? 0) >= 2 ? (
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => handleToggleRole("student_coordinator", selectedUser.roles.includes("student_coordinator") ? "revoke" : "assign")}
+                            className={`w-full py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+                              selectedUser.roles.includes("student_coordinator")
+                                ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            }`}
+                          >
+                            {selectedUser.roles.includes("student_coordinator") ? "Revoke Student" : "Grant Student"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[10px] font-semibold">
+                            <Lock className="h-3 w-3" />
+                            <span>Staff Required</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* TAB 4: ORDERS & PAYMENT TRANSACTIONS */}
+              {/* ========================================================================= */}
+              {modalActiveTab === "orders" && (
+                <div className="space-y-4">
+                  <span className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
+                    Recorded Payment Orders &amp; Checkout History
+                  </span>
+
+                  {loadingOrders ? (
+                    <div className="flex items-center justify-center p-8 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                      <span>Loading user order telemetry...</span>
+                    </div>
+                  ) : userOrders.length > 0 ? (
+                    <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs">
+                      {userOrders.map((ord) => (
+                        <div key={ord.id} className="p-3.5 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-mono font-bold text-slate-900">{ord.orderNumber}</span>
+                            <span className="text-[10px] text-slate-400 block">{formatDate(ord.createdAt)}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-extrabold text-slate-900">{formatCurrency(ord.amount)}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                ord.status === "paid"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-amber-50 text-amber-700 border border-amber-200"
+                              }`}
+                            >
+                              {ord.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 rounded-2xl bg-slate-50 text-slate-400 italic text-center border border-dashed border-slate-200">
+                      No payment orders found on record for this user.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Sticky Footer */}
+            <div className="p-3.5 px-5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-slate-500 font-medium">
+                Inspecting <span className="font-bold text-slate-700">{selectedUser.fullName}</span> • Euphoria 2026 Admin Portal
+              </span>
               <button
                 type="button"
                 onClick={() => setSelectedUser(null)}
-                className="rounded-xl bg-slate-900 px-4 py-2 font-bold text-white text-xs hover:bg-primary transition-colors cursor-pointer"
+                className="rounded-xl bg-slate-900 px-4 py-2 font-bold text-white text-xs hover:bg-primary transition-colors cursor-pointer shadow-2xs"
               >
                 Close Inspector
               </button>
@@ -2198,3 +2483,4 @@ export function UsersAdminClient({
     </div>
   );
 }
+
