@@ -214,7 +214,7 @@ export const getCoordinatorRoleForEvent = cache(
   }
 );
 
-// Cached global workspace data loader (TTL: 30s) - guarantees all 61 events & pre-aggregated stats
+// Cached global workspace data loader (TTL: 15s) - guarantees all 61 events & pre-aggregated stats
 // are shared across all admins / overall coordinators with 0 redundant Supabase network egress.
 async function fetchGlobalWorkspaceDataRaw(): Promise<{
   eventsData: any[];
@@ -222,10 +222,11 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
   kluCountMap: Record<string, number>;
   externalCountMap: Record<string, number>;
   attendCountMap: Record<string, number>;
+  firstSlotCountMap: Record<string, number>;
 }> {
   const adminClient = await createAdminClient();
 
-  const [eventsRes, statsRes, attRes] = await Promise.all([
+  const [eventsRes, statsRes, attendanceRows, slot1Rows] = await Promise.all([
     adminClient.from("events").select(`
       id,
       name,
@@ -248,16 +249,29 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
     adminClient
       .from("vw_public_events_stats")
       .select("event_id, total_registered, internal_registered"),
-    adminClient
-      .from("attendance")
-      .select("event_id")
-      .limit(5000),
+    fetchAllSupabasePages<{ event_id: string; registration_id: string }>(
+      (from, to) =>
+        adminClient
+          .from("attendance")
+          .select("event_id, registration_id")
+          .range(from, to)
+    ),
+    fetchAllSupabasePages<{ event_id: string }>(
+      (from, to) =>
+        adminClient
+          .from("event_registrations")
+          .select("event_id")
+          .eq("status", "confirmed")
+          .eq("slot_number", 1)
+          .range(from, to)
+    ),
   ]);
 
   const regCountMap: Record<string, number> = {};
   const kluCountMap: Record<string, number> = {};
   const externalCountMap: Record<string, number> = {};
   const attendCountMap: Record<string, number> = {};
+  const firstSlotCountMap: Record<string, number> = {};
 
   (statsRes.data || []).forEach((s: any) => {
     const total = Number(s.total_registered || 0);
@@ -267,8 +281,24 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
     externalCountMap[s.event_id] = Math.max(0, total - internal);
   });
 
-  (attRes.data || []).forEach((a: any) => {
-    attendCountMap[a.event_id] = (attendCountMap[a.event_id] || 0) + 1;
+  const eventAttendees = new Map<string, Set<string>>();
+  (attendanceRows || []).forEach((a) => {
+    if (!a.event_id) return;
+    if (!eventAttendees.has(a.event_id)) {
+      eventAttendees.set(a.event_id, new Set<string>());
+    }
+    const key = a.registration_id || (a as any).id || "unknown";
+    eventAttendees.get(a.event_id)!.add(key);
+  });
+
+  eventAttendees.forEach((attendees, eventId) => {
+    attendCountMap[eventId] = attendees.size;
+  });
+
+  (slot1Rows || []).forEach((r) => {
+    if (r.event_id) {
+      firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
+    }
   });
 
   return {
@@ -277,13 +307,14 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
     kluCountMap,
     externalCountMap,
     attendCountMap,
+    firstSlotCountMap,
   };
 }
 
 export const getCachedGlobalWorkspaceData = unstable_cache(
   fetchGlobalWorkspaceDataRaw,
-  ["global-coordinator-workspace-cache"],
-  { revalidate: 60, tags: ["coordinator-workspace"] }
+  ["global-coordinator-workspace-cache-v2"],
+  { revalidate: 15, tags: ["coordinator-workspace"] }
 );
 
 // 1. Get Coordinator Workspace Overview (With Ultra-Low Egress Head Counts & 30s Shared Cache)
@@ -346,6 +377,7 @@ export async function getCoordinatorWorkspaceData() {
           brochureUrl: brochureUrl || null,
           totalRegistrations: cached.regCountMap[evt.id] || 0,
           totalAttended: cached.attendCountMap[evt.id] || 0,
+          firstSlotCount: cached.firstSlotCountMap[evt.id] || 0,
           roleType: isOverallCoordinator ? "overall_coordinator" : "admin",
           internal_limit: intLimit,
           allow_internal: allowInt,
@@ -437,7 +469,7 @@ export async function getCoordinatorWorkspaceData() {
     // For single-event coordinators (99% of users), fetch with exact HEAD count (0 byte body transfer)
     if (allAssignedIds.length === 1) {
       const singleId = allAssignedIds[0];
-      const [evtRes, statsRes, slot1Head, attHead] = await Promise.all([
+      const [evtRes, statsRes, slot1Head, attRows] = await Promise.all([
         adminClient
           .from("events")
           .select(`
@@ -472,10 +504,14 @@ export async function getCoordinatorWorkspaceData() {
           .eq("event_id", singleId)
           .eq("status", "confirmed")
           .eq("slot_number", 1),
-        adminClient
-          .from("attendance")
-          .select("id", { count: "exact", head: true })
-          .eq("event_id", singleId),
+        fetchAllSupabasePages<{ registration_id: string }>(
+          (from, to) =>
+            adminClient
+              .from("attendance")
+              .select("registration_id")
+              .eq("event_id", singleId)
+              .range(from, to)
+        ),
       ]);
 
       if (!evtRes.data) {
@@ -487,6 +523,9 @@ export async function getCoordinatorWorkspaceData() {
       const total = Number(s?.total_registered || 0);
       const internal = Number(s?.internal_registered || 0);
       const external = Math.max(0, total - internal);
+
+      const singleDistinctAttendees = new Set((attRows || []).map((a) => a.registration_id).filter(Boolean));
+      const singleAttendedCount = singleDistinctAttendees.size;
 
       const isStudent = studentEventIds.has(evt.id) || !staffEventIds.has(evt.id);
       const roleType: "staff" | "student" = isStudent ? "student" : "staff";
@@ -509,7 +548,7 @@ export async function getCoordinatorWorkspaceData() {
           category,
           brochureUrl: brochureUrl || null,
           totalRegistrations: total,
-          totalAttended: attHead.count || 0,
+          totalAttended: singleAttendedCount,
           firstSlotCount: isStudent ? undefined : (slot1Head.count || 0),
           roleType,
           internal_limit: intLimit,
@@ -566,21 +605,29 @@ export async function getCoordinatorWorkspaceData() {
     const attendCountMap: Record<string, number> = {};
 
     try {
-      const [statsRes, slot1Res, attRes] = await Promise.all([
+      const [statsRes, slot1Rows, attRows] = await Promise.all([
         adminClient
           .from("vw_public_events_stats")
           .select("event_id, total_registered, internal_registered")
           .in("event_id", eventIds),
-        adminClient
-          .from("event_registrations")
-          .select("event_id")
-          .in("event_id", eventIds)
-          .eq("status", "confirmed")
-          .eq("slot_number", 1),
-        adminClient
-          .from("attendance")
-          .select("event_id")
-          .in("event_id", eventIds),
+        fetchAllSupabasePages<{ event_id: string }>(
+          (from, to) =>
+            adminClient
+              .from("event_registrations")
+              .select("event_id")
+              .in("event_id", eventIds)
+              .eq("status", "confirmed")
+              .eq("slot_number", 1)
+              .range(from, to)
+        ),
+        fetchAllSupabasePages<{ event_id: string; registration_id: string }>(
+          (from, to) =>
+            adminClient
+              .from("attendance")
+              .select("event_id, registration_id")
+              .in("event_id", eventIds)
+              .range(from, to)
+        ),
       ]);
 
       (statsRes.data || []).forEach((s: any) => {
@@ -591,12 +638,21 @@ export async function getCoordinatorWorkspaceData() {
         externalCountMap[s.event_id] = Math.max(0, total - internal);
       });
 
-      (slot1Res.data || []).forEach((r: any) => {
+      (slot1Rows || []).forEach((r: any) => {
         firstSlotCountMap[r.event_id] = (firstSlotCountMap[r.event_id] || 0) + 1;
       });
 
-      (attRes.data || []).forEach((a: any) => {
-        attendCountMap[a.event_id] = (attendCountMap[a.event_id] || 0) + 1;
+      const eventAttendees = new Map<string, Set<string>>();
+      (attRows || []).forEach((a: any) => {
+        if (!a.event_id) return;
+        if (!eventAttendees.has(a.event_id)) {
+          eventAttendees.set(a.event_id, new Set<string>());
+        }
+        const key = a.registration_id || a.id || "unknown";
+        eventAttendees.get(a.event_id)!.add(key);
+      });
+      eventAttendees.forEach((set, eid) => {
+        attendCountMap[eid] = set.size;
       });
     } catch {
       // safe fallback
@@ -628,6 +684,7 @@ export async function getCoordinatorWorkspaceData() {
         brochureUrl: brochureUrl || null,
         totalRegistrations: regCountMap[evt.id] || 0,
         totalAttended: attendCountMap[evt.id] || 0,
+        firstSlotCount: isStudent ? undefined : (firstSlotCountMap[evt.id] || 0),
         roleType,
         internal_limit: intLimit,
         allow_internal: allowInt,
@@ -777,12 +834,12 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
     const adminClient = await createAdminClient();
     const isStudentCoord = roleType === "student";
 
-    // Fetch event metadata, exact counts (head: true), and first 10 attendees in parallel
+    // Fetch event metadata, exact counts, distinct attendance, and first 10 attendees in parallel
     // OPTIMIZATION: Student coordinators ONLY receive telemetry/counts (bypasses heavy participant joins to save egress)
     const [
       { data: event },
       { count: totalCount },
-      { count: attendedCount },
+      attRows,
       { count: firstSlotCountRaw },
       registrationsRes,
     ] = await Promise.all([
@@ -814,10 +871,14 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
         .select("id", { count: "exact", head: true })
         .eq("event_id", eventId)
         .eq("status", "confirmed"),
-      adminClient
-        .from("attendance")
-        .select("id", { count: "exact", head: true })
-        .eq("event_id", eventId),
+      fetchAllSupabasePages<{ registration_id: string }>(
+        (from, to) =>
+          adminClient
+            .from("attendance")
+            .select("registration_id")
+            .eq("event_id", eventId)
+            .range(from, to)
+      ),
       adminClient
         .from("event_registrations")
         .select("id", { count: "exact", head: true })
@@ -870,6 +931,7 @@ export async function getEventAttendeesForCoordinator(eventId: string) {
     ]);
 
     const registrations = registrationsRes?.data || [];
+    const attendedCount = new Set((attRows || []).map((a) => a.registration_id).filter(Boolean)).size;
 
     if (!event) {
       return { success: false, error: "Event not found", attendees: [] };
@@ -2576,10 +2638,10 @@ export async function exportOverallEventsSummaryCSVAction() {
           .eq("status", "confirmed")
           .range(from, to)
       ),
-      fetchAllSupabasePages((from, to) =>
+      fetchAllSupabasePages<{ event_id: string; registration_id: string }>((from, to) =>
         adminClient
           .from("attendance")
-          .select("event_id")
+          .select("event_id, registration_id")
           .range(from, to)
       ),
     ]);
@@ -2602,8 +2664,14 @@ export async function exportOverallEventsSummaryCSVAction() {
     });
 
     const attMap: Record<string, number> = {};
-    (attendances || []).forEach((a) => {
-      attMap[a.event_id] = (attMap[a.event_id] || 0) + 1;
+    const attSetMap = new Map<string, Set<string>>();
+    (attendances || []).forEach((a: any) => {
+      if (!a.event_id) return;
+      if (!attSetMap.has(a.event_id)) attSetMap.set(a.event_id, new Set<string>());
+      attSetMap.get(a.event_id)!.add(a.registration_id || a.id || "unknown");
+    });
+    attSetMap.forEach((set, eid) => {
+      attMap[eid] = set.size;
     });
 
     // Build CSV lines
