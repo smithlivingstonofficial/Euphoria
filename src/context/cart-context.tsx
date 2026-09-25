@@ -215,7 +215,7 @@ export function CartProvider({
     setIsLoaded(true);
   }, [confirmedEvents]);
 
-  // If user reaches 2 confirmed events, clear cart immediately
+  // If user reaches 2 confirmed events, clear cart immediately; otherwise strip any confirmed events
   useEffect(() => {
     if (confirmedEvents.length >= 2 && selectedEvents.length > 0) {
       setSelectedEvents([]);
@@ -224,8 +224,23 @@ export function CartProvider({
       } catch (e) {
         // ignore
       }
+    } else if (confirmedEvents.length > 0 && selectedEvents.length > 0) {
+      const confirmedIds = new Set(confirmedEvents.map((c) => c.eventId));
+      const remaining = selectedEvents.filter((e) => !confirmedIds.has(e.id));
+      if (remaining.length !== selectedEvents.length) {
+        setSelectedEvents(remaining);
+        try {
+          if (remaining.length === 0) {
+            localStorage.removeItem(CART_STORAGE_KEY);
+          } else {
+            localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(remaining));
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
-  }, [confirmedEvents, selectedEvents.length]);
+  }, [confirmedEvents, selectedEvents]);
 
   // Save cart to localStorage
   useEffect(() => {

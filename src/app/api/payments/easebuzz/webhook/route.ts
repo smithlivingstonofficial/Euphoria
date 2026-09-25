@@ -80,50 +80,154 @@ export async function POST(req: NextRequest) {
       const needsAccommodation = needsAccommStr === "yes" || Boolean(pendingOrder?.metadata?.needs_accommodation);
 
       if (resolvedEventIds.length > 0) {
-        // Execute atomic RPC if not already confirmed
-        const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
-          "fn_checkout_pass_atomic",
-          {
-            p_user_id: targetUserId,
-            p_event_ids: resolvedEventIds,
-            p_payment_provider: "easebuzz",
-            p_order_metadata: {
-              easebuzz_pay_id: easepayid || null,
-              easebuzz_txnid: txnid,
-              source: "easebuzz_webhook",
-              needs_accommodation: needsAccommodation,
-              timestamp: new Date().toISOString(),
-            },
-          }
-        );
+        // Check first if user already has an active pass
+        const { data: existingUserPass } = await adminClient
+          .from("delegate_passes")
+          .select("id, pass_code, pass_tier, slots_used, total_slots")
+          .eq("user_id", targetUserId)
+          .eq("status", "active")
+          .maybeSingle();
 
-        if (!checkoutError && checkoutData?.success && checkoutData.order_id) {
-          if (pendingOrder?.id && pendingOrder.id !== checkoutData.order_id) {
+        if (existingUserPass) {
+          if (txnid) {
             try {
-              await adminClient.from("orders").delete().eq("id", pendingOrder.id);
-            } catch (delErr) {
-              console.warn("Notice: cleaning attempted order row in webhook:", delErr);
-            }
+              await adminClient.from("orders").update({
+                status: "paid",
+                gateway_order_id: txnid,
+                gateway_payment_id: easepayid || null,
+              }).eq("order_number", txnid);
+            } catch {}
           }
+        } else {
+          // Execute atomic RPC with bypass_limits: true
+          const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
+            "fn_checkout_pass_atomic",
+            {
+              p_user_id: targetUserId,
+              p_event_ids: resolvedEventIds,
+              p_payment_provider: "easebuzz",
+              p_order_metadata: {
+                easebuzz_pay_id: easepayid || null,
+                easebuzz_txnid: txnid,
+                source: "easebuzz_webhook",
+                needs_accommodation: needsAccommodation,
+                bypass_limits: true,
+                timestamp: new Date().toISOString(),
+              },
+            }
+          );
 
-          await adminClient.from("orders").update({
-            order_number: txnid || undefined,
-            gateway_order_id: txnid,
-            gateway_payment_id: easepayid || null,
-            status: "paid",
-            metadata: {
-              ...pendingOrder?.metadata,
-              easebuzz_pay_id: easepayid,
-              easebuzz_txnid: txnid,
-              source: "easebuzz_webhook",
-              timestamp: new Date().toISOString(),
-            },
-          }).eq("id", checkoutData.order_id);
+          if (!checkoutError && checkoutData?.success && checkoutData.order_id) {
+            if (pendingOrder?.id && pendingOrder.id !== checkoutData.order_id) {
+              try {
+                await adminClient.from("orders").delete().eq("id", pendingOrder.id);
+              } catch (delErr) {
+                console.warn("Notice: cleaning attempted order row in webhook:", delErr);
+              }
+            }
 
-          if (needsAccommodation) {
-            await adminClient.from("profiles").update({
-              needs_accommodation: true,
-            }).eq("id", targetUserId);
+            await adminClient.from("orders").update({
+              order_number: txnid || undefined,
+              gateway_order_id: txnid,
+              gateway_payment_id: easepayid || null,
+              status: "paid",
+              metadata: {
+                ...pendingOrder?.metadata,
+                easebuzz_pay_id: easepayid,
+                easebuzz_txnid: txnid,
+                source: "easebuzz_webhook",
+                timestamp: new Date().toISOString(),
+              },
+            }).eq("id", checkoutData.order_id);
+
+            if (needsAccommodation) {
+              await adminClient.from("profiles").update({
+                needs_accommodation: true,
+              }).eq("id", targetUserId);
+            }
+          } else {
+            // Direct service-role fulfillment fallback
+            console.warn("Notice: webhook executing service-role direct fulfillment fallback:", checkoutError || checkoutData);
+
+            const { data: targetEventRows } = await adminClient
+              .from("events")
+              .select("id, name, is_pro_event, participant_limit")
+              .in("id", resolvedEventIds);
+
+            const hasPro = (targetEventRows || []).some((e: any) => Boolean(e.is_pro_event));
+            const passTier = hasPro ? "pro_pass" : "standard_pass";
+            const passFee = hasPro ? 300 : 200;
+            const orderNumber = txnid || `ORD-26-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+            const generatedPassCode = `EUPH-26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+            const nonce = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+
+            const { data: newOrder } = await adminClient
+              .from("orders")
+              .upsert(
+                {
+                  user_id: targetUserId,
+                  order_number: orderNumber,
+                  amount: passFee,
+                  currency: "INR",
+                  status: "paid",
+                  provider: "easebuzz",
+                  gateway_order_id: txnid,
+                  gateway_payment_id: easepayid || null,
+                  metadata: {
+                    easebuzz_pay_id: easepayid || null,
+                    easebuzz_txnid: txnid,
+                    amount_paid: passFee,
+                    source: "easebuzz_webhook_direct_fallback",
+                    pass_tier: passTier,
+                    event_ids: resolvedEventIds,
+                    needs_accommodation: needsAccommodation,
+                    bypassed_limits: true,
+                    timestamp: new Date().toISOString(),
+                  },
+                },
+                { onConflict: "order_number" }
+              )
+              .select("id, order_number")
+              .single();
+
+            const { data: newPass } = await adminClient
+              .from("delegate_passes")
+              .insert({
+                user_id: targetUserId,
+                order_id: newOrder?.id || null,
+                pass_code: generatedPassCode,
+                pass_tier: passTier,
+                amount_paid: passFee,
+                total_slots: 2,
+                slots_used: resolvedEventIds.length,
+                status: "active",
+                qr_secret_nonce: nonce,
+              })
+              .select("id, pass_code")
+              .single();
+
+            if (newPass) {
+              for (let idx = 0; idx < resolvedEventIds.length; idx++) {
+                const evtId = resolvedEventIds[idx];
+                const slotNum = idx + 1;
+                const regCode = `${generatedPassCode}-S${slotNum}`;
+
+                await adminClient.from("event_registrations").insert({
+                  pass_id: newPass.id,
+                  event_id: evtId,
+                  user_id: targetUserId,
+                  slot_number: slotNum,
+                  registration_code: regCode,
+                  status: "confirmed",
+                  payment_status: "paid",
+                  qr_secret_nonce: Math.random().toString(36).substring(2),
+                });
+              }
+
+              if (needsAccommodation) {
+                await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", targetUserId);
+              }
+            }
           }
         }
 

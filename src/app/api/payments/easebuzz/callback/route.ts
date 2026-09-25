@@ -101,32 +101,160 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Call atomic RPC
-    const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
-      "fn_checkout_pass_atomic",
-      {
-        p_user_id: targetUserId,
-        p_event_ids: resolvedEventIds,
-        p_payment_provider: "easebuzz",
-        p_order_metadata: {
-          easebuzz_pay_id: easepayid || `ebz_${Date.now()}`,
-          easebuzz_txnid: txnid || `txn_${Date.now()}`,
-          needs_accommodation: needsAccommodation,
-          accommodation_status: needsAccommodation ? "requested" : "none",
-          accommodation_payment: "in_person_on_campus",
-          source: "easebuzz_hosted_callback",
-          actual_amount_paid: Number(amount || 200),
-          timestamp: new Date().toISOString(),
-        },
-      }
-    );
+    // Check first if user already has an active pass (e.g. from concurrent verification or webhook)
+    const { data: existingUserPass } = await adminClient
+      .from("delegate_passes")
+      .select("id, pass_code, pass_tier, slots_used, total_slots")
+      .eq("user_id", targetUserId)
+      .eq("status", "active")
+      .maybeSingle();
 
-    if (checkoutError || !checkoutData?.success) {
-      console.error("Easebuzz atomic checkout error in callback:", checkoutError || checkoutData);
+    if (existingUserPass) {
+      if (txnid) {
+        try {
+          await adminClient.from("orders").update({
+            status: "paid",
+            gateway_order_id: txnid,
+            gateway_payment_id: easepayid || null,
+            amount: Number(amount || 200),
+          }).eq("order_number", txnid);
+        } catch {}
+      }
+
+      revalidateTag("public-events");
+      revalidatePath("/dashboard", "page");
+      revalidatePath("/events", "page");
+      revalidatePath("/dashboard/passes", "page");
+
       return NextResponse.redirect(
-        new URL(`/events?payment=error&msg=registration_issue`, baseUrl),
+        new URL(`/dashboard/passes?payment=success&code=${existingUserPass.pass_code}`, baseUrl),
         { status: 303 }
       );
+    }
+
+    // Call atomic RPC with bypass_limits: true
+    let checkoutData: any = null;
+    let checkoutError: any = null;
+
+    try {
+      const rpcRes = await adminClient.rpc(
+        "fn_checkout_pass_atomic",
+        {
+          p_user_id: targetUserId,
+          p_event_ids: resolvedEventIds,
+          p_payment_provider: "easebuzz",
+          p_order_metadata: {
+            easebuzz_pay_id: easepayid || `ebz_${Date.now()}`,
+            easebuzz_txnid: txnid || `txn_${Date.now()}`,
+            needs_accommodation: needsAccommodation,
+            accommodation_status: needsAccommodation ? "requested" : "none",
+            accommodation_payment: "in_person_on_campus",
+            source: "easebuzz_hosted_callback",
+            actual_amount_paid: Number(amount || 200),
+            bypass_limits: true,
+            timestamp: new Date().toISOString(),
+          },
+        }
+      );
+      checkoutData = rpcRes.data;
+      checkoutError = rpcRes.error;
+    } catch (rpcErr) {
+      checkoutError = rpcErr;
+    }
+
+    // Resilient Fallback: If DB RPC threw error, directly issue pass and registrations
+    if (checkoutError || !checkoutData?.success) {
+      console.warn("Notice: fn_checkout_pass_atomic failed in callback, applying service-role direct issuance:", checkoutError || checkoutData);
+
+      const { data: targetEventRows } = await adminClient
+        .from("events")
+        .select("id, name, is_pro_event, participant_limit")
+        .in("id", resolvedEventIds);
+
+      const hasPro = (targetEventRows || []).some((e: any) => Boolean(e.is_pro_event));
+      const passTier = hasPro ? "pro_pass" : "standard_pass";
+      const passFee = Number(amount || (hasPro ? 300 : 200));
+      const orderNumber = txnid || `ORD-26-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      const generatedPassCode = `EUPH-26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const nonce = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+
+      const { data: newOrder } = await adminClient
+        .from("orders")
+        .upsert(
+          {
+            user_id: targetUserId,
+            order_number: orderNumber,
+            amount: passFee,
+            currency: "INR",
+            status: "paid",
+            provider: "easebuzz",
+            gateway_order_id: txnid,
+            gateway_payment_id: easepayid || null,
+            metadata: {
+              easebuzz_pay_id: easepayid || null,
+              easebuzz_txnid: txnid,
+              amount_paid: passFee,
+              source: "easebuzz_callback_direct_fallback",
+              pass_tier: passTier,
+              event_ids: resolvedEventIds,
+              needs_accommodation: needsAccommodation,
+              bypassed_limits: true,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          { onConflict: "order_number" }
+        )
+        .select("id, order_number")
+        .single();
+
+      const { data: newPass } = await adminClient
+        .from("delegate_passes")
+        .insert({
+          user_id: targetUserId,
+          order_id: newOrder?.id || null,
+          pass_code: generatedPassCode,
+          pass_tier: passTier,
+          amount_paid: passFee,
+          total_slots: 2,
+          slots_used: resolvedEventIds.length,
+          status: "active",
+          qr_secret_nonce: nonce,
+        })
+        .select("id, pass_code")
+        .single();
+
+      if (newPass) {
+        for (let idx = 0; idx < resolvedEventIds.length; idx++) {
+          const evtId = resolvedEventIds[idx];
+          const slotNum = idx + 1;
+          const regCode = `${generatedPassCode}-S${slotNum}`;
+
+          await adminClient.from("event_registrations").insert({
+            pass_id: newPass.id,
+            event_id: evtId,
+            user_id: targetUserId,
+            slot_number: slotNum,
+            registration_code: regCode,
+            status: "confirmed",
+            payment_status: "paid",
+            qr_secret_nonce: Math.random().toString(36).substring(2),
+          });
+        }
+
+        if (needsAccommodation) {
+          await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", targetUserId);
+        }
+
+        revalidateTag("public-events");
+        revalidatePath("/dashboard", "page");
+        revalidatePath("/events", "page");
+        revalidatePath("/dashboard/passes", "page");
+
+        return NextResponse.redirect(
+          new URL(`/dashboard/passes?payment=success&code=${generatedPassCode}`, baseUrl),
+          { status: 303 }
+        );
+      }
     }
 
     if (checkoutData.order_id) {

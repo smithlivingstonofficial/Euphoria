@@ -22,6 +22,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/events/slots": "Slot & Quota Control",
   "/admin/pricing": "Pricing & Tier Policy Settings",
   "/admin/registrations": "Master Registrations & Passes",
+  "/admin/pass-issues": "Pass & Slot Discrepancy Manager",
   "/admin/coordinators": "Coordinator Role Assignments",
   "/admin/announcements": "Broadcast Alerts & Notifications",
   "/admin/payments": "Payment Audit & Financial Telemetry",

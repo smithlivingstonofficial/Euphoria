@@ -28,6 +28,7 @@ import {
   Banknote,
   Radio,
   Headphones,
+  TicketCheck,
 } from "lucide-react";
 import { signOutUser } from "@/actions/auth";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,13 @@ const NAV_SECTIONS: NavSection[] = [
         icon: QrCode,
         badge: "Ledger",
         badgeColor: "bg-slate-100 text-slate-700 border-slate-200",
+      },
+      {
+        href: "/admin/pass-issues",
+        label: "Pass & Slot Queries",
+        icon: TicketCheck,
+        badge: "Issues",
+        badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
       },
       {
         href: "/admin/scanner",

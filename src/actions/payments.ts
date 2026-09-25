@@ -56,7 +56,7 @@ export async function createEasebuzzOrderAction(
       return {
         success: false,
         error: "Please complete your participant profile before checking out.",
-        redirect: "/complete-profile",
+        redirect: "/complete-profile?redirect=/events",
       };
     }
 
@@ -114,7 +114,32 @@ export async function createEasebuzzOrderAction(
       selectedEvts = evtsWithCol;
     }
 
-    // Check slot 2 first_preference_only restriction
+    // Seamless auto-ordering: If user selected 2 events, ensure any Pro or First Preference event is in Slot 1
+    if (eventIds.length === 2 && selectedEvts.length === 2) {
+      const evt1 = selectedEvts.find((e) => e.id === eventIds[0]);
+      const evt2 = selectedEvts.find((e) => e.id === eventIds[1]);
+
+      if (evt1 && evt2) {
+        if (Boolean(evt2.is_pro_event) && !Boolean(evt1.is_pro_event)) {
+          // Swap so Pro event is in Slot 1
+          eventIds = [eventIds[1], eventIds[0]];
+        } else if (Boolean(evt2.first_preference_only) && !Boolean(evt1.first_preference_only)) {
+          // Swap so First Preference event is in Slot 1
+          eventIds = [eventIds[1], eventIds[0]];
+        }
+      }
+    }
+
+    // Rule: Only 1 Pro event allowed per festival pass
+    const proCount = selectedEvts.filter((e) => Boolean(e.is_pro_event)).length;
+    if (proCount > 1) {
+      return {
+        success: false,
+        error: "Only 1 Flagship (Pro) competition is allowed per Festival Pass. Please choose a regular competition for your other slot.",
+      };
+    }
+
+    // Rule: Check slot 2 first_preference_only restriction
     const slot2EventId = eventIds.length === 2 ? eventIds[1] : (activeRegs.length === 1 ? eventIds[0] : null);
     if (slot2EventId) {
       const slot2Evt = selectedEvts.find((e) => e.id === slot2EventId);
@@ -254,7 +279,7 @@ export async function createEasebuzzOrderAction(
         furl: `${baseUrl}/api/payments/easebuzz/callback?status=failure`,
         udf1: user.id,
         udf2: isTestPayment ? "Euphoria 2026 Test Pass" : (hasProEvent ? "Euphoria 2026 Flagship Pass" : "Euphoria 2026 Regular Pass"),
-        udf3: cleanEventNames || "Euphoria Events",
+        udf3: eventIds.join(","),
         udf4: needsAccommodation ? "yes" : "no",
         udf5: txnid,
         udf6: candidateRegnOrId,
@@ -380,7 +405,7 @@ export async function verifyEasebuzzPaymentAction(
       const udf9Received = (rawPayload?.udf9 as string) || "";
       const udf10Received = (rawPayload?.udf10 as string) || "";
 
-      const isValidHash = verifyEasebuzzResponseHash({
+      let isValidHash = verifyEasebuzzResponseHash({
         salt,
         key,
         txnid,
@@ -402,7 +427,16 @@ export async function verifyEasebuzzPaymentAction(
         udf10: udf10Received,
       });
 
-      // If hash was provided and didn't match, verify if status is success and reject if tampering suspected
+      // If hash check failed, verify directly via Easebuzz API retrieve before rejecting
+      if (!isValidHash && txnid) {
+        console.warn("verifyEasebuzzPaymentAction reverse hash mismatch, verifying with Easebuzz retrieve API...", { txnid, easepayid });
+        const liveVerify = await checkEasebuzzTransactionStatus({ txnid });
+        if (liveVerify?.status && (liveVerify.msg?.status || "").toLowerCase() === "success") {
+          isValidHash = true;
+        }
+      }
+
+      // If hash was provided and didn't match after live check, verify if status is success and reject if tampering suspected
       if (!isValidHash && status.toLowerCase() !== "success") {
         console.error("Easebuzz Reverse Hash verification failed!", {
           receivedHash: hash,
@@ -423,8 +457,46 @@ export async function verifyEasebuzzPaymentAction(
       };
     }
 
-    // Execute atomic PostgreSQL function to issue pass & register events
-    const { data: checkoutData, error: checkoutError } = await supabase.rpc(
+    const adminClient = await createAdminClient();
+
+    // 1. Check if user already holds an active pass (e.g. concurrent webhook/callback processed it 1 second ago)
+    const { data: existingActivePass } = await adminClient
+      .from("delegate_passes")
+      .select("id, pass_code, pass_tier, amount_paid, slots_used, total_slots")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingActivePass) {
+      if (txnid) {
+        try {
+          await adminClient.from("orders").update({
+            status: "paid",
+            gateway_order_id: txnid,
+            gateway_payment_id: easepayid || null,
+            amount: actualChargedAmount,
+          }).eq("order_number", txnid);
+        } catch {}
+      }
+
+      revalidateTag("public-events");
+      revalidateTag("admin-users");
+      revalidatePath("/dashboard", "page");
+      revalidatePath("/events", "page");
+      revalidatePath("/dashboard/passes", "page");
+
+      return {
+        success: true,
+        masterCode: existingActivePass.pass_code,
+        passTier: existingActivePass.pass_tier,
+        totalRegistered: existingActivePass.slots_used,
+        totalPayable: actualChargedAmount,
+        paymentId: easepayid || txnid || `ebz_${Date.now()}`,
+      };
+    }
+
+    // 2. Execute atomic PostgreSQL function with bypass_limits: true (payment already collected!)
+    const { data: checkoutData, error: checkoutError } = await adminClient.rpc(
       "fn_checkout_pass_atomic",
       {
         p_user_id: user.id,
@@ -440,21 +512,174 @@ export async function verifyEasebuzzPaymentAction(
           source: "easebuzz_web_checkout",
           is_test_payment: isTest,
           actual_amount_paid: actualChargedAmount,
+          bypass_limits: true, // Auto-extends capacity limit +1 if reached during checkout
           timestamp: new Date().toISOString(),
         },
       }
     );
 
+    // 3. Bulletproof Fallback: If DB RPC threw error (e.g. unmigrated DB function or lock timeout),
+    // atomically generate order, pass, and registrations using adminClient service role.
     if (checkoutError || !checkoutData?.success) {
-      return {
-        success: false,
-        error: checkoutData?.message || checkoutError?.message || "Pass registration failed",
-      };
+      console.warn(
+        "Notice: fn_checkout_pass_atomic returned error in verifyEasebuzzPaymentAction, executing direct service-role fulfillment:",
+        checkoutError || checkoutData
+      );
+
+      // Check again if pass was created concurrently
+      const { data: concurrentPass } = await adminClient
+        .from("delegate_passes")
+        .select("id, pass_code, pass_tier, amount_paid, slots_used, total_slots")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (concurrentPass) {
+        return {
+          success: true,
+          masterCode: concurrentPass.pass_code,
+          passTier: concurrentPass.pass_tier,
+          totalRegistered: concurrentPass.slots_used,
+          totalPayable: actualChargedAmount,
+          paymentId: easepayid || txnid || `ebz_${Date.now()}`,
+        };
+      }
+
+      // Fetch event rows
+      const { data: targetEventRows } = await adminClient
+        .from("events")
+        .select("id, name, is_pro_event, participant_limit, internal_limit")
+        .in("id", eventIds);
+
+      const hasPro = (targetEventRows || []).some((e: any) => Boolean(e.is_pro_event));
+      const passTier = hasPro ? "pro_pass" : "standard_pass";
+      const passFee = actualChargedAmount;
+      const orderNumber = txnid || `ORD-26-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      const generatedPassCode = `EUPH-26-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const nonce = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+
+      // A. Insert Order
+      const { data: newOrder } = await adminClient
+        .from("orders")
+        .upsert(
+          {
+            user_id: user.id,
+            order_number: orderNumber,
+            amount: passFee,
+            currency: "INR",
+            status: "paid",
+            provider: "easebuzz",
+            gateway_order_id: txnid,
+            gateway_payment_id: easepayid || null,
+            metadata: {
+              easebuzz_pay_id: easepayid || null,
+              easebuzz_txnid: txnid,
+              amount_paid: passFee,
+              source: "easebuzz_direct_fulfillment",
+              pass_tier: passTier,
+              event_ids: eventIds,
+              needs_accommodation: Boolean(needsAccommodation),
+              bypassed_limits: true,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          { onConflict: "order_number" }
+        )
+        .select("id, order_number")
+        .single();
+
+      const effectiveOrderId = newOrder?.id;
+
+      // B. Insert Delegate Pass
+      const { data: newPass } = await adminClient
+        .from("delegate_passes")
+        .insert({
+          user_id: user.id,
+          order_id: effectiveOrderId || null,
+          pass_code: generatedPassCode,
+          pass_tier: passTier,
+          amount_paid: passFee,
+          total_slots: 2,
+          slots_used: eventIds.length,
+          status: "active",
+          qr_secret_nonce: nonce,
+        })
+        .select("id, pass_code")
+        .single();
+
+      if (newPass) {
+        // C. Insert Event Registrations for each event
+        for (let idx = 0; idx < eventIds.length; idx++) {
+          const evtId = eventIds[idx];
+          const slotNum = idx + 1;
+          const regCode = `${generatedPassCode}-S${slotNum}`;
+
+          await adminClient.from("event_registrations").insert({
+            pass_id: newPass.id,
+            event_id: evtId,
+            user_id: user.id,
+            slot_number: slotNum,
+            registration_code: regCode,
+            status: "confirmed",
+            payment_status: "paid",
+            qr_secret_nonce: Math.random().toString(36).substring(2),
+          });
+
+          // Auto-extend limit if full so reporting is consistent
+          const evtObj = targetEventRows?.find((e: any) => e.id === evtId);
+          if (evtObj) {
+            const { count: currentRegs } = await adminClient
+              .from("event_registrations")
+              .select("id", { count: "exact", head: true })
+              .eq("event_id", evtId)
+              .eq("status", "confirmed");
+
+            if ((currentRegs || 0) > (evtObj.participant_limit || 100)) {
+              await adminClient
+                .from("events")
+                .update({ participant_limit: currentRegs })
+                .eq("id", evtId);
+            }
+          }
+        }
+
+        // D. Audit log
+        try {
+          await adminClient.from("payment_audit_logs").insert({
+            issue_id: null,
+            admin_id: user.id,
+            action_taken: "payment_direct_fulfillment",
+            previous_status: "attempted",
+            new_status: generatedPassCode,
+            notes: `Auto-fulfilled pass ${generatedPassCode} for user ${user.email} (txnid: ${txnid}) after RPC constraint fallback.`,
+          });
+        } catch {}
+
+        if (needsAccommodation) {
+          await adminClient.from("profiles").update({ needs_accommodation: true }).eq("id", user.id);
+        }
+
+        revalidateTag("public-events");
+        revalidateTag("admin-users");
+        revalidatePath("/dashboard", "page");
+        revalidatePath("/events", "page");
+        revalidatePath("/dashboard/passes", "page");
+
+        return {
+          success: true,
+          masterCode: generatedPassCode,
+          passTier,
+          totalRegistered: eventIds.length,
+          totalPayable: actualChargedAmount,
+          paymentId: easepayid || txnid || `ebz_${Date.now()}`,
+          orderId: effectiveOrderId,
+          orderNumber: orderNumber,
+        };
+      }
     }
 
-    // Persist accommodation requirement and order update
+    // Persist accommodation requirement and order update for RPC success
     try {
-      const adminClient = await createAdminClient();
       const productInfoReceived =
         (rawPayload?.productinfo as string) ||
         (isTest
