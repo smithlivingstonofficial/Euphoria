@@ -216,11 +216,11 @@ export async function registerForEvent(eventId: string) {
     // Verify profile is completed with all required fields
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, city, pincode, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
+    if (!profile || (!profile.is_profile_completed && !isProfileComplete(profile))) {
       return {
         success: false,
         error: "Please complete your participant profile before registering.",
@@ -517,11 +517,11 @@ export async function batchRegisterEvents(eventIds: string[]) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, state, is_profile_completed")
+      .select("id, full_name, mobile_number, gender, course, department, year_of_study, email, participant_type, register_number, school, college_name, city, pincode, is_profile_completed")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!profile || !profile.is_profile_completed || !isProfileComplete(profile)) {
+    if (!profile || (!profile.is_profile_completed && !isProfileComplete(profile))) {
       return {
         success: false,
         error: "Please complete your participant profile before registering for events.",
