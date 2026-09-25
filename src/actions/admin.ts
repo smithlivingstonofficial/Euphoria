@@ -161,7 +161,7 @@ interface CachedFinancialTelemetry {
 }
 
 let cachedFinancialTelemetry: CachedFinancialTelemetry | null = null;
-const FINANCIAL_CACHE_TTL_MS = 30 * 1000; // 30s in-memory cache to maintain zero extra egress overhead
+const FINANCIAL_CACHE_TTL_MS = 60 * 1000; // 60s in-memory cache to maintain zero extra egress overhead
 
 export async function invalidateFinancialTelemetryCache() {
   cachedFinancialTelemetry = null;
@@ -180,13 +180,7 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
     cachedFinancialTelemetry &&
     now - cachedFinancialTelemetry.timestamp < FINANCIAL_CACHE_TTL_MS
   ) {
-    return {
-      totalRevenue: cachedFinancialTelemetry.totalRevenue,
-      totalOrders: cachedFinancialTelemetry.totalOrders,
-      paidOrders: cachedFinancialTelemetry.paidOrders,
-      pendingOrders: cachedFinancialTelemetry.pendingOrders,
-      failedOrders: cachedFinancialTelemetry.failedOrders,
-    };
+    return cachedFinancialTelemetry;
   }
 
   const adminClient = await createAdminClient();
@@ -196,7 +190,7 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
     { count: paidOrders },
     { count: pendingOrders },
     { count: failedOrders },
-    paidRows,
+    paidOrdersRes,
   ] = await Promise.all([
     adminClient.from("orders").select("*", { count: "exact", head: true }),
     adminClient.from("orders").select("*", { count: "exact", head: true }).eq("status", "paid"),
@@ -208,17 +202,15 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
       .from("orders")
       .select("*", { count: "exact", head: true })
       .in("status", ["failed", "cancelled"]),
-    fetchAllSupabasePages<{ amount: number }>((from, to) =>
-      adminClient
-        .from("orders")
-        .select("amount")
-        .eq("status", "paid")
-        .range(from, to)
-    ),
+    adminClient
+      .from("orders")
+      .select("amount")
+      .eq("status", "paid")
+      .limit(3000),
   ]);
 
   let totalRevenue = 0;
-  (paidRows || []).forEach((r) => {
+  ((paidOrdersRes.data || []) as Array<{ amount?: number }>).forEach((r) => {
     totalRevenue += Number(r.amount || 0);
   });
 
@@ -231,13 +223,7 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
     failedOrders: failedOrders || 0,
   };
 
-  return {
-    totalRevenue,
-    totalOrders: totalOrders || 0,
-    paidOrders: paidOrders || 0,
-    pendingOrders: pendingOrders || 0,
-    failedOrders: failedOrders || 0,
-  };
+  return cachedFinancialTelemetry;
 }
 
 // 1. Overview Metrics (60s Vercel Data Cache shield to eliminate 12 Supabase queries per visit)
@@ -249,14 +235,11 @@ async function fetchAdminOverviewMetricsRaw() {
     const [
       { count: totalParticipants },
       { count: internalParticipants },
-      { count: externalParticipants },
       { count: totalRegistrations },
       { data: events },
       { count: totalAttendance },
       { data: categories },
-      { count: totalPasses },
-      { count: totalProPasses },
-      { count: totalStandardPasses },
+      passesRes,
       finances,
       { data: eventStats },
     ] = await Promise.all([
@@ -266,10 +249,6 @@ async function fetchAdminOverviewMetricsRaw() {
         .select("*", { count: "exact", head: true })
         .eq("participant_type", "internal"),
       adminClient
-        .from("profiles")
-        .select("*", { count: "exact", head: true })
-        .eq("participant_type", "external"),
-      adminClient
         .from("event_registrations")
         .select("*", { count: "exact", head: true })
         .eq("status", "confirmed"),
@@ -278,26 +257,25 @@ async function fetchAdminOverviewMetricsRaw() {
       adminClient.from("event_categories").select("id, name"),
       adminClient
         .from("delegate_passes")
-        .select("*", { count: "exact", head: true })
+        .select("pass_tier, amount_paid")
         .eq("status", "active"),
-      adminClient
-        .from("delegate_passes")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "active")
-        .eq("pass_tier", "pro_pass"),
-      adminClient
-        .from("delegate_passes")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "active")
-        .eq("pass_tier", "standard_pass"),
       getAdminFinancialTelemetry(),
       adminClient.from("vw_public_events_stats").select("event_id, total_registered, internal_registered"),
     ]);
 
+    const passes = (passesRes.data || []) as Array<{ pass_tier?: string; amount_paid?: number }>;
+    const totalPasses = passes.length;
+    const totalProPasses = passes.filter((p) => p.pass_tier === "pro_pass" || p.pass_tier === "flagship_pass").length;
+    const totalStandardPasses = totalPasses - totalProPasses;
+    const externalParticipants = Math.max(0, (totalParticipants || 0) - (internalParticipants || 0));
+
     // Calculate revenue from paid orders or pass tiers (0 full-table egress)
     let totalRevenue = finances.totalRevenue;
     if (totalRevenue === 0) {
-      totalRevenue = (totalProPasses || 0) * 300 + (totalStandardPasses || 0) * 200;
+      totalRevenue = passes.reduce(
+        (sum, p) => sum + (Number(p.amount_paid) || (p.pass_tier === "pro_pass" ? 300 : 200)),
+        0
+      );
     }
 
     // Process top competitions and capacity saturation

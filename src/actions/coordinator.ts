@@ -250,7 +250,8 @@ async function fetchGlobalWorkspaceDataRaw(): Promise<{
       .select("event_id, total_registered, internal_registered"),
     adminClient
       .from("attendance")
-      .select("event_id"),
+      .select("event_id")
+      .limit(5000),
   ]);
 
   const regCountMap: Record<string, number> = {};
