@@ -697,18 +697,22 @@ export async function verifyEasebuzzPaymentAction(
       const udf7Received = (rawPayload?.udf7 as string) || "Euphoria 2026";
 
       if (checkoutData.order_id) {
-        // Remove earlier attempted order with same txnid to avoid key conflicts
+        // 1. Delete any unfulfilled or attempted order row with this txnid to prevent unique key conflicts
         if (txnid) {
           try {
-            await adminClient.from("orders").delete().eq("order_number", txnid).eq("status", "attempted");
+            await adminClient
+              .from("orders")
+              .delete()
+              .eq("order_number", txnid)
+              .neq("id", checkoutData.order_id)
+              .neq("status", "paid");
           } catch (delErr) {
             console.warn("Notice: cleaning attempted order row:", delErr);
           }
         }
 
-        await adminClient.from("orders").update({
-          order_number: txnid || undefined,
-          gateway_order_id: txnid,
+        const updatePayload: any = {
+          gateway_order_id: txnid || undefined,
           gateway_payment_id: easepayid || null,
           amount: actualChargedAmount,
           status: "paid",
@@ -729,7 +733,25 @@ export async function verifyEasebuzzPaymentAction(
             actual_amount_paid: actualChargedAmount,
             timestamp: new Date().toISOString(),
           },
-        }).eq("id", checkoutData.order_id);
+        };
+
+        if (txnid) {
+          updatePayload.order_number = txnid;
+        }
+
+        const { error: orderUpdErr } = await adminClient
+          .from("orders")
+          .update(updatePayload)
+          .eq("id", checkoutData.order_id);
+
+        if (orderUpdErr) {
+          console.warn("Notice: Order row update with txnid hit constraint, updating details while preserving order_number:", orderUpdErr);
+          delete updatePayload.order_number;
+          await adminClient
+            .from("orders")
+            .update(updatePayload)
+            .eq("id", checkoutData.order_id);
+        }
 
         if (isTest) {
           await adminClient.from("delegate_passes").update({

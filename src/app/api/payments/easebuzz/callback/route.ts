@@ -266,10 +266,21 @@ export async function POST(req: NextRequest) {
           console.warn("Notice: cleaning attempted order row in callback:", delErr);
         }
       }
+      if (txnid) {
+        try {
+          await adminClient
+            .from("orders")
+            .delete()
+            .eq("order_number", txnid)
+            .neq("id", checkoutData.order_id)
+            .neq("status", "paid");
+        } catch (delErr) {
+          console.warn("Notice: cleaning attempted order row by txnid in callback:", delErr);
+        }
+      }
 
-      await adminClient.from("orders").update({
-        order_number: txnid || undefined,
-        gateway_order_id: txnid,
+      const updatePayload: any = {
+        gateway_order_id: txnid || undefined,
         gateway_payment_id: easepayid || null,
         amount: Number(amount || 200),
         status: "paid",
@@ -285,7 +296,25 @@ export async function POST(req: NextRequest) {
           source: "easebuzz_hosted_callback",
           timestamp: new Date().toISOString(),
         },
-      }).eq("id", checkoutData.order_id);
+      };
+
+      if (txnid) {
+        updatePayload.order_number = txnid;
+      }
+
+      const { error: orderUpdErr } = await adminClient
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", checkoutData.order_id);
+
+      if (orderUpdErr) {
+        console.warn("Notice: Callback order update hit constraint, updating without order_number:", orderUpdErr);
+        delete updatePayload.order_number;
+        await adminClient
+          .from("orders")
+          .update(updatePayload)
+          .eq("id", checkoutData.order_id);
+      }
     }
 
     if (needsAccommodation) {

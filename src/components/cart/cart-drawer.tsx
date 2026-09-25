@@ -72,6 +72,11 @@ export function CartDrawer({
 
   const pricing = calculatePricing(user?.participantType);
 
+  const isInternalUser = Boolean(
+    user?.participantType === "internal" ||
+    (user?.email && user.email.toLowerCase().endsWith("@klu.ac.in"))
+  );
+
   const isEventFull = (e: any) =>
     Boolean(
       e.is_total_full ||
@@ -461,9 +466,35 @@ export function CartDrawer({
 
                       {/* Full Capacity Warning Badge */}
                       {isEventFull(evt) && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
-                          <Lock className="h-3 w-3 text-rose-500 shrink-0" />
-                          <span>Slot Full ({evt.total_registered ?? (evt.registrations || []).length}/{evt.participant_limit || 100}) — Remove to proceed</span>
+                        <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Lock className="h-3 w-3 text-rose-500 shrink-0" />
+                            <span className="truncate">Slot Full ({evt.total_registered ?? (evt.registrations || []).length}/{evt.participant_limit || 100})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEvent(evt.id)}
+                            className="text-[10px] text-rose-700 underline font-bold hover:text-rose-900 shrink-0 cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {/* KLU Quota Blocked Badge */}
+                      {isInternalUser && (evt.is_klu_blocked || evt.allow_internal === false) && !isEventFull(evt) && (
+                        <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <AlertCircle className="h-3 w-3 text-amber-600 shrink-0" />
+                            <span className="truncate">KLU Quota Full (Externals Only)</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEvent(evt.id)}
+                            className="text-[10px] text-amber-800 underline font-bold hover:text-amber-950 shrink-0 cursor-pointer"
+                          >
+                            Remove
+                          </button>
                         </div>
                       )}
                     </div>

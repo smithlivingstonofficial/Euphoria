@@ -284,7 +284,7 @@ export function CartProvider({
       const isGuest = userInfo?.isGuest ?? !user;
 
       // 0. Check event participant limit capacity (lock if full)
-      const regCount = (event.registrations || []).length;
+      const regCount = Number(event.total_registered ?? (event.registrations ? event.registrations.length : 0));
       const limit = Number(event.participant_limit || 100);
       if (regCount >= limit || event.is_total_full) {
         return {
@@ -294,7 +294,14 @@ export function CartProvider({
       }
 
       // 0b. Check Kalasalingam University (@klu.ac.in) vs External Quotas
-      const isEventKluBlocked = event.is_klu_blocked || event.allow_internal === false;
+      const isInternalQuotaFull = Boolean(
+        event.is_internal_full ||
+        (event.internal_limit !== null &&
+          event.internal_limit !== undefined &&
+          Number(event.internal_registered ?? 0) >= Number(event.internal_limit))
+      );
+      const isEventKluBlocked = Boolean(event.is_klu_blocked || event.allow_internal === false || isInternalQuotaFull);
+
       if (isEventKluBlocked) {
         if (isGuest) {
           return {
@@ -313,7 +320,9 @@ export function CartProvider({
       if (event.allow_external === false && !isInternal) {
         return {
           allowed: false,
-          reason: "Reserved exclusively for Kalasalingam University students.",
+          reason: isGuest
+            ? "KLU students only (Sign in with your @klu.ac.in email to unlock)"
+            : "Reserved exclusively for Kalasalingam University students.",
         };
       }
 
@@ -393,41 +402,53 @@ export function CartProvider({
           return { allowed: true };
         }
 
-        // Slot 2 (1 item in cart) -> Block if candidate is first_preference_only
-        if (isCandidateFirstPrefOnly) {
-          return {
-            allowed: false,
-            reason: "1st preference only (Cannot be selected as 2nd slot)",
-          };
-        }
-
         const cartFirstEvent = selectedEvents[0];
         const isCartFirstPro = Boolean(cartFirstEvent.is_pro_event);
+        const isCartFirstOnly = Boolean(cartFirstEvent.first_preference_only);
 
         if (isCartFirstPro) {
-          // 1st choice is PRO -> 2nd choice MUST be NORMAL
+          // 1st choice in cart is PRO -> 2nd choice MUST be NORMAL
           if (isCandidatePro) {
             return {
               allowed: false,
               reason: "Only 1 Flagship event allowed per Pass (choose a regular event for slot 2)",
             };
           }
-          return { allowed: true };
-        } else {
-          // 1st choice is NORMAL -> 2nd choice CANNOT be PRO
-          if (isCandidatePro) {
+          if (isCandidateFirstPrefOnly) {
             return {
               allowed: false,
-              reason: "Flagship events must be selected as your 1st choice",
+              reason: "1st preference only (Cannot be combined with Flagship event)",
             };
           }
           return { allowed: true };
+        } else {
+          // 1st choice in cart was NORMAL:
+          if (isCandidatePro) {
+            // If the existing normal event is strictly first_preference_only, they conflict
+            if (isCartFirstOnly) {
+              return {
+                allowed: false,
+                reason: `"${cartFirstEvent.name}" is 1st preference only and cannot share a pass with a Flagship event`,
+              };
+            }
+            // Auto-ordering allows this! Candidate Pro will be promoted to Slot 1, Normal to Slot 2
+            return { allowed: true };
+          } else {
+            // Both are normal
+            if (isCandidateFirstPrefOnly) {
+              return {
+                allowed: false,
+                reason: "1st preference only (Cannot be selected as 2nd slot)",
+              };
+            }
+            return { allowed: true };
+          }
         }
       }
 
       return { allowed: true };
     },
-    [confirmedEvents, selectedEvents]
+    [confirmedEvents, selectedEvents, user]
   );
 
   const addEvent = useCallback(
@@ -437,6 +458,10 @@ export function CartProvider({
 
       setSelectedEvents((prev) => {
         if (prev.some((e) => e.id === event.id)) return prev;
+        // Auto-order: If candidate is PRO and prev has 1 normal event, put PRO in Slot 1
+        if (Boolean(event.is_pro_event) && prev.length === 1 && !Boolean(prev[0].is_pro_event)) {
+          return [event, prev[0]];
+        }
         return [...prev, event];
       });
       return true;
@@ -460,7 +485,14 @@ export function CartProvider({
         return false;
       }
 
-      setSelectedEvents((prev) => [...prev, event]);
+      setSelectedEvents((prev) => {
+        if (prev.some((e) => e.id === event.id)) return prev;
+        // Auto-order: If candidate is PRO and prev has 1 normal event, put PRO in Slot 1
+        if (Boolean(event.is_pro_event) && prev.length === 1 && !Boolean(prev[0].is_pro_event)) {
+          return [event, prev[0]];
+        }
+        return [...prev, event];
+      });
       return true;
     },
     [isEventSelected, canSelectEvent, removeEvent]
