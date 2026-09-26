@@ -190,7 +190,9 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
     { count: paidOrders },
     { count: pendingOrders },
     { count: failedOrders },
-    paidOrdersRes,
+    { count: paid200Count },
+    { count: paid300Count },
+    otherPaidOrdersRes,
   ] = await Promise.all([
     adminClient.from("orders").select("*", { count: "exact", head: true }),
     adminClient.from("orders").select("*", { count: "exact", head: true }).eq("status", "paid"),
@@ -204,15 +206,30 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
       .in("status", ["failed", "cancelled"]),
     adminClient
       .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "paid")
+      .eq("amount", 200),
+    adminClient
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "paid")
+      .eq("amount", 300),
+    adminClient
+      .from("orders")
       .select("amount")
       .eq("status", "paid")
-      .limit(3000),
+      .not("amount", "in", "(200,300)"),
   ]);
 
-  let totalRevenue = 0;
-  ((paidOrdersRes.data || []) as Array<{ amount?: number }>).forEach((r) => {
-    totalRevenue += Number(r.amount || 0);
+  let otherRevenue = 0;
+  ((otherPaidOrdersRes?.data || []) as Array<{ amount?: number }>).forEach((r) => {
+    otherRevenue += Number(r.amount || 0);
   });
+
+  const totalRevenue =
+    ((paid200Count || 0) * 200) +
+    ((paid300Count || 0) * 300) +
+    otherRevenue;
 
   cachedFinancialTelemetry = {
     timestamp: now,
@@ -226,12 +243,12 @@ export async function getAdminFinancialTelemetry(forceRefresh = false): Promise<
   return cachedFinancialTelemetry;
 }
 
-// 1. Overview Metrics (60s Vercel Data Cache shield to eliminate 12 Supabase queries per visit)
+// 1. Overview Metrics (30s Vercel Data Cache shield to eliminate Supabase queries per visit)
 async function fetchAdminOverviewMetricsRaw() {
   try {
     const adminClient = await createAdminClient();
 
-    // Fetch parallel statistics
+    // Fetch parallel statistics using exact counts to prevent PostgREST 1000-row truncation
     const [
       { count: totalParticipants },
       { count: internalParticipants },
@@ -239,7 +256,8 @@ async function fetchAdminOverviewMetricsRaw() {
       { data: events },
       { count: totalAttendance },
       { data: categories },
-      passesRes,
+      { count: totalPassesCount },
+      { count: totalProPassesCount },
       finances,
       { data: eventStats },
     ] = await Promise.all([
@@ -257,25 +275,31 @@ async function fetchAdminOverviewMetricsRaw() {
       adminClient.from("event_categories").select("id, name"),
       adminClient
         .from("delegate_passes")
-        .select("pass_tier, amount_paid")
+        .select("*", { count: "exact", head: true })
         .eq("status", "active"),
-      getAdminFinancialTelemetry(),
+      adminClient
+        .from("delegate_passes")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+        .in("pass_tier", ["pro_pass", "flagship_pass"]),
+      getAdminFinancialTelemetry(true),
       adminClient.from("vw_public_events_stats").select("event_id, total_registered, internal_registered"),
     ]);
 
-    const passes = (passesRes.data || []) as Array<{ pass_tier?: string; amount_paid?: number }>;
-    const totalPasses = passes.length;
-    const totalProPasses = passes.filter((p) => p.pass_tier === "pro_pass" || p.pass_tier === "flagship_pass").length;
-    const totalStandardPasses = totalPasses - totalProPasses;
-    const externalParticipants = Math.max(0, (totalParticipants || 0) - (internalParticipants || 0));
+    const passCount = totalPassesCount || 0;
+    const proPassCount = totalProPassesCount || 0;
+    const standardPassCount = Math.max(0, passCount - proPassCount);
+    const partCount = totalParticipants || 0;
+    const internalCount = internalParticipants || 0;
+    const externalCount = Math.max(0, partCount - internalCount);
 
-    // Calculate revenue from paid orders or pass tiers (0 full-table egress)
+    const proPassRevenue = proPassCount * 300;
+    const standardPassRevenue = standardPassCount * 200;
+
+    // Use finances total revenue or fall back to passes revenue
     let totalRevenue = finances.totalRevenue;
     if (totalRevenue === 0) {
-      totalRevenue = passes.reduce(
-        (sum, p) => sum + (Number(p.amount_paid) || (p.pass_tier === "pro_pass" ? 300 : 200)),
-        0
-      );
+      totalRevenue = proPassRevenue + standardPassRevenue;
     }
 
     // Process top competitions and capacity saturation
@@ -305,7 +329,7 @@ async function fetchAdminOverviewMetricsRaw() {
     });
 
     enrichedEvents.sort((a, b) => b.registered - a.registered);
-    const topEvents = enrichedEvents.slice(0, 6);
+    const topEvents = enrichedEvents.slice(0, 8);
 
     // Event category breakdown
     const categoryMap = new Map<string, { id: string; name: string; eventCount: number; registrationCount: number }>();
@@ -320,13 +344,6 @@ async function fetchAdminOverviewMetricsRaw() {
       }
     });
     const categoryStats = Array.from(categoryMap.values()).filter((c) => c.eventCount > 0);
-
-    const passCount = totalPasses || 0;
-    const proPassCount = totalProPasses || 0;
-    const standardPassCount = totalStandardPasses || 0;
-    const partCount = totalParticipants || 0;
-    const internalCount = internalParticipants || 0;
-    const externalCount = externalParticipants || 0;
 
     const passConversionRate = partCount > 0 ? Math.round((passCount / partCount) * 100) : 0;
     const proPassPct = passCount > 0 ? Math.round((proPassCount / passCount) * 100) : 0;
@@ -360,8 +377,8 @@ async function fetchAdminOverviewMetricsRaw() {
         totalStandardPasses: standardPassCount,
         proPassPercentage: proPassPct,
         standardPassPercentage: standardPassPct,
-        proPassRevenue: proPassCount * 300,
-        standardPassRevenue: standardPassCount * 200,
+        proPassRevenue,
+        standardPassRevenue,
         passConversionRate,
         totalEvents: (events || []).length,
         activeEvents: (events || []).filter((e) => e.status === "registration_open" || e.status === "published").length,
@@ -381,11 +398,14 @@ async function fetchAdminOverviewMetricsRaw() {
 
 const getCachedAdminOverviewMetrics = unstable_cache(
   fetchAdminOverviewMetricsRaw,
-  ["admin-overview-metrics-cache"],
-  { revalidate: 60, tags: ["admin-metrics"] }
+  ["admin-overview-metrics-cache-v2"],
+  { revalidate: 30, tags: ["admin-metrics"] }
 );
 
-export async function getAdminOverviewMetrics() {
+export async function getAdminOverviewMetrics(forceRefresh = false) {
+  if (forceRefresh) {
+    return fetchAdminOverviewMetricsRaw();
+  }
   return getCachedAdminOverviewMetrics();
 }
 
@@ -5119,10 +5139,28 @@ async function fetchAdminScannerOverviewRaw(): Promise<ScannerOverviewData> {
     // fallback
   }
 
-  // 4. Fetch lightweight attendance records
-  const { data: attendanceRows } = await adminClient
+  // 4. Fetch lightweight attendance records across all pages (un-truncated)
+  const { count: totalAttendanceExact } = await adminClient
     .from("attendance")
-    .select("event_id, scan_method");
+    .select("*", { count: "exact", head: true });
+
+  const pageSize = 1000;
+  const totalRecs = totalAttendanceExact || 0;
+  const pageCount = Math.max(1, Math.ceil(totalRecs / pageSize));
+  const attendanceQueries = [];
+  for (let i = 0; i < pageCount; i++) {
+    const from = i * pageSize;
+    const to = from + pageSize - 1;
+    attendanceQueries.push(
+      adminClient
+        .from("attendance")
+        .select("event_id, section_number, scan_method")
+        .range(from, to)
+    );
+  }
+
+  const attendanceBatchResults = await Promise.all(attendanceQueries);
+  const attendanceRows = attendanceBatchResults.flatMap((r) => r.data || []);
 
   // Map attendance to event & section
   const eventAttendanceMap: Record<string, Record<number, number>> = {};
@@ -5130,9 +5168,10 @@ async function fetchAdminScannerOverviewRaw(): Promise<ScannerOverviewData> {
   let morningTotal = 0;
   let afternoonTotal = 0;
 
-  (attendanceRows || []).forEach((row: any) => {
+  attendanceRows.forEach((row: any) => {
     totalAttendanceCount++;
     const eId = row.event_id;
+    if (!eId) return;
     if (!eventAttendanceMap[eId]) {
       eventAttendanceMap[eId] = { 1: 0, 2: 0, 3: 0, 4: 0 };
     }
@@ -5245,9 +5284,9 @@ async function fetchAdminScannerOverviewRaw(): Promise<ScannerOverviewData> {
  */
 export const getCachedAdminScannerOverview = unstable_cache(
   async () => fetchAdminScannerOverviewRaw(),
-  ["admin-scanner-overview-cache-v1"],
+  ["admin-scanner-overview-cache-v2"],
   {
-    revalidate: 60, // 60s background refresh
+    revalidate: 30, // 30s background refresh
     tags: ["admin-scanner", "admin-registrations"],
   }
 );
@@ -5255,12 +5294,15 @@ export const getCachedAdminScannerOverview = unstable_cache(
 /**
  * 1. Get Scanner Overview for all events with attendance counts per section
  */
-export async function getAdminScannerOverviewAction(): Promise<ScannerOverviewData> {
+export async function getAdminScannerOverviewAction(forceRefresh = false): Promise<ScannerOverviewData> {
   const { authorized } = await verifyAdminSession();
   if (!authorized) {
     throw new Error("Unauthorized: Admin privileges required.");
   }
 
+  if (forceRefresh) {
+    return fetchAdminScannerOverviewRaw();
+  }
   return getCachedAdminScannerOverview();
 }
 

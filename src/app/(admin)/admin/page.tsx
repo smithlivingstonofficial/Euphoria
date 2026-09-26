@@ -33,14 +33,34 @@ export default async function AdminDashboardPage() {
     totalParticipants: 0,
     internalParticipants: 0,
     externalParticipants: 0,
+    internalPercentage: 0,
+    externalPercentage: 0,
     totalRegistrations: 0,
     totalPasses: 0,
     totalProPasses: 0,
     totalStandardPasses: 0,
+    proPassPercentage: 0,
+    standardPassPercentage: 0,
+    proPassRevenue: 0,
+    standardPassRevenue: 0,
+    passConversionRate: 0,
     totalEvents: 0,
     activeEvents: 0,
     totalRevenue: 0,
     totalAttendance: 0,
+    categories: [],
+    categoryStats: [],
+    topEvents: [],
+    orderMetrics: {
+      totalOrders: 0,
+      paidOrders: 0,
+      pendingOrders: 0,
+      failedOrders: 0,
+      totalRevenue: 0,
+      paidPercentage: 0,
+      pendingPercentage: 0,
+      failedPercentage: 0,
+    },
   };
 
   const recentRegistrations = registrationsRes.registrations || [];
@@ -278,7 +298,7 @@ export default async function AdminDashboardPage() {
               </div>
               <div className="min-w-0">
                 <h3 className="text-xs font-bold text-slate-900 group-hover:text-primary transition-colors truncate">
-                  61 Competitions
+                  {metrics.totalEvents || 61} Competitions
                 </h3>
                 <p className="text-[10px] text-slate-500 truncate">Schedules &amp; venues</p>
               </div>

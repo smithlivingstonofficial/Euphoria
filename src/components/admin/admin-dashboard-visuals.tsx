@@ -78,26 +78,31 @@ export function AdminDashboardVisuals({ metrics }: AdminDashboardVisualsProps) {
 
   // Donut SVG Calculations for Passes (Standard vs Pro)
   const passCircumference = 2 * Math.PI * 40; // r = 40 => circumference ≈ 251.3
-  const proPassPct = metrics.proPassPercentage ?? (metrics.totalPasses > 0 ? Math.round((metrics.totalProPasses / metrics.totalPasses) * 100) : 32);
+  const proPassPct =
+    metrics.proPassPercentage ??
+    (metrics.totalPasses > 0 ? Math.round((metrics.totalProPasses / metrics.totalPasses) * 100) : 0);
   const stdPassPct = 100 - proPassPct;
   const proPassOffset = passCircumference - (proPassPct / 100) * passCircumference;
 
   // Donut SVG Calculations for Demographics (Internal KARE vs External)
   const demoCircumference = 2 * Math.PI * 40;
-  const internalPct = metrics.internalPercentage ?? (metrics.totalParticipants > 0 ? Math.round((metrics.internalParticipants / metrics.totalParticipants) * 100) : 51);
+  const internalPct =
+    metrics.internalPercentage ??
+    (metrics.totalParticipants > 0 ? Math.round((metrics.internalParticipants / metrics.totalParticipants) * 100) : 0);
   const externalPct = 100 - internalPct;
   const internalOffset = demoCircumference - (internalPct / 100) * demoCircumference;
 
   const topEvents = metrics.topEvents || [];
+  const defaultTotalOrders = metrics.orderMetrics?.totalOrders ?? metrics.totalPasses;
   const orderMetrics = metrics.orderMetrics || {
-    totalOrders: 3563,
-    paidOrders: 2213,
-    pendingOrders: 1219,
-    failedOrders: 131,
+    totalOrders: defaultTotalOrders,
+    paidOrders: metrics.totalPasses,
+    pendingOrders: 0,
+    failedOrders: 0,
     totalRevenue: metrics.totalRevenue,
-    paidPercentage: 62,
-    pendingPercentage: 34,
-    failedPercentage: 4,
+    paidPercentage: defaultTotalOrders > 0 ? Math.round((metrics.totalPasses / defaultTotalOrders) * 100) : 0,
+    pendingPercentage: 0,
+    failedPercentage: 0,
   };
 
   return (
@@ -223,7 +228,9 @@ export function AdminDashboardVisuals({ metrics }: AdminDashboardVisualsProps) {
                     <span className="h-3 w-3 rounded-full bg-indigo-600 shrink-0" />
                     <div>
                       <div className="text-xs font-bold text-indigo-950">Standard Festival Pass</div>
-                      <div className="text-[11px] text-indigo-700">₹200 / pass (₹3,02,000 gross)</div>
+                      <div className="text-[11px] text-indigo-700">
+                        ₹200 / pass ({formatCurrency(metrics.standardPassRevenue ?? (metrics.totalStandardPasses * 200))} gross)
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
@@ -243,7 +250,9 @@ export function AdminDashboardVisuals({ metrics }: AdminDashboardVisualsProps) {
                         <span>Pro Pass (VIP Access)</span>
                         <Sparkles className="h-3 w-3 text-amber-500" />
                       </div>
-                      <div className="text-[11px] text-amber-800">₹300 / pass (₹2,08,800 gross)</div>
+                      <div className="text-[11px] text-amber-800">
+                        ₹300 / pass ({formatCurrency(metrics.proPassRevenue ?? (metrics.totalProPasses * 300))} gross)
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
@@ -258,7 +267,7 @@ export function AdminDashboardVisuals({ metrics }: AdminDashboardVisualsProps) {
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 px-1">
                   <span>Registered User Conversion:</span>
                   <strong className="text-emerald-700 font-bold">
-                    {metrics.passConversionRate ?? 68}% converted to passes
+                    {metrics.passConversionRate ?? (metrics.totalParticipants > 0 ? Math.round((metrics.totalPasses / metrics.totalParticipants) * 100) : 0)}% converted to passes
                   </strong>
                 </div>
               </div>
