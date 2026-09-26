@@ -271,7 +271,9 @@ async function fetchAdminOverviewMetricsRaw() {
         .select("*", { count: "exact", head: true })
         .eq("status", "confirmed"),
       adminClient.from("events").select("id, name, registration_fee, participant_limit, status, category_id, is_pro_event"),
-      adminClient.from("attendance").select("*", { count: "exact", head: true }),
+      adminClient
+        .from("event_registrations")
+        .select("id, attendance!inner(id)", { count: "exact", head: true }),
       adminClient.from("event_categories").select("id, name"),
       adminClient
         .from("delegate_passes")
@@ -892,6 +894,7 @@ export interface AdminRegistrationsMetrics {
   proAllocations: number;
   standardAllocations: number;
   verifiedAttendance: number;
+  totalScans?: number;
   needsAccommodation: number;
 }
 
@@ -983,10 +986,14 @@ async function fetchAdminRegistrationsMetricsRaw(): Promise<AdminRegistrationsMe
   const [
     { count: totalBookings },
     { count: verifiedAttendance },
+    { count: totalScans },
     { count: proAllocations },
     { count: needsAccommodation },
   ] = await Promise.all([
     adminClient.from("event_registrations").select("id", { count: "exact", head: true }),
+    adminClient
+      .from("event_registrations")
+      .select("id, attendance!inner(id)", { count: "exact", head: true }),
     adminClient.from("attendance").select("id", { count: "exact", head: true }),
     adminClient
       .from("event_registrations")
@@ -1004,14 +1011,15 @@ async function fetchAdminRegistrationsMetricsRaw(): Promise<AdminRegistrationsMe
     proAllocations: pro,
     standardAllocations: std,
     verifiedAttendance: verifiedAttendance || 0,
+    totalScans: totalScans || 0,
     needsAccommodation: needsAccommodation || 0,
   };
 }
 
 export const getAdminRegistrationsMetricsCached = unstable_cache(
   fetchAdminRegistrationsMetricsRaw,
-  ["admin-registrations-metrics-cache"],
-  { revalidate: 120, tags: ["admin-registrations"] }
+  ["admin-registrations-metrics-cache-v3"],
+  { revalidate: 30, tags: ["admin-registrations"] }
 );
 
 /**
@@ -1130,13 +1138,16 @@ export async function getAdminRegistrationsPaginatedAction(
 
     // Filter by Attendance (Pending)
     if (attendance === "pending") {
-      const { data: attendedRows } = await adminClient
-        .from("attendance")
-        .select("registration_id")
-        .limit(1000);
+      let attQuery = adminClient.from("attendance").select("registration_id");
+      if (eventId !== "all") {
+        attQuery = attQuery.eq("event_id", eventId);
+      } else {
+        attQuery = attQuery.limit(400);
+      }
+      const { data: attendedRows } = await attQuery;
       const attendedIds = Array.from(new Set((attendedRows || []).map((a) => a.registration_id).filter(Boolean)));
       if (attendedIds.length > 0) {
-        query = query.not("id", "in", `(${attendedIds.slice(0, 1000).join(",")})`);
+        query = query.not("id", "in", `(${attendedIds.join(",")})`);
       }
     }
 
@@ -1272,8 +1283,8 @@ const fetchRegistrationsPageOneDefaultRaw = async () => {
 
 export const getAdminRegistrationsPageOneCached = unstable_cache(
   fetchRegistrationsPageOneDefaultRaw,
-  ["admin-registrations-page-1-cache"],
-  { revalidate: 120, tags: ["admin-registrations"] }
+  ["admin-registrations-page-1-cache-v3"],
+  { revalidate: 30, tags: ["admin-registrations"] }
 );
 
 /**
@@ -1284,7 +1295,11 @@ export async function refreshAdminRegistrationsCacheAction() {
     const { authorized } = await verifyAdminSession();
     if (!authorized) return { success: false, error: "Unauthorized" };
     revalidateTag("admin-registrations");
+    revalidateTag("admin-metrics");
+    revalidateTag("coordinator-workspace");
     revalidatePath("/admin/registrations", "page");
+    revalidatePath("/admin", "page");
+    revalidatePath("/coordinator", "page");
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: String(err) };

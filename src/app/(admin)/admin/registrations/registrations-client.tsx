@@ -564,7 +564,13 @@ export function MasterRegistrationsClient({
             </span>
             <span className="text-xs text-emerald-700 font-bold">{attendanceRatio}% present</span>
           </div>
-          <div className="mt-2 space-y-1 border-t border-slate-100 pt-1.5">
+          <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-1.5">
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
+              <span>Unique delegates</span>
+              {metrics.totalScans ? (
+                <span className="font-semibold text-slate-700">{metrics.totalScans.toLocaleString()} total scans</span>
+              ) : null}
+            </div>
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
